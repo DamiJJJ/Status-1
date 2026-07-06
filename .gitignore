@@ -1,0 +1,17 @@
+# System
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Python (lokalny serwer / testy Playwright)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Edytory
+.vscode/
+.idea/
+
+# Claude Code — ustawienia lokalne
+.claude/settings.local.json
