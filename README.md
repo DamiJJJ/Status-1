@@ -1,131 +1,134 @@
-# NEON ARENA — przeglądarkowy FPS
+# NEON ARENA — browser FPS
 
-Prosta, stylizowana strzelanka FPS (widok z oczu postaci) działająca w całości w przeglądarce.
-Przetrwaj **5 fal** uzbrojonych botów na neonowej arenie. Bez instalacji, bez backendu —
-Three.js ładowany z CDN, dźwięki generowane syntetycznie (WebAudio).
+A stylized first-person survival shooter that runs entirely in your browser.
+Survive **5 waves** of armed bots in a neon arena. No install, no backend —
+Three.js is loaded from a CDN and all sound is synthesized at runtime (WebAudio).
 
-![Rozgrywka](screenshots/rozgrywka-2.png)
+## ▶ [Play now](https://damijjj.github.io/Neon-Arena/)
 
-## Jak uruchomić
+No download required — click and play in your browser.
 
-### Wariant 1 — najprościej (zweryfikowany w Chrome)
-**Kliknij dwukrotnie `index.html`.** Gra otworzy się w domyślnej przeglądarce i działa
-od razu — cały kod gry jest w jednym pliku, a Three.js ładuje się z CDN (potrzebne jest
-połączenie z internetem).
+![Gameplay](screenshots/rozgrywka-2.png)
 
-### Wariant 2 — online (GitHub Pages)
-Gra jest w 100% statyczna, więc działa na GitHub Pages bez żadnej konfiguracji:
-w repozytorium wejdź w **Settings → Pages**, jako źródło wybierz gałąź `main`
-(katalog `/root`) i po chwili gra będzie dostępna pod
-`https://<twoja-nazwa>.github.io/<nazwa-repo>/`.
+## How to run
 
-### Wariant 3 — awaryjnie, przez lokalny serwer
-Użyj tego wariantu tylko, jeśli przeglądarka zablokuje grę otwartą z dysku
-(zobaczysz pusty/czarny ekran albo błąd o CORS/modułach w konsoli):
+### Option 1 — play online
+Just open **[damijjj.github.io/Neon-Arena](https://damijjj.github.io/Neon-Arena/)** —
+the game is 100% static and hosted on GitHub Pages.
 
-- **Windows:** dwuklik na `start-windows.bat` — uruchomi lokalny serwer (Python) na
-  porcie **8137** i otworzy `http://localhost:8137/index.html`. Zamknięcie okna konsoli
-  wyłącza serwer.
-- **macOS / Linux:** w terminalu `sh start.sh` (wymaga `python3`).
+### Option 2 — simplest, offline (verified in Chrome)
+**Double-click `index.html`.** The game opens in your default browser and works
+right away — the entire game is a single file and Three.js loads from a CDN
+(an internet connection is required).
 
-> Port 8137 wybrano celowo nietypowy, żeby nie kolidować z innymi lokalnymi serwerami
-> (np. PHP na 8000).
+### Option 3 — fallback, via a local server
+Use this only if your browser blocks the game opened from disk (you'll see a
+blank/black screen or a CORS/modules error in the console):
 
-## Sterowanie
+- **Windows:** double-click `start-windows.bat` — it starts a local server (Python)
+  on port **8137** and opens `http://localhost:8137/index.html`. Closing the console
+  window stops the server.
+- **macOS / Linux:** run `sh start.sh` in a terminal (requires `python3`).
 
-| Akcja | Klawisz |
+> Port 8137 was chosen deliberately unusual so it won't clash with other local
+> servers (e.g. PHP on 8000).
+
+## Controls
+
+| Action | Key |
 |---|---|
-| Ruch | **W / A / S / D** |
-| Rozglądanie / celowanie | **mysz** (Pointer Lock — aktywuje się po kliknięciu „Graj") |
-| Strzał | **LPM** |
-| Celowanie (ADS) | **PPM** (przytrzymaj) — każda broń; snajperka daje pełną lunetę |
-| Przeładowanie | **R** |
-| Zmiana broni | **1 / 2 / 3 / 4** lub **scroll** |
-| Bieg | **Shift** (działa też w powietrzu) |
-| Skok / bunnyhop | **Spacja** (przytrzymanie auto-skacze; łańcuch skoków rozpędza do +35%) |
-| Pauza | **Esc** (zwalnia mysz) |
-| Restart po końcu gry | **R** lub przycisk na ekranie |
-| Wyjście ze sklepu (następna fala) | **Enter** lub przycisk |
+| Move | **W / A / S / D** |
+| Look / aim | **mouse** (Pointer Lock — activates after clicking "Play") |
+| Fire | **LMB** |
+| Aim down sights (ADS) | **RMB** (hold) — any weapon; the sniper gives a full scope |
+| Reload | **R** |
+| Switch weapon | **1 / 2 / 3 / 4** or **scroll** |
+| Sprint | **Shift** (works in the air too) |
+| Jump / bunnyhop | **Space** (holding auto-jumps; chained jumps ramp speed up to +35%) |
+| Pause | **Esc** (releases the mouse) |
+| Restart after game over | **R** or the on-screen button |
+| Leave the shop (next wave) | **Enter** or the button |
 
-## Rozgrywka
+## Gameplay
 
-- **Tryb fal (survival):** 5 fal botów, każda liczniejsza i twardsza (więcej HP, lepsza
-  celność). Po ostatniej fali — ekran zwycięstwa; gdy HP spadnie do 0 — ekran przegranej.
-- **Tryb endless:** po zwycięstwie możesz grać dalej — fale 6, 7, 8… rosną bez końca.
-  Najlepszy wynik jest zapamiętywany na stałe (localStorage).
-- **Headshoty:** trafienie w głowę bota zadaje **×2 obrażeń** (złoty hitmarker i wyraźny
-  dźwięk potwierdzają trafienie).
-- **Wskaźnik obrażeń:** czerwony łuk przy krawędzi ekranu pokazuje, z którego kierunku
-  padł strzał — obraca się razem z kamerą.
-- **Sklep między falami:** za **kredyty** (10 za zwiadowcę, 15 za szturmowca, 30 za
-  ciężkiego, bonus za falę) kupujesz między falami:
-  - **bronie** — zaczynasz tylko z pistoletem; strzelbę (50 kr), SMG (90 kr) i snajperkę
-    (140 kr) odblokowujesz w sklepie;
-  - **zaopatrzenie** — pełne leczenie (30 kr), pełna amunicja (40 kr);
-  - **ulepszenia** (ceny rosną z poziomem) — pancerz +25 maks. HP, magazynki +50%,
-    przeładowanie −15%, obrażenia +15%.
-- **Muzyka proceduralna** (WebAudio): spokojny ambient w menu/sklepie, w trakcie fali
-  wchodzi bit (stopa, hi-hat, bas) — intensywność rośnie z numerem fali.
-- **Generator aren:** każdy załadunek strony losuje nowy układ przeszkód (filary,
-  klastry skrzyń, murki). Numer areny widać na ekranie startowym — dopisz
-  **`?seed=N`** do adresu (np. `index.html?seed=555`), aby wrócić na ten sam układ
-  albo podzielić się nim z kimś. Strefy spawnu i pickupów zawsze pozostają wolne.
-- **Boty** są uzbrojone: podchodzą na swój preferowany dystans, kluczą (strafe), sprawdzają
-  linię wzroku i **strzelają do gracza** z ograniczoną celnością. Trzy typy (rozróżnisz
-  je po kolorze i kształcie głowy):
-  - **Zwiadowca** (zielony, **trójkątna głowa**) — pistolet, walczy z dystansu; losowo
-    dropi **amunicję**;
-  - **Szturmowiec** (pomarańczowy, **kwadratowa głowa**) — szybszy od zwiadowcy, strzela
-    **seriami z karabinu**; losowo dropi **amunicję**;
-  - **Ciężki** (czerwony, **okrągła głowa**) — **strzelba**: musi podejść blisko, ale
-    z bliska bije bardzo mocno; dużo HP; losowo dropi **apteczkę** (+30 HP).
-- Kilka pickupów (amunicja/apteczki) leży też na arenie od startu.
-- **Punkty:** zwiadowca 100, ciężki 250, bonus za ukończenie fali. Rekord jest
-  zapamiętywany w przeglądarce (localStorage).
+- **Wave mode (survival):** 5 waves of bots, each more numerous and tougher (more HP,
+  better accuracy). Clear the last wave for the victory screen; drop to 0 HP and it's
+  game over.
+- **Endless mode:** after winning you can keep going — waves 6, 7, 8… scale forever.
+  Your best score is saved permanently (localStorage).
+- **Headshots:** hitting a bot's head deals **×2 damage** (a gold hitmarker and a
+  distinct sound confirm the hit).
+- **Damage indicator:** a red arc at the edge of the screen shows which direction a
+  shot came from — it rotates with the camera.
+- **Between-wave shop:** spend **credits** (10 per scout, 15 per assault, 30 per heavy,
+  plus a per-wave bonus) between waves on:
+  - **weapons** — you start with only the pistol; unlock the shotgun (50 cr),
+    SMG (90 cr) and sniper (140 cr) in the shop;
+  - **supplies** — full heal (30 cr), full ammo (40 cr);
+  - **upgrades** (prices scale with level) — armor +25 max HP, magazines +50%,
+    reload −15%, damage +15%.
+- **Procedural music** (WebAudio): calm ambient in the menu/shop; during a wave a beat
+  kicks in (kick, hi-hat, bass) — intensity rises with the wave number.
+- **Arena generator:** every page load rolls a fresh obstacle layout (pillars, crate
+  clusters, low walls). The arena number is shown on the start screen — append
+  **`?seed=N`** to the URL (e.g. `index.html?seed=555`) to return to the same layout
+  or share it. Spawn and pickup zones always stay clear.
+- **Bots** are armed: they close to their preferred range, strafe, check line of sight
+  and **shoot back** with limited accuracy. Three types (tell them apart by body color
+  and head shape):
+  - **Scout** (green, **triangular head**) — pistol, fights at range; randomly drops
+    **ammo**;
+  - **Assault** (orange, **square head**) — faster than the scout, fires **rifle bursts**;
+    randomly drops **ammo**;
+  - **Heavy** (red, **round head**) — **shotgun**: must close in but hits very hard up
+    close; lots of HP; randomly drops a **medkit** (+30 HP).
+- A few pickups (ammo/medkits) also sit on the arena from the start.
+- **Score:** scout 100, heavy 250, plus a wave-completion bonus. The high score is saved
+  in the browser (localStorage).
 
-## Bronie
+## Weapons
 
-| # | Broń | Charakterystyka | Magazynek | Cena |
-|---|------|-----------------|-----------|------|
-| 1 | **Pistolet** | celny, średnie obrażenia, półautomatyczny | 12 / zapas 72 | start |
-| 2 | **Strzelba** | 8 śrucin w rozrzucie, zabójcza z bliska, wolna | 6 / zapas 30 | 50 kr |
-| 3 | **Karabin SMG** | ogień automatyczny, szybki, większy rozrzut | 30 / zapas 150 | 90 kr |
-| 4 | **Snajperka** | ogromne obrażenia, bardzo celna z zoomem (PPM) | 5 / zapas 20 | 140 kr |
+| # | Weapon | Profile | Magazine | Price |
+|---|--------|---------|----------|-------|
+| 1 | **Pistol** | accurate, medium damage, semi-auto | 12 / reserve 72 | start |
+| 2 | **Shotgun** | 8 pellets in a spread, lethal up close, slow | 6 / reserve 30 | 50 cr |
+| 3 | **SMG** | full-auto, fast, wider spread | 30 / reserve 150 | 90 cr |
+| 4 | **Sniper** | huge damage, very accurate with zoom (RMB) | 5 / reserve 20 | 140 cr |
 
-Trafienie w **głowę** bota zadaje ×2 obrażeń (złoty hitmarker + charakterystyczny dźwięk).
+A **headshot** deals ×2 damage (gold hitmarker + a distinctive sound).
 
-**Celowanie (PPM):** z biodra strzela się szybko, ale niecelnie (duży rozrzut). Każda
-broń ma mechaniczny celownik — przy PPM broń wjeżdża na środek ekranu (muszka w osi
-strzału), FOV zwęża się do 60°, a rozrzut spada ~3×. W zamian **celowanie wyłącza
-sprint i spowalnia ruch** (~połowa prędkości marszu). Snajperka zamiast muszki daje
-pełną lunetę (24°).
+**Aiming (RMB):** hip-firing is fast but inaccurate (large spread). Every weapon has an
+iron sight — on RMB the weapon slides to screen center (front sight on the firing axis),
+FOV narrows to 60°, and spread drops ~3×. The trade-off: **aiming disables sprint and
+slows movement** (~half walking speed). Instead of a sight, the sniper gives a full
+scope (24°).
 
-**Bunnyhop:** sprint nie przerywa się w powietrzu, a skoki wykonane tuż po lądowaniu
-(okno 0,25 s — wystarczy trzymać spację) kumulują boost prędkości aż do +35%.
+**Bunnyhop:** sprint doesn't break in the air, and jumps performed right after landing
+(a 0.25 s window — just hold Space) stack a speed boost up to +35%.
 
-## Technika
+## Tech
 
-- **Three.js r160** z CDN (jsdelivr) przez import map; addony: `PointerLockControls`,
+- **Three.js r160** from a CDN (jsdelivr) via an import map; addons: `PointerLockControls`,
   `EffectComposer`, `RenderPass`, `UnrealBloomPass`, `OutputPass`.
-- Cały kod gry w `index.html` (moduł ES, podzielony na czytelne sekcje) — celowo w jednym
-  pliku, bo przeglądarki blokują **lokalne** moduły ES przy `file://`, a moduły z CDN (HTTPS)
-  działają także po dwukliku.
-- Oprawa: flat-shaded low-poly, spójna paleta (indygo / teal / pomarańcz / czerwień),
-  cienie z mapy cieni (światło kierunkowe), hemisfera + ambient, **bloom** + tone mapping
-  ACES, mgła dystansowa, gradientowe niebo (shader), muzzle flash, tracery, iskry i
-  cząsteczki trafień/śmierci, decale po strzałach, proceduralna tekstura podłogi (canvas).
-- Dźwięki i muzyka syntetyczne (WebAudio) — zero plików zewnętrznych; muzyka to
-  proceduralny sekwencer 16 kroków (118 BPM, a-moll), który reaguje na stan gry.
-- Hitscan przez `THREE.Raycaster`, pętla gry na `requestAnimationFrame` z delta time,
-  pule obiektów dla cząsteczek/tracerów/decali (brak wycieków przy restarcie).
+- The entire game lives in `index.html` (one ES module, split into readable sections) —
+  deliberately a single file, because browsers block **local** ES modules under `file://`,
+  while CDN modules (HTTPS) work even on a double-click.
+- Presentation: flat-shaded low-poly, a consistent palette (indigo / teal / orange / red),
+  shadow-mapped shadows (directional light), hemisphere + ambient, **bloom** + ACES tone
+  mapping, distance fog, a gradient sky (shader), muzzle flash, tracers, sparks and
+  hit/death particles, bullet decals, a procedural floor texture (canvas).
+- Sound and music are synthesized (WebAudio) — zero external files; the music is a
+  procedural 16-step sequencer (118 BPM, A minor) that reacts to game state.
+- Hitscan via `THREE.Raycaster`, game loop on `requestAnimationFrame` with delta time,
+  object pools for particles/tracers/decals (no leaks on restart).
 
-## Zrzuty ekranu
+## Screenshots
 
 | | |
 |---|---|
-| ![Menu](screenshots/menu.png) | ![Walka](screenshots/rozgrywka-1.png) |
-| ![Sklep](screenshots/sklep.png) | ![Zwycięstwo](screenshots/ekran-zwyciestwa.png) |
+| ![Menu](screenshots/menu.png) | ![Combat](screenshots/rozgrywka-1.png) |
+| ![Shop](screenshots/sklep.png) | ![Victory](screenshots/ekran-zwyciestwa.png) |
 
-## Licencja
+## License
 
-Projekt na licencji **MIT** — szczegóły w pliku [LICENSE](LICENSE).
+Released under the **MIT** license — see the [LICENSE](LICENSE) file.
