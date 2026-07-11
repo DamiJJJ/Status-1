@@ -101,9 +101,8 @@ function resetGameState() {
     enemiesGroup.remove(enemies[i].group);
   }
   enemies.length = 0;
-  // usuń pickupy
-  for (const p of pickups) pickupsGroup.remove(p.group);
-  pickups.length = 0;
+  // remove pickups (incl. their screen markers)
+  clearPickups();
   // schowaj efekty
   for (const p of particles) p.mesh.visible = false;
   for (const t of tracers) t.mesh.visible = false;

@@ -47,16 +47,49 @@ function enemyMat(color, emissive = null, ei = 1) {
   return enemyMatCache.get(key);
 }
 
+/* small builders shared by the bot models — keep the tri count low,
+   bots spawn by the dozen */
+function enemyBox(g, mat, w, h, d, x, y, z, { head = false, rx = 0, ry = 0 } = {}) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.rotation.set(rx, ry, 0);
+  if (head) m.userData.isHead = true;
+  g.add(m);
+  return m;
+}
+function enemyCyl(g, mat, r, len, x, y, z, seg = 8) {
+  const geo = new THREE.CylinderGeometry(r, r, len, seg);
+  geo.rotateX(Math.PI / 2); // axis along local +Z (bot forward)
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  g.add(m);
+  return m;
+}
+
 function buildEnemyModel(type) {
   const t = ENEMY_TYPES[type];
   const g = new THREE.Group();
   const matBody = enemyMat(t.body);
+  const matBodyDim = enemyMat(new THREE.Color(t.body).multiplyScalar(0.72).getHex());
   const matDark = enemyMat(0x1e2138);
   const matEye  = enemyMat(0x1a0b00, t.accent, 2.2);
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.05, 0.55), matBody);
-  body.position.y = 1.05;
-  g.add(body);
+  // torso: chest + pelvis (chest top stays at 1.575 — heads sink into it)
+  enemyBox(g, matBody, 0.85, 0.72, 0.55, 0, 1.215, 0);
+  enemyBox(g, matBodyDim, 0.62, 0.36, 0.44, 0, 0.7, 0);
+  // chest plate with a small glowing core in the accent color
+  // (dimmer than the eye so it doesn't dominate the silhouette under bloom)
+  enemyBox(g, matDark, 0.5, 0.44, 0.06, 0, 1.24, 0.29);
+  enemyBox(g, enemyMat(0x1a0b00, t.accent, 1.2), 0.1, 0.13, 0.04, 0, 1.27, 0.33);
+  // shoulder pads (heavy wears bulkier ones) + static arms;
+  // the right forearm lines up with the gun barrel
+  const padW = type === 'heavy' ? 0.34 : 0.24;
+  const padH = type === 'heavy' ? 0.26 : 0.18;
+  enemyBox(g, matBodyDim, padW, padH, 0.44, -(0.4 + padW / 2), 1.5, 0);
+  enemyBox(g, matBodyDim, padW, padH, 0.44, 0.4 + padW / 2, 1.5, 0);
+  enemyBox(g, matDark, 0.16, 0.4, 0.2, -0.5, 1.2, 0);
+  enemyBox(g, matDark, 0.16, 0.4, 0.2, 0.5, 1.2, 0);
+  enemyBox(g, matDark, 0.13, 0.13, 0.45, 0.42, 1.25, 0.1);
   // głowa: jaśniejsza (przyciemniony kolor ciała), kształt identyfikuje typ:
   // zwiadowca trójkąt (piramida), ciężki koło (kula), szturmowiec kwadrat (box)
   // głowa lekko zagłębiona w korpus (top tułowia = 1.575), żeby nie lewitowała
@@ -87,6 +120,21 @@ function buildEnemyModel(type) {
   eye.position.set(0, eyeY, eyeZ);
   eye.userData.isHead = true;
   g.add(eye);
+  // head decor per type (part of the head silhouette → counts as a headshot)
+  if (type === 'scout') {
+    // antenna with a glowing tip, embedded in the pyramid's slope
+    enemyBox(g, matDark, 0.03, 0.36, 0.03, 0.1, 1.95, -0.06, { head: true });
+    enemyBox(g, matEye, 0.05, 0.05, 0.05, 0.1, 2.16, -0.06, { head: true });
+  } else if (type === 'heavy') {
+    // helmet band ringing the dome
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.315, 0.315, 0.1, 12), matDark);
+    band.position.set(0, 1.9, 0);
+    band.userData.isHead = true;
+    g.add(band);
+  } else {
+    // visor brim hanging over the eye slit
+    enemyBox(g, matDark, 0.56, 0.06, 0.22, 0, 1.93, 0.2, { head: true });
+  }
   // nogi z przegubem w biodrze (geometria przesunięta w dół → obrót macha nogą)
   const legGeo = new THREE.BoxGeometry(0.26, 0.55, 0.3);
   legGeo.translate(0, -0.275, 0);
@@ -96,14 +144,25 @@ function buildEnemyModel(type) {
   const legR = legL.clone();
   legR.position.x = 0.22;
   g.add(legR);
-  // broń bota — kształt zależny od uzbrojenia typu
-  let gunGeo, tipZ;
-  if (t.weapon === 'shotgun')   { gunGeo = new THREE.BoxGeometry(0.2, 0.2, 0.7);  tipZ = 0.75; }
-  else if (t.weapon === 'auto') { gunGeo = new THREE.BoxGeometry(0.1, 0.1, 1.0);  tipZ = 0.9; }
-  else                          { gunGeo = new THREE.BoxGeometry(0.14, 0.14, 0.85); tipZ = 0.8; }
-  const gun = new THREE.Mesh(gunGeo, matDark);
-  gun.position.set(0.42, 1.25, 0.35);
-  g.add(gun);
+  // bot gun: receiver + cylindrical barrel, shape depends on the type's weapon
+  let tipZ;
+  if (t.weapon === 'shotgun') {
+    enemyBox(g, matDark, 0.18, 0.2, 0.5, 0.42, 1.25, 0.3);
+    enemyCyl(g, matDark, 0.05, 0.4, 0.42, 1.29, 0.55);           // barrel
+    enemyCyl(g, matDark, 0.035, 0.42, 0.42, 1.21, 0.54);         // tube magazine
+    enemyBox(g, matBodyDim, 0.11, 0.09, 0.16, 0.42, 1.2, 0.48);  // pump
+    tipZ = 0.78;
+  } else if (t.weapon === 'auto') {
+    enemyBox(g, matDark, 0.12, 0.16, 0.55, 0.42, 1.25, 0.3);
+    enemyCyl(g, matDark, 0.03, 0.42, 0.42, 1.28, 0.68);          // barrel
+    enemyBox(g, matDark, 0.06, 0.2, 0.1, 0.42, 1.12, 0.32, { rx: 0.2 }); // magazine
+    enemyBox(g, matDark, 0.05, 0.05, 0.2, 0.42, 1.35, 0.15);     // top sight rail
+    tipZ = 0.9;
+  } else {
+    enemyBox(g, matDark, 0.14, 0.16, 0.45, 0.42, 1.25, 0.32);
+    enemyCyl(g, matDark, 0.03, 0.32, 0.42, 1.28, 0.6);           // barrel
+    tipZ = 0.78;
+  }
   const gunTip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.1), matEye);
   gunTip.position.set(0.42, 1.25, tipZ);
   g.add(gunTip);

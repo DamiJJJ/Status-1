@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python \"C:\\\\Users\\\\damim\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Pliki-Strony-i-programowanie-Strony-Neon-Arena\\\\31279e4d-f65b-4774-b1d6-acdb2be2f3b7\\\\scratchpad\\\\shot.py\" \"http://localhost:8137/index.html?test=play&seed=111\" \"C:\\\\Users\\\\damim\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Pliki-Strony-i-programowanie-Strony-Neon-Arena\\\\31279e4d-f65b-4774-b1d6-acdb2be2f3b7\\\\scratchpad\\\\a2-wall.png\" 3.14159)",
+      "PowerShell(python \"C:\\\\Users\\\\damim\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Pliki-Strony-i-programowanie-Strony-Neon-Arena\\\\31279e4d-f65b-4774-b1d6-acdb2be2f3b7\\\\scratchpad\\\\perf.py\")",
+      "PowerShell($s = \"C:\\\\Users\\\\damim\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Pliki-Strony-i-programowanie-Strony-Neon-Arena\\\\31279e4d-f65b-4774-b1d6-acdb2be2f3b7\\\\scratchpad\"; python \"$s\\\\shot.py\" \"http://localhost:8137/index.html?test=shoot&seed=111\" \"$s\\\\a6-combat.png\" - 30000)"
+    ]
+  }
+}

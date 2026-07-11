@@ -55,21 +55,23 @@
 <div id="dmg-indicators"></div>
 
 <!-- ======================= HUD ======================= -->
+<div id="pickup-markers" class="hud"></div>
+
 <div id="hud-top-left" class="hud hud-panel">
   <div class="stat" id="hud-score">
-    <div class="label">Wynik</div>
+    <div class="label"><span class="icon" data-icon="score"></span>Wynik</div>
     <div class="value" id="score-value">0</div>
   </div>
   <div class="stat" id="hud-wave">
-    <div class="label">Fala</div>
+    <div class="label"><span class="icon" data-icon="wave"></span>Fala</div>
     <div class="value" id="wave-value">–</div>
   </div>
   <div class="stat" id="hud-enemies">
-    <div class="label">Wrogowie</div>
+    <div class="label"><span class="icon" data-icon="enemies"></span>Wrogowie</div>
     <div class="value" id="enemies-value">0</div>
   </div>
   <div class="stat" id="hud-credits">
-    <div class="label">Kredyty</div>
+    <div class="label"><span class="icon" data-icon="credits"></span>Kredyty</div>
     <div class="value" id="credits-value">0</div>
   </div>
 </div>
@@ -91,10 +93,10 @@
     <span id="ammo-reserve">/ 72</span>
   </div>
   <div id="weapon-slots">
-    <div class="wslot active" id="wslot-1"><b>1</b>PST</div>
-    <div class="wslot" id="wslot-2"><b>2</b>STR</div>
-    <div class="wslot" id="wslot-3"><b>3</b>SMG</div>
-    <div class="wslot" id="wslot-4"><b>4</b>SNJ</div>
+    <div class="wslot active" id="wslot-1" title="Pistolet"><b>1</b><span class="icon" data-icon="pistol"></span></div>
+    <div class="wslot" id="wslot-2" title="Strzelba"><b>2</b><span class="icon" data-icon="shotgun"></span></div>
+    <div class="wslot" id="wslot-3" title="Karabin SMG"><b>3</b><span class="icon" data-icon="smg"></span></div>
+    <div class="wslot" id="wslot-4" title="Snajperka"><b>4</b><span class="icon" data-icon="sniper"></span></div>
   </div>
 </div>
 
@@ -202,12 +204,14 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/config.js"></script>
 <script defer src="js/audio.js"></script>
 <script defer src="js/renderer.js"></script>
+<script defer src="js/textures.js"></script>
 <script defer src="js/world.js"></script>
 <script defer src="js/effects.js"></script>
 <script defer src="js/collisions.js"></script>
 <script defer src="js/player.js"></script>
 <script defer src="js/weapons.js"></script>
 <script defer src="js/enemies.js"></script>
+<script defer src="js/icons.js"></script>
 <script defer src="js/pickups.js"></script>
 <script defer src="js/shop.js"></script>
 <script defer src="js/waves.js"></script>

@@ -28,6 +28,7 @@ function tick(now) {
     }
   }
   updateFx(dt);
+  updateWorldFx(dt);
   updateHudFx(dt);
 
   // diagnostyka

@@ -139,13 +139,34 @@ html, body {
   filter: drop-shadow(0 0 10px rgba(0, 235, 199, 0.35));
 }
 
+/* ---------- ikony inline SVG (js/icons.js wypełnia [data-icon]) ---------- */
+.icon { display: inline-flex; flex: none; }
+.icon svg { display: block; width: 100%; height: 100%; }
+
+/* ---------- znaczniki pickupów (projekcja 3D→2D w pickups.js) ---------- */
+#pickup-markers { inset: 0; }
+.pickup-marker {
+  position: absolute; left: 0; top: 0;
+  width: 17px; height: 17px;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 5px currentColor);
+  will-change: transform;
+}
+.pickup-marker svg { display: block; width: 100%; height: 100%; }
+.pickup-marker.ammo { color: var(--teal); }
+.pickup-marker.med { color: var(--red); }
+.pickup-marker.expiring { animation: markerBlink 0.5s steps(2, end) infinite; }
+@keyframes markerBlink { 50% { opacity: 0.12; } }
+
 /* lewy górny: wynik / fala / wrogowie */
 #hud-top-left { left: 18px; top: 18px; display: flex; gap: 10px; }
 #hud-top-left .stat { text-align: left; min-width: 92px; }
 .stat .label {
+  display: flex; align-items: center; gap: 5px;
   font-size: 10px; letter-spacing: 2px;
   color: var(--text-dim); text-transform: uppercase;
 }
+.stat .label .icon { width: 12px; height: 12px; opacity: 0.85; }
 .stat .value { font-size: 24px; font-weight: 700; color: var(--text); }
 #hud-wave .value { color: var(--orange); }
 #hud-enemies .value { color: var(--red); }
@@ -183,6 +204,7 @@ html, body {
 #ammo-row.empty #ammo-mag { color: var(--red); }
 #weapon-slots { display: flex; gap: 6px; justify-content: flex-end; }
 .wslot {
+  display: flex; align-items: center; gap: 6px;
   padding: 4px 9px;
   font-size: 11px; letter-spacing: 1px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -190,6 +212,8 @@ html, body {
   color: var(--text-dim);
   background: rgba(255, 255, 255, 0.04);
 }
+.wslot .icon { width: 22px; height: 15px; }
+.wslot.active .icon { filter: drop-shadow(0 0 4px rgba(0, 235, 199, 0.7)); }
 .wslot.active {
   border-color: var(--teal);
   color: var(--teal);
@@ -381,6 +405,14 @@ html, body {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
 }
+.shop-item .si-icon {
+  flex: none;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+}
+.si-icon--weapon { color: var(--teal); filter: drop-shadow(0 0 6px rgba(0, 235, 199, 0.45)); }
+.si-icon--consumable { color: #ffd166; filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.4)); }
+.si-icon--upgrade { color: var(--purple); filter: drop-shadow(0 0 6px rgba(127, 90, 240, 0.5)); }
 .shop-item .si-info { flex: 1; }
 .shop-item .si-name { font-weight: 700; font-size: 14px; }
 .shop-item .si-name .si-lvl { color: var(--teal); font-size: 11px; margin-left: 8px; font-weight: 600; }

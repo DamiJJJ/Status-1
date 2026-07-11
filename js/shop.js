@@ -6,16 +6,17 @@
 
 /* ==================== SKLEP (między falami) ==================== */
 
+/* icon: key into UI_ICONS (js/icons.js); cat: tint class of the shop icon */
 const SHOP_ITEMS = [
-  { id: 'w_shotgun', name: 'Strzelba',    desc: 'Broń [2] — 8 śrucin, zabójcza z bliska',     basePrice: 50,  maxLevel: 1, level: 0 },
-  { id: 'w_smg',     name: 'Karabin SMG', desc: 'Broń [3] — szybki ogień automatyczny',       basePrice: 90,  maxLevel: 1, level: 0 },
-  { id: 'w_sniper',  name: 'Snajperka',   desc: 'Broń [4] — ogromne obrażenia, zoom na PPM',  basePrice: 140, maxLevel: 1, level: 0 },
-  { id: 'heal',   name: 'Pełne leczenie',        desc: 'Przywraca zdrowie do maksimum',           basePrice: 30, maxLevel: Infinity, level: 0 },
-  { id: 'ammo',   name: 'Pełna amunicja',        desc: 'Uzupełnia zapas wszystkich broni',        basePrice: 40, maxLevel: Infinity, level: 0 },
-  { id: 'maxhp',  name: 'Pancerz',               desc: '+25 maksymalnego HP (doliczane od razu)', basePrice: 60, maxLevel: 2, level: 0 },
-  { id: 'mag',    name: 'Powiększone magazynki', desc: '+50% pojemności magazynków i zapasu',     basePrice: 80, maxLevel: 2, level: 0 },
-  { id: 'reload', name: 'Szybkie przeładowanie', desc: '−15% czasu przeładowania',                basePrice: 70, maxLevel: 2, level: 0 },
-  { id: 'dmg',    name: 'Lepsza amunicja',       desc: '+15% obrażeń wszystkich broni',           basePrice: 90, maxLevel: 3, level: 0 },
+  { id: 'w_shotgun', name: 'Strzelba',    desc: 'Broń [2] — 8 śrucin, zabójcza z bliska',     basePrice: 50,  maxLevel: 1, level: 0, icon: 'shotgun', cat: 'weapon' },
+  { id: 'w_smg',     name: 'Karabin SMG', desc: 'Broń [3] — szybki ogień automatyczny',       basePrice: 90,  maxLevel: 1, level: 0, icon: 'smg',     cat: 'weapon' },
+  { id: 'w_sniper',  name: 'Snajperka',   desc: 'Broń [4] — ogromne obrażenia, zoom na PPM',  basePrice: 140, maxLevel: 1, level: 0, icon: 'sniper',  cat: 'weapon' },
+  { id: 'heal',   name: 'Pełne leczenie',        desc: 'Przywraca zdrowie do maksimum',           basePrice: 30, maxLevel: Infinity, level: 0, icon: 'heal',   cat: 'consumable' },
+  { id: 'ammo',   name: 'Pełna amunicja',        desc: 'Uzupełnia zapas wszystkich broni',        basePrice: 40, maxLevel: Infinity, level: 0, icon: 'ammo',   cat: 'consumable' },
+  { id: 'maxhp',  name: 'Pancerz',               desc: '+25 maksymalnego HP (doliczane od razu)', basePrice: 60, maxLevel: 2, level: 0, icon: 'shield', cat: 'upgrade' },
+  { id: 'mag',    name: 'Powiększone magazynki', desc: '+50% pojemności magazynków i zapasu',     basePrice: 80, maxLevel: 2, level: 0, icon: 'mag',    cat: 'upgrade' },
+  { id: 'reload', name: 'Szybkie przeładowanie', desc: '−15% czasu przeładowania',                basePrice: 70, maxLevel: 2, level: 0, icon: 'reload', cat: 'upgrade' },
+  { id: 'dmg',    name: 'Lepsza amunicja',       desc: '+15% obrażeń wszystkich broni',           basePrice: 90, maxLevel: 3, level: 0, icon: 'dmg',    cat: 'upgrade' },
 ];
 
 function shopPrice(item) {
@@ -81,6 +82,7 @@ function renderShop() {
     const disabled = maxed || game.credits < price ||
       (item.id === 'heal' && player.hp >= player.maxHp);
     return `<div class="shop-item">
+      <div class="si-icon si-icon--${item.cat}">${UI_ICONS[item.icon]}</div>
       <div class="si-info">
         <div class="si-name">${item.name}${lvl}</div>
         <div class="si-desc">${item.desc}</div>

@@ -24,9 +24,13 @@ bez backendu, bez bundlera, bez node_modules.
   Pliki w kolejności ładowania:
   `config.js` (konfig/paleta/parametry URL/diagnostyka `__test`) → `audio.js` (SFX +
   muzyka proceduralna) → `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
+  `textures.js` (`TexGen`: proceduralne tekstury z canvasa — kolor/normal/roughness/
+  emisja; wymaga `renderer`, więc MUSI być po `renderer.js`) →
   `world.js` (arena + generator przeszkód) → `effects.js` (pule: cząsteczki/tracery/
   decale/flashe) → `collisions.js` → `player.js` (ruch/bunnyhop/sway/obrażenia gracza) →
   `weapons.js` (WEAPONS/viewmodele/ADS/strzelanie) → `enemies.js` (ENEMY_TYPES/modele/AI) →
+  `icons.js` (`UI_ICONS`: inline SVG dla HUD/sklepu/znaczników, wypełnia `[data-icon]`;
+  MUSI być przed `pickups.js` — znaczniki pickupów biorą z niego ikony) →
   `pickups.js` → `shop.js` → `waves.js` → `hud.js` → `state.js` (obiekt `game`/ekrany/
   start/pauza/`resetGameState`) → `input.js` → `testmode.js` (`?test=...` + hooki) →
   `main.js` (pętla `tick`). Nowy plik wpinaj w miejsce zgodne z zależnościami
@@ -42,7 +46,7 @@ bez backendu, bez bundlera, bez node_modules.
   kod gry albo skrypt generujący w repo (`tools/`). Dozwolone:
   - **geometrie proceduralne** w kodzie (bryły Three.js — także `LatheGeometry`,
     `ExtrudeGeometry`, fazowania; nie tylko boxy);
-  - **tekstury generowane w runtime** z canvasa (jak `makeFloorTexture()` w `world.js`);
+  - **tekstury generowane w runtime** z canvasa (`TexGen` w `js/textures.js`);
   - **tekstury/grafiki generowane offline** skryptem z `tools/` (Python: PIL/numpy — szum,
     panele, mapy normalnych i roughness; SVG → PNG). Skrypt generujący **commitujemy razem
     z wynikiem**, żeby dało się przegenerować zasób po zmianie palety/rozdzielczości.
@@ -99,8 +103,13 @@ bez backendu, bez bundlera, bez node_modules.
   (near plane 0.08 — geometria „wybucha" na ekranie); odsuwaj (`z` bardziej ujemne).
 - ADS (PPM, zmienna `aiming` + `adsBlend`): każdy viewmodel ma `userData.adsPos` —
   pozycję, w której **muszka trafia w oś kamery** (x=0, y=−wysokość muszki). Muszki
-  muszą być małe (~0.012) i **osadzone na geometrii broni** (zamek/szyna/lufa), nie
-  lewitujące przed lufą. Nowa broń musi dostać muszkę (emissive box) i adsPos.
+  w stylu **three-dot**: CIENKIE ciemne słupki (~0.011 — grubsze zasłaniają cel;
+  sprawdzone na graczu) z małymi świecącymi kropkami: muszka `vmMatTeal` (~0.008,
+  najjaśniejszy punkt obrazu), szczerbinka 2× `vmMatTealDim` (~0.0065); wszystkie
+  trzy kropki NA JEDNEJ wysokości = `-adsPos.y`. Wszystko **osadzone na geometrii
+  broni** (zamek/szyna/lufa), nie lewitujące — słupki muszą stać na bryle; na wąskiej
+  szynie SMG stoi najpierw poprzeczka-podstawka, dopiero na niej słupki. Nowa broń
+  musi dostać komplet: muszkę, szczerbinkę i adsPos.
   Snajperka (`zoom: true`) zamiast ADS pokazuje lunetę i chowa viewmodel.
   Balans: `spread` w WEAPONS to rozrzut Z BIODRA (celowo duży); ADS mnoży przez
   `adsMul` (domyślnie 0.3). ADS blokuje sprint i spowalnia ruch ×0.55.
@@ -128,6 +137,14 @@ bez backendu, bez bundlera, bez node_modules.
   wolniej niż zegar ścienny; testy muszą mieć zapas w timeoutach.
 - Restart gry = `resetGameState()` — każdy nowy system z trwałym stanem (ulepszenia,
   liczniki, timery) musi być tam resetowany.
+- Tekstury świata: `TexGen` (`js/textures.js`) zwraca zestawy `{ map, normalMap,
+  roughnessMap[, emissiveMap] }` (deterministyczne, seedy stałe — wygląd nie zależy od
+  `?seed`). Materiały z roughnessMap muszą mieć `roughness: 1.0` (mapa jest MNOŻONA
+  przez skalar). Mury: `mat.userData.worldUV = metry/kafel` + `TexGen.applyBoxUV`
+  w `addBlock` — kafelkowanie w skali świata (długi mur i filar bez rozciągania);
+  skrzynie zostają na domyślnych UV boxa (każda ściana = cały wzór ramy). Wszystkie
+  wzory muszą być kafelkowe (szum z zawijaną kratą, stemple rysowane 3×3 przez
+  `drawScratches`). Puls neonów: `updateWorldFx()` w `world.js`, wołane z `tick`.
 
 ## Uruchamianie i testy
 
@@ -150,39 +167,49 @@ bez backendu, bez bundlera, bez node_modules.
 Zaimplementowane wcześniej: headshoty, wskaźnik kierunku obrażeń, sklep między falami
 (w tym kupowanie broni), tryb endless, rekord w localStorage, animacja+dźwięk
 przeładowania, sway/FOV sprintu, trzy typy botów (pistolet/karabin/strzelba), dropy
-per typ wroga, muzyka proceduralna.
+per typ wroga, muzyka proceduralna, cała sekcja „Oprawa wizualna" (punkty A/B/C
+poniżej: `TexGen`, `UI_ICONS`, bogatsze modele botów i viewmodele z celownikami
+three-dot).
 
 ### Oprawa wizualna (odejście od „kółek i kwadratów")
 
 Trzy poniższe punkty mieszczą się w zasadzie „wszystko generowane, nic ściąganego"
 (patrz Architektura) — realizowalne bez zewnętrznych assetów.
 
-A. **Bogatsze tekstury proceduralne** — zamiast jednej siatki na podłodze: panele
-   sci-fi z zabrudzeniami, szum Perlina/Worleya, popękany beton, emisyjne wzory neonowe,
-   animowane hologramy (przewijana `tex.offset` albo shader). Do tego **mapy normalnych
-   i roughness** — dopiero one dają skok jakości oświetlenia, praktycznie za darmo
-   wydajnościowo. Dwie drogi, obie legalne przy `file://`:
-   (1) **canvas w runtime** — jak dziś `makeFloorTexture()`, zero plików, dobre do
-   wzorów geometrycznych; normal mapę da się policzyć z jasności (Sobel) na canvasie;
-   (2) **offline `tools/gen_textures.py`** (PIL/numpy — szum, erozja, zabrudzenia) →
-   base64 w `js/textures.js`. **Nie ładuj tekstur sceny 3D z plików PNG** — patrz
-   ostrzeżenie o CORS/`file://` w sekcji Architektura.
-   Materiały: `normalMap` + `roughnessMap` na `MeshStandardMaterial`, `tex.repeat` pod
-   skalę areny; `colorSpace = SRGBColorSpace` **tylko** dla map koloru (normal/roughness
+A. **Bogatsze tekstury proceduralne** — ✅ ZROBIONE (canvas w runtime: `TexGen`
+   w `js/textures.js` — patrz Konwencje techniczne), łącznie z **animowanymi
+   hologramami**: `TexGen.makeHologramTexture()` (strumień glyphów) na 8 panelach
+   przy wewnętrznych licach murów; przewijanie `tex.offset.y` + migotanie
+   w `updateWorldFx`. Panele są dodane do `scene`, NIE do `worldGroup` (nie mogą
+   łapać strzałów/decali/LOS) i mają `fog: false` (mgła + additive = świecący
+   prostokąt). Zostało opcjonalnie: popękany beton, wariant offline
+   `tools/gen_textures.py` (PIL/numpy) → base64 w JS, gdyby canvas przestał
+   wystarczać. **Nie ładuj tekstur sceny 3D z plików PNG** — patrz ostrzeżenie
+   o CORS/`file://` w sekcji Architektura. Przy nowych mapach pamiętaj:
+   `colorSpace = SRGBColorSpace` **tylko** dla map koloru/emisji (normal/roughness
    zostają liniowe — inaczej oświetlenie wyjdzie „umyte").
-B. **Ikony wektorowe (SVG) dla UI** — ikony broni i ulepszeń w sklepie, sloty broni na
-   HUD, emblematy fal, znaczniki pickupów. Do HUD/ekranów wstawiać **inline w markupie
-   lub jako `background-image` z data URI w CSS** — wtedy stylują się paletą
-   (`currentColor`, `fill`) i działają z `file://` bez plików. SVG jako osobny plik
-   `.svg` w `<img>` też jest OK dla DOM; do faviconów/OG renderować do PNG skryptem
-   z `tools/`.
-C. **Bogatsze modele proceduralne** — boty i bronie z większej liczby brył, fazowane
-   krawędzie, `LatheGeometry`/`ExtrudeGeometry` zamiast samych boxów (lufy, magazynki,
-   hełmy, naramienniki). Uwaga na zasady, które zostają w mocy: przód bota to lokalne
-   **+Z**, meshe głowy muszą mieć `userData.isHead`, każdy mesh `userData.enemyRef`,
-   typ nadal rozpoznawalny po **kolorze ciała I kształcie głowy**; nowa broń wymaga
-   muszki + `adsPos` (patrz Konwencje techniczne). Liczbę trójkątów trzymać w ryzach —
-   boty spawnują się dziesiątkami.
+B. **Ikony wektorowe (SVG) dla UI** — ✅ ZROBIONE (`UI_ICONS` w `js/icons.js`: bronie,
+   ulepszenia sklepu — z kolorami kategorii `si-icon--weapon/consumable/upgrade` —
+   sloty broni na HUD i emblematy statystyk; wszystko inline SVG na `currentColor`,
+   statyczny markup przez placeholdery `<span class="icon" data-icon="…">`).
+   **Znaczniki pickupów na ekranie** też zrobione: `updatePickupMarkers()`
+   w `pickups.js` rzutuje pozycje pickupów na ekran (ikony z `UI_ICONS` w kontenerze
+   `#pickup-markers`), skala maleje z dystansem, dropy mrugają, gdy `life < 6` s;
+   usuwanie przez `removePickup()`/`clearPickups()` (reset gry używa `clearPickups`).
+   Nowa ikona = wpis w `UI_ICONS` (viewBox 24×24, `currentColor`); do faviconów/OG
+   renderować do PNG skryptem z `tools/`.
+C. **Bogatsze modele proceduralne** — ✅ ZROBIONE. Boty: tors z dwóch segmentów,
+   płyta piersiowa z małym świecącym rdzeniem (kolor akcentu), naramienniki (heavy ma
+   większe), statyczne ramiona (prawe przedramię celuje w broń), cylindryczne lufy,
+   dekory głów per typ (scout: antena ze świecącą końcówką, assault: daszek nad
+   wizjerem, heavy: obręcz hełmu) — dekory głowy mają `userData.isHead` (liczą się
+   jak headshot). Viewmodele: cylindryczne lufy (`vmCyl`), tłumik SMG, luneta
+   z obiektywem, zapasowe naboje strzelby, magazynki ze stopkami, kabłąki spustu.
+   Zasady, które zostają w mocy: przód bota to lokalne **+Z**, meshe głowy muszą mieć
+   `userData.isHead`, każdy mesh `userData.enemyRef`, typ nadal rozpoznawalny po
+   **kolorze ciała I kształcie głowy**; nowa broń wymaga muszki + `adsPos` (patrz
+   Konwencje techniczne). Liczbę trójkątów trzymać w ryzach — boty spawnują się
+   dziesiątkami (helpery `enemyBox`/`enemyCyl`).
 
 ### Rozgrywka
 

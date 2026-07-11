@@ -9,6 +9,8 @@
 const pickupsGroup = new THREE.Group();
 scene.add(pickupsGroup);
 const pickups = [];
+const pickupMarkersEl = document.getElementById('pickup-markers');
+const _pmv = new THREE.Vector3(); // scratch for marker projection
 
 const ammoBoxGeo = new THREE.BoxGeometry(0.55, 0.4, 0.55);
 const ammoBoxMat = new THREE.MeshStandardMaterial({ color: 0x1c4b42, emissive: PALETTE.teal, emissiveIntensity: 0.7, roughness: 0.6, flatShading: true });
@@ -38,7 +40,24 @@ function spawnPickup(kind, x, z) {
   }
   g.position.set(x, 0.45, z);
   pickupsGroup.add(g);
-  pickups.push({ kind, group: g, t: Math.random() * 6, life: 30 });
+  // screen-space marker: an SVG icon projected over the pickup each frame
+  const marker = document.createElement('div');
+  marker.className = `pickup-marker ${kind}`;
+  marker.innerHTML = UI_ICONS[kind === 'ammo' ? 'ammo' : 'heal'];
+  pickupMarkersEl.appendChild(marker);
+  pickups.push({ kind, group: g, marker, t: Math.random() * 6, life: 30 });
+}
+
+function removePickup(i) {
+  const p = pickups[i];
+  pickupsGroup.remove(p.group);
+  p.marker.remove();
+  pickups.splice(i, 1);
+}
+
+function clearPickups() {
+  for (const p of pickups) { pickupsGroup.remove(p.group); p.marker.remove(); }
+  pickups.length = 0;
 }
 
 /* dropy zależne od typu: zwiadowca/szturmowiec → amunicja, ciężki → apteczka */
@@ -75,14 +94,33 @@ function updatePickups(dt) {
     const dx = p.group.position.x - player.pos.x;
     const dz = p.group.position.z - player.pos.z;
     if (p.life <= 0) {
-      pickupsGroup.remove(p.group);
-      pickups.splice(i, 1);
+      removePickup(i);
     } else if (dx * dx + dz * dz < 1.45 * 1.45) {
       applyPickup(p);
       spawnParticles(p.group.position.clone(), p.kind === 'ammo' ? PALETTE.teal : PALETTE.red, 10, 3, 0.4, 3);
-      pickupsGroup.remove(p.group);
-      pickups.splice(i, 1);
+      removePickup(i);
     }
+  }
+  updatePickupMarkers();
+}
+
+/* project the markers onto the screen (runs every frame while playing) */
+function updatePickupMarkers() {
+  for (const p of pickups) {
+    _pmv.copy(p.group.position);
+    _pmv.y += 0.9;
+    _pmv.project(camera);
+    const visible = _pmv.z < 1 && Math.abs(_pmv.x) < 1.05 && Math.abs(_pmv.y) < 1.05;
+    p.marker.style.display = visible ? 'block' : 'none';
+    if (!visible) continue;
+    const x = (_pmv.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-_pmv.y * 0.5 + 0.5) * window.innerHeight;
+    const dx = p.group.position.x - player.pos.x;
+    const dz = p.group.position.z - player.pos.z;
+    const scale = Math.max(0.55, Math.min(1.1, 1.25 - Math.sqrt(dx * dx + dz * dz) / 45));
+    p.marker.style.transform =
+      `translate(${x}px, ${y}px) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
+    p.marker.classList.toggle('expiring', p.life < 6); // drops blink before despawn
   }
 }
 

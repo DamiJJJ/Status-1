@@ -10,33 +10,24 @@ const worldGroup = new THREE.Group();   // cel raycastów: ściany, przeszkody, 
 scene.add(worldGroup);
 const colliders = [];                   // AABB { minX, maxX, minZ, maxZ }
 
-/* proceduralna tekstura podłogi (canvas, bez plików) */
-function makeFloorTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const g = c.getContext('2d');
-  g.fillStyle = '#2c3158';
-  g.fillRect(0, 0, 256, 256);
-  g.strokeStyle = 'rgba(95, 108, 190, 0.45)';
-  g.lineWidth = 2;
-  for (let i = 0; i <= 256; i += 64) {
-    g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
-    g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke();
-  }
-  g.fillStyle = 'rgba(0, 235, 199, 0.14)';
-  g.fillRect(0, 0, 4, 4);
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(18, 18);
-  tex.anisotropy = 4;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
+/* floor: procedural deck plates (TexGen, canvas) with glowing neon inlays;
+   roughness stays 1.0 — the roughnessMap is multiplied by it */
+const floorTexSet = TexGen.makeFloorSet(8);
+const floorMat = new THREE.MeshStandardMaterial({
+  map: floorTexSet.map,
+  normalMap: floorTexSet.normalMap,
+  roughnessMap: floorTexSet.roughnessMap,
+  roughness: 1.0,
+  metalness: 0,
+  emissive: 0xffffff,
+  emissiveMap: floorTexSet.emissiveMap,
+  emissiveIntensity: 1.5,
+});
 
 {
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA_HALF * 2 + 4, ARENA_HALF * 2 + 4),
-    new THREE.MeshStandardMaterial({ map: makeFloorTexture(), roughness: 0.95, metalness: 0 })
+    floorMat
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -52,14 +43,42 @@ function makeFloorTexture() {
   scene.add(outer);
 }
 
-const matWall  = new THREE.MeshStandardMaterial({ color: PALETTE.wall, roughness: 0.9, flatShading: true });
-const matCrate = new THREE.MeshStandardMaterial({ color: PALETTE.crate, roughness: 0.85, flatShading: true });
-const matCrateAlt = new THREE.MeshStandardMaterial({ color: PALETTE.crateAlt, roughness: 0.8, flatShading: true });
+/* obstacle materials: procedural sets from TexGen (color/normal/roughness).
+   Wall texture tiles in world units via applyBoxUV (see addBlock), so long
+   outer walls and small pillars share one material without stretching;
+   crates keep the default box UVs (each face = whole framed-panel design). */
+const wallTexSet = TexGen.makeWallSet();
+const matWall = new THREE.MeshStandardMaterial({
+  map: wallTexSet.map,
+  normalMap: wallTexSet.normalMap,
+  roughnessMap: wallTexSet.roughnessMap,
+  roughness: 1.0,
+  emissive: 0xffffff,
+  emissiveMap: wallTexSet.emissiveMap,
+  emissiveIntensity: 1.2,
+});
+matWall.userData.worldUV = 6; // meters per texture tile
+const crateTexSet = TexGen.makeCrateSet(PALETTE.crate);
+const crateAltTexSet = TexGen.makeCrateSet(PALETTE.crateAlt);
+const matCrate = new THREE.MeshStandardMaterial({
+  map: crateTexSet.map, normalMap: crateTexSet.normalMap,
+  roughnessMap: crateTexSet.roughnessMap, roughness: 1.0,
+});
+const matCrateAlt = new THREE.MeshStandardMaterial({
+  map: crateAltTexSet.map, normalMap: crateAltTexSet.normalMap,
+  roughnessMap: crateAltTexSet.roughnessMap, roughness: 1.0,
+});
 const matTrim  = new THREE.MeshStandardMaterial({ color: 0x072a26, emissive: PALETTE.teal, emissiveIntensity: 1.6, roughness: 0.5 });
 const matTrimOrange = new THREE.MeshStandardMaterial({ color: 0x2a1503, emissive: PALETTE.orange, emissiveIntensity: 1.4, roughness: 0.5 });
 
 function addBlock(x, z, w, h, d, mat, { collide = true, y = null } = {}) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const geo = new THREE.BoxGeometry(w, h, d);
+  // world-scale tiling for materials that ask for it; the position-derived
+  // offset de-syncs the pattern between blocks (deterministic per seed)
+  if (mat.userData.worldUV) {
+    TexGen.applyBoxUV(geo, mat.userData.worldUV, (x * 0.618 + z * 0.132) % 1, (z * 0.573 + x * 0.117) % 1);
+  }
+  const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y === null ? h / 2 : y, z);
   m.castShadow = true;
   m.receiveShadow = true;
@@ -85,6 +104,43 @@ function addBlock(x, z, w, h, d, mat, { collide = true, y = null } = {}) {
     const t = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), matTrim);
     t.position.set(x, H + 0.07, z);
     worldGroup.add(t);
+  }
+}
+
+/* animated holographic panels on the inner faces of the outer walls;
+   scrolled + flickered in updateWorldFx. Added to `scene`, NOT worldGroup —
+   holograms must not catch shots, decals or LOS raycasts. fog:false because
+   fog would tint the whole additive quad, glowing where it should be empty. */
+const holoMats = [];
+{
+  const mkHolo = (seed, speed) => {
+    const m = new THREE.MeshBasicMaterial({
+      map: TexGen.makeHologramTexture(seed),
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    m.userData.scrollSpeed = speed;
+    holoMats.push(m);
+    return m;
+  };
+  const mats = [mkHolo(101, 0.045), mkHolo(202, 0.075), mkHolo(303, 0.06), mkHolo(404, 0.09)];
+  const holoGeo = new THREE.PlaneGeometry(2.4, 3.2);
+  const F = ARENA_HALF - 0.03; // just off the inner wall face
+  // [x, z, yaw, material]: two panels per wall, facing the arena
+  const spots = [
+    [-14,  F, Math.PI, 0], [14,  F, Math.PI, 1],
+    [-14, -F, 0, 2],       [14, -F, 0, 3],
+    [ F, -14, -Math.PI / 2, 2], [ F, 14, -Math.PI / 2, 0],
+    [-F, -14,  Math.PI / 2, 1], [-F, 14,  Math.PI / 2, 3],
+  ];
+  for (const [x, z, yaw, mi] of spots) {
+    const p = new THREE.Mesh(holoGeo, mats[mi]);
+    p.position.set(x, 2.5, z);
+    p.rotation.y = yaw;
+    scene.add(p);
   }
 }
 
@@ -190,3 +246,17 @@ __test.arenaHash = Math.round(colliders.reduce(
   (a, c) => a + c.minX * 3.7 + c.maxZ * 1.3 + c.minZ * 0.7, 0) * 100) / 100;
 document.getElementById('arena-seed-hint').textContent =
   `Arena #${ARENA_SEED} — dopisz ?seed=${ARENA_SEED} do adresu, aby wrócić na ten układ.`;
+
+/* animated world FX: pulse of the neon inlays + hologram scroll/flicker
+   (called from tick) */
+let worldFxT = 0;
+function updateWorldFx(dt) {
+  worldFxT += dt;
+  floorMat.emissiveIntensity = 1.5 + Math.sin(worldFxT * 1.7) * 0.4;
+  matWall.emissiveIntensity = 1.2 + Math.sin(worldFxT * 1.7 + 1.3) * 0.3;
+  const flicker = 0.48 + 0.07 * Math.sin(worldFxT * 9.3) + 0.05 * Math.sin(worldFxT * 2.1);
+  for (const m of holoMats) {
+    m.map.offset.y -= dt * m.userData.scrollSpeed; // data stream drifts upward
+    m.opacity = flicker;
+  }
+}
