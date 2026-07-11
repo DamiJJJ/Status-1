@@ -4,7 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEON ARENA — przeglądarkowy FPS</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23151833'/><circle cx='8' cy='8' r='5' fill='none' stroke='%2300ebc7' stroke-width='2'/><rect x='7' y='7' width='2' height='2' fill='%23ff8906'/></svg>">
+<meta name="description" content="Neon Arena — przeglądarkowy FPS na Three.js. Przetrwaj fale botów w neonowej arenie. Bez instalacji, bez backendu.">
+<meta name="theme-color" content="#151833">
+
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icon-16.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="NEON ARENA — przeglądarkowy FPS">
+<meta property="og:description" content="Przetrwaj fale botów w neonowej arenie. Gra działa w przeglądarce — bez instalacji.">
+<meta property="og:image" content="https://damijjj.github.io/Neon-Arena/assets/og-image.png">
+<meta property="og:url" content="https://damijjj.github.io/Neon-Arena/">
+<meta name="twitter:card" content="summary_large_image">
+
 <link rel="stylesheet" href="styles.css">
 <script type="importmap">
 {
@@ -58,6 +74,8 @@
   </div>
 </div>
 
+<img id="hud-logo" class="hud" src="assets/logo-mark.png" alt="" draggable="false">
+
 <div id="hud-hp" class="hud hud-panel">
   <div id="hp-row">
     <span id="hp-value">100</span>
@@ -89,7 +107,9 @@
 <!-- ======================= ekrany ======================= -->
 <div id="screen-start" class="screen visible">
   <div class="screen-box">
-    <div class="game-title">Neon Arena</div>
+    <h1 class="game-title">
+      <img src="assets/logo-full.png" alt="Neon Arena" class="game-logo" draggable="false">
+    </h1>
     <div class="game-subtitle">Przetrwaj 5 fal &middot; przeglądarkowy FPS</div>
     <div class="controls-grid">
       <div class="key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div><div class="desc">ruch</div>
@@ -110,6 +130,7 @@
 
 <div id="screen-pause" class="screen">
   <div class="screen-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark" draggable="false">
     <h2>Pauza</h2>
     <div class="end-stats">Wynik: <b id="pause-score">0</b> &middot; Fala <b id="pause-wave">1</b></div>
     <button class="btn" id="btn-resume">Wznów</button>
@@ -119,6 +140,7 @@
 
 <div id="screen-over" class="screen">
   <div class="screen-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-lose" draggable="false">
     <h2 class="lose">Koniec gry</h2>
     <div class="end-stats">
       Twój wynik: <b id="over-score">0</b><br>
@@ -132,6 +154,7 @@
 
 <div id="screen-win" class="screen">
   <div class="screen-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-win" draggable="false">
     <h2 class="win">Zwycięstwo!</h2>
     <div class="end-stats">
       Przetrwałeś wszystkie 5 fal.<br>
@@ -146,6 +169,7 @@
 
 <div id="screen-shop" class="screen">
   <div class="screen-box shop-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-small" draggable="false">
     <h2 class="shop-title">Sklep</h2>
     <div class="shop-credits">Kredyty: <b id="shop-credits">0</b></div>
     <div id="shop-items"></div>

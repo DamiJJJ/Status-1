@@ -15,6 +15,17 @@ bez backendu, bez bundlera, bez node_modules.
 - `styles.css` — HUD i ekrany (CSS działa z `file://`, może być osobno).
 - Zasoby wyłącznie proceduralne: geometrie z kodu, tekstura podłogi z canvasa, dźwięki
   syntetyczne (WebAudio). **Nie dodawaj zewnętrznych modeli/tekstur/dźwięków.**
+- **Wyjątek: branding w `assets/`** — logo istnieje jako PNG i dotyczy WYŁĄCZNIE UI
+  (ekrany, HUD, favicon). Scena 3D i audio zostają proceduralne.
+  `logo-mark.png` (sam emblemat, 256 px — HUD i nagłówki ekranów pauzy/przegranej/
+  zwycięstwa/sklepu), `logo-full.png` (lockup z napisem, 560 px — tytuł ekranu
+  startowego), `icon-*.png` + `favicon.ico` + `apple-touch-icon.png` (favicony,
+  linkowane w `<head>`), `icon-maskable-512.png` (PWA, ma margines bezpieczny),
+  `og-image.png` (podgląd w social media). `site.webmanifest` spina ikony PWA.
+  Pliki `neon arena logo*.png` to **źródła** (białe tło) — nieużywane w runtime, nie
+  linkuj ich. Tło wycięto miękką alfą (odwrócony premultiply względem bieli + rdzeń
+  z `binary_fill_holes`), więc poświata neonu zachowuje gradient — przy podmianie logo
+  nie używaj progowania alfy ani kwantyzacji PNG (widoczne ziarno na gradientach).
 - UI i komunikaty po polsku; paleta: indygo `#232946` / teal `#00ebc7` /
   pomarańcz `#ff8906` / czerwień `#ff5470` / złoto `#ffd166` (kredyty/headshoty).
 

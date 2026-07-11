@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo-full.png" alt="Neon Arena" width="360">
+</p>
+
 # NEON ARENA — browser FPS
 
 A stylized first-person survival shooter that runs entirely in your browser.
