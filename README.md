@@ -22,8 +22,9 @@ the game is 100% static and hosted on GitHub Pages.
 
 ### Option 2 — simplest, offline (verified in Chrome)
 **Double-click `index.html`.** The game opens in your default browser and works
-right away — the entire game is a single file and Three.js loads from a CDN
-(an internet connection is required).
+right away — the game code loads as classic scripts from the `js/` folder (keep it
+next to `index.html`) and Three.js loads from a CDN (an internet connection is
+required).
 
 ### Option 3 — fallback, via a local server
 Use this only if your browser blocks the game opened from disk (you'll see a
@@ -114,9 +115,13 @@ scope (24°).
 
 - **Three.js r160** from a CDN (jsdelivr) via an import map; addons: `PointerLockControls`,
   `EffectComposer`, `RenderPass`, `UnrealBloomPass`, `OutputPass`.
-- The entire game lives in `index.html` (one ES module, split into readable sections) —
-  deliberately a single file, because browsers block **local** ES modules under `file://`,
-  while CDN modules (HTTPS) work even on a double-click.
+- The game code is split into **classic scripts** in `js/` (config, audio, renderer,
+  world, effects, player, weapons, enemies, pickups, shop, waves, HUD, state, input,
+  main loop) that share the global scope and load in order via `<script defer>`.
+  Deliberately **no local ES modules and no bundler**: browsers block local ES modules
+  under `file://`, while classic scripts and CDN modules (HTTPS) work even on a
+  double-click — a tiny bootstrap ES module in `index.html` imports Three.js from the
+  CDN and exposes it globally before the game scripts run.
 - Presentation: flat-shaded low-poly, a consistent palette (indigo / teal / orange / red),
   shadow-mapped shadows (directional light), hemisphere + ambient, **bloom** + ACES tone
   mapping, distance fog, a gradient sky (shader), muzzle flash, tracers, sparks and

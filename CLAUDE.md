@@ -5,18 +5,64 @@ bez backendu, bez bundlera, bez node_modules.
 
 ## Architektura
 
-- **Cały kod gry jest w `index.html`** (jeden moduł ES, ~2000 linii) — to decyzja celowa:
-  przeglądarki blokują lokalne moduły ES przy `file://`, a gra ma działać po dwukliku.
-  Three.js + addony ładowane z CDN (jsdelivr) przez import map. **Nie rozdzielaj kodu na
-  pliki `src/*.js`** bez zmiany sposobu dystrybucji.
-- Kod podzielony sekcjami komentarzy: KONFIG → AUDIO → RENDERER → ŚWIAT → EFEKTY →
-  KOLIZJE → GRACZ → BRONIE → WROGOWIE → PICKUPY → SKLEP → FALE → HUD → STANY → WEJŚCIE →
-  TRYBY TESTOWE → PĘTLA.
+- **Kod gry jest podzielony na klasyczne skrypty w `js/`** (NIE moduły ES) — to decyzja
+  celowa: przeglądarki blokują **lokalne** moduły ES przy `file://`, a gra ma działać po
+  dwukliku; klasyczne skrypty z `file://` działają. Wszystkie pliki `js/*.js` współdzielą
+  **globalny zakres** (top-level `const`/`let`/`function` klasycznego skryptu widzą
+  kolejne skrypty) — między plikami nie ma żadnych `import`/`export` i uważaj na kolizje
+  nazw. **Nie konwertuj plików `js/` na moduły ES** i nie dodawaj bundlera — to złamie
+  dystrybucję przez `file://`.
+- **Bootstrap w `index.html`**: mały inline'owy moduł ES importuje Three.js + addony
+  z CDN (jsdelivr, import map w `<head>`) i wystawia je globalnie przez
+  `Object.assign(window, { THREE, PointerLockControls, ... })`. Moduły i skrypty `defer`
+  wykonują się po sparsowaniu dokumentu **w kolejności wystąpienia w dokumencie**, więc
+  THREE jest gotowe, zanim ruszy pierwszy plik gry. Dlatego każdy plik gry MUSI być
+  ładowany przez `<script defer src="js/...">` — bez `defer` wykonałby się w trakcie
+  parsowania, czyli PRZED bootstrapem.
+- **Kolejność `<script>` w `index.html` = kolejność dawnych sekcji i MA znaczenie**
+  (część kodu wykonuje się już przy ładowaniu, np. `generateArena()` w `world.js`).
+  Pliki w kolejności ładowania:
+  `config.js` (konfig/paleta/parametry URL/diagnostyka `__test`) → `audio.js` (SFX +
+  muzyka proceduralna) → `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
+  `world.js` (arena + generator przeszkód) → `effects.js` (pule: cząsteczki/tracery/
+  decale/flashe) → `collisions.js` → `player.js` (ruch/bunnyhop/sway/obrażenia gracza) →
+  `weapons.js` (WEAPONS/viewmodele/ADS/strzelanie) → `enemies.js` (ENEMY_TYPES/modele/AI) →
+  `pickups.js` → `shop.js` → `waves.js` → `hud.js` → `state.js` (obiekt `game`/ekrany/
+  start/pauza/`resetGameState`) → `input.js` → `testmode.js` (`?test=...` + hooki) →
+  `main.js` (pętla `tick`). Nowy plik wpinaj w miejsce zgodne z zależnościami
+  wykonywanymi przy ładowaniu; odwołania wyłącznie z wnętrza funkcji mogą wskazywać
+  „w przód".
+- Każdy plik `js/` zaczyna się od `'use strict';` (kod był modułem ES, czyli strict —
+  to zachowuje identyczną semantykę). Nowe pliki też muszą go mieć.
+- `index.html` — markup (canvas, nakładki, HUD, ekrany start/pauza/koniec/wygrana/sklep),
+  import map, bootstrap i lista `<script defer>`.
 - `styles.css` — HUD i ekrany (CSS działa z `file://`, może być osobno).
-- Zasoby wyłącznie proceduralne: geometrie z kodu, tekstura podłogi z canvasa, dźwięki
-  syntetyczne (WebAudio). **Nie dodawaj zewnętrznych modeli/tekstur/dźwięków.**
-- **Wyjątek: branding w `assets/`** — logo istnieje jako PNG i dotyczy WYŁĄCZNIE UI
-  (ekrany, HUD, favicon). Scena 3D i audio zostają proceduralne.
+- **Zasoby: wszystko generowane, nic ściąganego.** Zasada nie brzmi już „zero plików
+  graficznych", tylko: **każdy zasób musi mieć źródło, z którego da się go odtworzyć** —
+  kod gry albo skrypt generujący w repo (`tools/`). Dozwolone:
+  - **geometrie proceduralne** w kodzie (bryły Three.js — także `LatheGeometry`,
+    `ExtrudeGeometry`, fazowania; nie tylko boxy);
+  - **tekstury generowane w runtime** z canvasa (jak `makeFloorTexture()` w `world.js`);
+  - **tekstury/grafiki generowane offline** skryptem z `tools/` (Python: PIL/numpy — szum,
+    panele, mapy normalnych i roughness; SVG → PNG). Skrypt generujący **commitujemy razem
+    z wynikiem**, żeby dało się przegenerować zasób po zmianie palety/rozdzielczości.
+
+  **Zabronione: gotowe modele/tekstury/dźwięki z zewnątrz** (stock, paczki assetów,
+  biblioteki tekstur) — licencje i spójność stylu. **Audio zostaje w 100% syntetyczne
+  (WebAudio)** — bez plików dźwiękowych, nawet własnych.
+- ⚠️ **Tekstury do sceny 3D NIE mogą być plikami PNG w `assets/`.** Przy `file://` Chrome
+  uznaje obrazy z dysku za cross-origin i `texImage2D` rzuca wyjątkiem („The image element
+  contains cross-origin data") — scena psułaby się po dwukliku, choć na serwerze działa.
+  **Obejście: osadzaj tekstury jako `data:` URI** (base64) w pliku JS, np. `js/textures.js`
+  z mapą `{ id: 'data:image/png;base64,...' }`, i podawaj je do `THREE.TextureLoader`
+  / `new Image()`. Data URI ładuje się do WebGL bez problemu również z `file://`
+  (zweryfikowane). Koszt: base64 to +33% rozmiaru — trzymaj tekstury małe (256–512 px,
+  kafelkowane przez `tex.repeat`) i dopuszczaj tylko te, których nie da się rozsądnie
+  wygenerować canvasem w runtime. Pipeline: `tools/gen_textures.py` → PNG (podgląd,
+  do repo) → ten sam skrypt zapisuje `js/textures.js` z base64.
+  **PNG w `assets/` są OK wyłącznie dla DOM/UI** (`<img>` w HUD i ekranach, favicony,
+  OG) — DOM nie podlega temu ograniczeniu, dlatego branding działa z `file://`.
+- **Branding w `assets/`** — logo jako PNG, dotyczy WYŁĄCZNIE UI (ekrany, HUD, favicon).
   `logo-mark.png` (sam emblemat, 256 px — HUD i nagłówki ekranów pauzy/przegranej/
   zwycięstwa/sklepu), `logo-full.png` (lockup z napisem, 560 px — tytuł ekranu
   startowego), `icon-*.png` + `favicon.ico` + `apple-touch-icon.png` (favicony,
@@ -26,8 +72,10 @@ bez backendu, bez bundlera, bez node_modules.
   linkuj ich. Tło wycięto miękką alfą (odwrócony premultiply względem bieli + rdzeń
   z `binary_fill_holes`), więc poświata neonu zachowuje gradient — przy podmianie logo
   nie używaj progowania alfy ani kwantyzacji PNG (widoczne ziarno na gradientach).
-- UI i komunikaty po polsku; paleta: indygo `#232946` / teal `#00ebc7` /
-  pomarańcz `#ff8906` / czerwień `#ff5470` / złoto `#ffd166` (kredyty/headshoty).
+- UI i komunikaty po polsku; **komentarze w kodzie po angielsku** (nowe i edytowane;
+  zastane polskie tłumacz przy okazji, gdy modyfikujesz dany fragment). Paleta: indygo
+  `#232946` / teal `#00ebc7` / pomarańcz `#ff8906` / czerwień `#ff5470` / złoto
+  `#ffd166` (kredyty/headshoty).
 
 ## Konwencje techniczne
 
@@ -104,6 +152,40 @@ Zaimplementowane wcześniej: headshoty, wskaźnik kierunku obrażeń, sklep mię
 przeładowania, sway/FOV sprintu, trzy typy botów (pistolet/karabin/strzelba), dropy
 per typ wroga, muzyka proceduralna.
 
+### Oprawa wizualna (odejście od „kółek i kwadratów")
+
+Trzy poniższe punkty mieszczą się w zasadzie „wszystko generowane, nic ściąganego"
+(patrz Architektura) — realizowalne bez zewnętrznych assetów.
+
+A. **Bogatsze tekstury proceduralne** — zamiast jednej siatki na podłodze: panele
+   sci-fi z zabrudzeniami, szum Perlina/Worleya, popękany beton, emisyjne wzory neonowe,
+   animowane hologramy (przewijana `tex.offset` albo shader). Do tego **mapy normalnych
+   i roughness** — dopiero one dają skok jakości oświetlenia, praktycznie za darmo
+   wydajnościowo. Dwie drogi, obie legalne przy `file://`:
+   (1) **canvas w runtime** — jak dziś `makeFloorTexture()`, zero plików, dobre do
+   wzorów geometrycznych; normal mapę da się policzyć z jasności (Sobel) na canvasie;
+   (2) **offline `tools/gen_textures.py`** (PIL/numpy — szum, erozja, zabrudzenia) →
+   base64 w `js/textures.js`. **Nie ładuj tekstur sceny 3D z plików PNG** — patrz
+   ostrzeżenie o CORS/`file://` w sekcji Architektura.
+   Materiały: `normalMap` + `roughnessMap` na `MeshStandardMaterial`, `tex.repeat` pod
+   skalę areny; `colorSpace = SRGBColorSpace` **tylko** dla map koloru (normal/roughness
+   zostają liniowe — inaczej oświetlenie wyjdzie „umyte").
+B. **Ikony wektorowe (SVG) dla UI** — ikony broni i ulepszeń w sklepie, sloty broni na
+   HUD, emblematy fal, znaczniki pickupów. Do HUD/ekranów wstawiać **inline w markupie
+   lub jako `background-image` z data URI w CSS** — wtedy stylują się paletą
+   (`currentColor`, `fill`) i działają z `file://` bez plików. SVG jako osobny plik
+   `.svg` w `<img>` też jest OK dla DOM; do faviconów/OG renderować do PNG skryptem
+   z `tools/`.
+C. **Bogatsze modele proceduralne** — boty i bronie z większej liczby brył, fazowane
+   krawędzie, `LatheGeometry`/`ExtrudeGeometry` zamiast samych boxów (lufy, magazynki,
+   hełmy, naramienniki). Uwaga na zasady, które zostają w mocy: przód bota to lokalne
+   **+Z**, meshe głowy muszą mieć `userData.isHead`, każdy mesh `userData.enemyRef`,
+   typ nadal rozpoznawalny po **kolorze ciała I kształcie głowy**; nowa broń wymaga
+   muszki + `adsPos` (patrz Konwencje techniczne). Liczbę trójkątów trzymać w ryzach —
+   boty spawnują się dziesiątkami.
+
+### Rozgrywka
+
 1. **Czwarty typ bota** — kamikaze (biegnie i eksploduje wręcz) albo snajper (trzyma się
    murów, laser celowania telegrafuje strzał). Wymusza zmianę pozycji gracza.
 2. **Boss co 5. falę** — duży bot z paskiem HP u góry ekranu i atakiem obszarowym.
@@ -118,3 +200,8 @@ per typ wroga, muzyka proceduralna.
 8. **Multiplayer co-op (WebRTC)** — największy skok złożoności (autorytet hosta,
    synchronizacja stanu); wymaga sygnalizacji, więc łamie zasadę „zero backendu" —
    rozważyć dopiero po wyczerpaniu pomysłów single-player.
+9. **Pickupy na przełomie fal zamiast na starcie** — apteczki i amunicja nie mają leżeć
+   na arenie od początku gry (`placeInitialPickups()` w `pickups.js`); zamiast tego
+   świeża dostawa pojawia się w przerwie między falami (np. przy `waveSystem.onEnemyDown`
+   / starcie intermission), w strefach chronionych przez `keepClear`. Uwzględnić
+   `resetGameState()` i to, że startowe pickupy mają dziś `life = 9999`.
