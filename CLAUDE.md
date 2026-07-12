@@ -22,8 +22,9 @@ bez backendu, bez bundlera, bez node_modules.
 - **Kolejność `<script>` w `index.html` = kolejność dawnych sekcji i MA znaczenie**
   (część kodu wykonuje się już przy ładowaniu, np. `generateArena()` w `world.js`).
   Pliki w kolejności ładowania:
-  `config.js` (konfig/paleta/parametry URL/diagnostyka `__test`) → `audio.js` (SFX +
-  muzyka proceduralna) → `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
+  `config.js` (konfig/paleta/parametry URL/diagnostyka `__test`) → `audio.js` (`AudioSys`:
+  szyna WebAudio, SFX, muzyka proceduralna) → `renderer.js` (renderer/kamera/
+  postprocessing/światła/niebo) →
   `textures.js` (`TexGen`: proceduralne tekstury z canvasa — kolor/normal/roughness/
   emisja; wymaga `renderer`, więc MUSI być po `renderer.js`) →
   `world.js` (arena + generator przeszkód) → `effects.js` (pule: cząsteczki/tracery/
@@ -53,7 +54,12 @@ bez backendu, bez bundlera, bez node_modules.
 
   **Zabronione: gotowe modele/tekstury/dźwięki z zewnątrz** (stock, paczki assetów,
   biblioteki tekstur) — licencje i spójność stylu. **Audio zostaje w 100% syntetyczne
-  (WebAudio)** — bez plików dźwiękowych, nawet własnych.
+  (WebAudio)** — bez plików dźwiękowych, nawet własnych i nawet generowanych AI.
+  Rozważane i **odrzucone**: muzyka z SUNO. Powód nie jest tylko licencyjny — przy
+  `file://` wygenerowany plik da się odtworzyć wyłącznie przez `<audio>`, bo
+  `fetch` + `decodeAudioData` jest blokowane przez CORS, a `MediaElementSource` z dysku
+  taintuje graf. Muzyka wypadłaby więc **poza graf WebAudio**: koniec z sidechainem,
+  ściszaniem pod SFX i reakcją na gęstość walki (patrz `moodBlend` w Konwencjach).
 - ⚠️ **Tekstury do sceny 3D NIE mogą być plikami PNG w `assets/`.** Przy `file://` Chrome
   uznaje obrazy z dysku za cross-origin i `texImage2D` rzuca wyjątkiem („The image element
   contains cross-origin data") — scena psułaby się po dwukliku, choć na serwerze działa.
@@ -94,9 +100,41 @@ bez backendu, bez bundlera, bez node_modules.
 - Bronie gracza mają flagę `owned` — start tylko z pistoletem, reszta kupowana
   w sklepie (pozycje `w_*` w `SHOP_ITEMS`). Nowa broń = wpis w `WEAPONS`, viewmodel
   w `buildViewmodel()`, pozycja `w_...` w sklepie i slot na HUD.
-- Muzyka proceduralna żyje w closure `AudioSys` (sekwencer 16 kroków, lookahead
-  przez `setInterval`); mood wyliczany z `game.state`/`waveSystem.active` przy
-  planowaniu kroku — nie wymaga ręcznego przełączania przy zmianach stanu.
+- **Audio (`AudioSys` w `js/audio.js`) — cały dźwięk syntetyzowany w WebAudio.**
+  - **Szyna (nie omijaj jej):** głosy → `sfxBus`/`musicGain` → `master` → `duckFilter`
+    (lowpass całego miksu) → `compressor` (limiter) → `destination`. Równolegle **pogłos**:
+    `ConvolverNode` z impulsem generowanym w kodzie (`makeImpulse` — zanikający szum
+    stereo z ciemniejącym ogonem), zasilany per-głos parametrem `send`. Nowe dźwięki
+    twórz **wyłącznie** helperami `tone` / `burst` / `ping` — one wpinają się w szynę,
+    liczą `__test.sfxPlayed` i obsługują `send`; ręczne `connect(ctx.destination)`
+    omija limiter i pogłos.
+  - **Dźwięk w świecie = podaj pozycję.** `tone`/`burst` przyjmują `pos` (Vector3):
+    `spatial()` liczy z niej panoramę, tłumienie i przytłumienie z dystansu. Strzały
+    botów (`enemyShot`) i ich śmierć (`kill`) MUSZĄ dostawać pozycję — to nośnik
+    informacji taktycznej. Limit `claimEnemyVoice()` (10 równoczesnych) chroni miks;
+    nowe częste dźwięki botów też przez niego przepuszczaj.
+  - **`jitter`** (mikro-wariacja pitchu) na każdym powtarzalnym dźwięku — bez niego seria
+    z SMG brzmi jak stempel jednej próbki.
+  - **Stan trwały:** `AudioSys.update(dt)` z `tick` prowadzi bicie serca (<25 HP)
+    i oddech sprintu (flaga `BREATH_SFX`); `AudioSys.resetFx()` woła `resetGameState()`
+    i zeruje te pętle oraz otwiera `duckFilter`. Nowy stanowy dźwięk = obsłuż go
+    w obu tych miejscach.
+  - **Obrażenia** (`hurt(dmg, fromPos)`) panoramują się w stronę napastnika i „duszą"
+    cały miks przez `duckFilter` (efekt ogłuszenia) proporcjonalnie do obrażeń.
+  - **Kroki** jadą na cyklu head-bobu: `swayPhase` w `player.js`, jeden krok na pół
+    okresu, wyzwalany w dnie kołysania — dzięki temu audio trafia w opad kamery.
+    Jeśli ruszasz `swayPhase`, sprawdź `swayStepIdx`.
+  - **Muzyka:** sekwencer 16 kroków z lookaheadem przez `setInterval`; mood liczony
+    z `game.state`/`waveSystem.active` przy planowaniu kroku (bez ręcznego przełączania
+    przy zmianach stanu), ale wygładzany przez **`moodBlend`** — combat i spokój
+    przenikają się przez ~takt zamiast przeskakiwać. Intensywność = numer fali **+**
+    liczba żywych botów. Sekcje basu A/B co 4 takty (`musicBar`) z werblowym fillem
+    na szwie; bas/pady/dzwonki idą przez `musicDuck` (sidechain pod stopą). Wszystkie
+    obwiednie używają `exponentialRamp*`, więc **głośność nigdy nie może być 0** —
+    skaluj przez `cb`/`calm` tylko pod strażą `> 0.05`. Błąd w kroku nie zabija pętli,
+    ale ląduje w `__test.musicError`.
+  - Stingery UI (`buy`/`pickup`/`heal`/`wave`/`win`) są strojone do **a-moll** — żeby
+    nie gryzły się z podkładem, nowe też tam trzymaj.
 - Efekty (cząsteczki/tracery/decale/flash) używają **puli obiektów** — przy nowych
   efektach też używaj puli, nie twórz meshy w locie.
 - Viewmodel: dziecko kamery; w animacjach **nigdy nie przybliżaj broni do kamery**
@@ -152,9 +190,13 @@ bez backendu, bez bundlera, bez node_modules.
   **Port 8137, nie 8000** — na 8000 działa lokalny serwer PHP użytkownika.
 - Testy: Playwright (Python, `channel="chrome"`, headless) + flagi
   `--use-angle=swiftshader --enable-unsafe-swiftshader` (WebGL w headless).
+  Do testów audio dodaj `--autoplay-policy=no-user-gesture-required` — bez tego
+  `AudioContext` startuje zawieszony i nic się nie planuje.
 - Hooki diagnostyczne w grze (nie usuwać):
   - `window.__test` — stan aktualizowany co klatkę (state, hp, score, wave, enemies,
-    ammo, fov, credits, headshots, endless, errors[]);
+    ammo, fov, credits, headshots, endless, errors[]); audio: `sfxPlayed` (licznik
+    zagranych głosów), `musicSteps`/`musicRunning` (sekwencer), `musicError`
+    (pierwszy błąd kroku muzyki — pętla go połyka, żeby nie umrzeć);
   - parametry URL: `?test=play` (autostart bez pointer locka), `?test=shoot`
     (autostart + auto-celowanie w głowę + ogień), `?test=over` (wymuszona śmierć),
     `?test=win` (przewinięcie fal — sklep jest wtedy pomijany); dodatkowo
@@ -169,7 +211,24 @@ Zaimplementowane wcześniej: headshoty, wskaźnik kierunku obrażeń, sklep mię
 przeładowania, sway/FOV sprintu, trzy typy botów (pistolet/karabin/strzelba), dropy
 per typ wroga, muzyka proceduralna, cała sekcja „Oprawa wizualna" (punkty A/B/C
 poniżej: `TexGen`, `UI_ICONS`, bogatsze modele botów i viewmodele z celownikami
-three-dot).
+three-dot) oraz cała „Oprawa dźwiękowa" (poniżej).
+
+### Oprawa dźwiękowa — ✅ ZROBIONE
+
+Overhaul audio w całości mieści się w zasadzie „100% syntetyczne WebAudio" (patrz
+Architektura; szczegóły w Konwencjach technicznych). Dowiezione: szyna z limiterem
+i **proceduralnym pogłosem**, **pozycjonowanie 3D** strzałów i śmierci botów (panorama
++ dystans) z limitem głosów, warstwowe strzały z `jitter`, FM-ping headshota, śmierć
+per typ bota, **kroki** wpięte w head-bob, skok/lądowanie skalowane upadkiem, chirp
+bunnyhopa, ważona zmiana broni, ogłuszenie + panorama przy obrażeniach, bicie serca
+poniżej 25 HP, oddech sprintu (`BREATH_SFX`), riser przed falą oraz muzyka 2.0
+(sekcje A/B + fill, rozstrojone pady, dzwonki FM, sidechain, `moodBlend`, warstwa
+napięcia przy niskim HP).
+
+Zostało opcjonalnie: **materiał podłoża pod krokami** (inny dźwięk na betonie vs metalu
+— dziś jeden), **pogłos zależny od otoczenia** (krótszy na otwartej arenie, dłuższy przy
+murze — dziś jeden impuls) i **suwaki głośności** (patrz Rozgrywka → „Ustawienia
+w pauzie": `master.gain` i `musicGain.gain` są gotowymi punktami zaczepienia).
 
 ### Oprawa wizualna (odejście od „kółek i kwadratów")
 
@@ -219,7 +278,9 @@ C. **Bogatsze modele proceduralne** — ✅ ZROBIONE. Boty: tors z dwóch segmen
 3. **Granaty** (klawisz G) — pociski z fizyką łuku (grawitacja jak w cząsteczkach),
    eksplozja obszarowa + odrzut.
 4. **Ustawienia w pauzie** — czułość myszy, głośność master/muzyki, przełącznik
-   bloom/cieni (dla słabszych maszyn), zapisywane w localStorage.
+   bloom/cieni (dla słabszych maszyn), zapisywane w localStorage. Audio ma już
+   osobne węzły do podpięcia suwaków: `master.gain` (całość) i `musicGain.gain`
+   (sam podkład) — trzeba je tylko wystawić z closure `AudioSys`.
 5. **Sterowanie dotykowe** — wirtualne gałki dla telefonów (gra jest lekka).
 6. **Minimapa / kompas** — kierunki botów na obwódce ekranu lub mały radar.
 7. **Dostępność** — remapowanie klawiszy, tryb dla daltonistów (zamiana czerwieni

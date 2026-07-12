@@ -27,6 +27,7 @@ function tick(now) {
       if (enemies.length > 0) killEnemy(enemies[0]);
     }
   }
+  AudioSys.update(dt); // stateful audio (heartbeat / breathing); no-op pre-init
   updateFx(dt);
   updateWorldFx(dt);
   updateHudFx(dt);

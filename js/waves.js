@@ -33,6 +33,7 @@ const waveSystem = {
     this.active = false;
     this.intermission = 1.6;
     this.shopPending = 0;
+    this.riserDone = false;
   },
 
   startNextWave() {
@@ -48,6 +49,7 @@ const waveSystem = {
     }
     this.spawnTimer = 0.4;
     this.active = true;
+    this.riserDone = false;
     this.hpMul = 1 + (this.wave - 1) * 0.12;
     this.accMul = 1 + (this.wave - 1) * 0.06;
     AudioSys.wave();
@@ -81,6 +83,12 @@ const waveSystem = {
     }
     if (!this.active) {
       this.intermission -= dt;
+      // audio telegraph: rising sweep during the last moment before the wave drops
+      if (!this.riserDone && this.intermission > 0 && this.intermission <= 1.5 &&
+          (this.wave < TOTAL_WAVES || game.endless)) {
+        this.riserDone = true;
+        AudioSys.riser(Math.max(0.5, this.intermission));
+      }
       if (this.intermission <= 0 && (this.wave < TOTAL_WAVES || game.endless)) this.startNextWave();
       return;
     }

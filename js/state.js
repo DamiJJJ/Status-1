@@ -96,6 +96,8 @@ function gameOver() { endMatch(false); }
 function victory() { endMatch(true); }
 
 function resetGameState() {
+  // stop heartbeat/breath loops and reopen the damage-muffle filter
+  AudioSys.resetFx();
   // usuń wrogów
   for (let i = enemies.length - 1; i >= 0; i--) {
     enemiesGroup.remove(enemies[i].group);

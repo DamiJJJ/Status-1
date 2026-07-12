@@ -212,7 +212,7 @@ function switchWeapon(idx) {
   reloading = false;
   hideReloadHud();
   setAiming(false);
-  AudioSys.switch_();
+  AudioSys.switch_(WEAPONS[currentWeapon].id);
   updateWeaponHud();
 }
 

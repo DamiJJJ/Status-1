@@ -76,7 +76,7 @@ function playerTakeDamage(dmg, fromPos = null) {
   player.hp = Math.max(0, player.hp - dmg);
   damageFlash = Math.min(1, damageFlash + 0.55);
   if (fromPos) showDamageIndicator(fromPos);
-  AudioSys.hurt();
+  AudioSys.hurt(dmg, fromPos);
   updateHpHud();
   if (player.hp <= 0) gameOver();
 }
@@ -156,9 +156,11 @@ function updatePlayer(dt) {
   if (keys['Space'] && player.onGround) {
     player.vel.y = JUMP_SPEED;
     player.onGround = false;
-    // bunnyhop: skok tuż po lądowaniu podbija prędkość (kumulacja do +35%)
+    AudioSys.jump();
+    // bunnyhop: jumping right after landing builds up speed (stacks to +35%)
     if (player.sinceLand < 0.25 && hasInput) {
       player.hopBoost = Math.min(1.35, player.hopBoost + 0.07);
+      AudioSys.bhop(player.hopBoost);
     }
   }
 
@@ -168,8 +170,12 @@ function updatePlayer(dt) {
 
   if (player.pos.y <= PLAYER_EYE) {
     player.pos.y = PLAYER_EYE;
+    if (!player.onGround) {
+      player.sinceLand = 0;
+      // landing thud scaled by fall speed (vel.y still holds the impact velocity)
+      AudioSys.land(Math.min(1, Math.max(0, (-player.vel.y - 3) / 9)));
+    }
     player.vel.y = 0;
-    if (!player.onGround) player.sinceLand = 0;
     player.onGround = true;
   }
   if (player.onGround) {
@@ -187,12 +193,20 @@ function updatePlayer(dt) {
 let swayPhase = 0;
 let swayAmp = 0;
 let swayPitchPrev = 0;
+let swayStepIdx = 0;
 
 function updateCameraSway(dt) {
   const movingGround = player.moving && player.onGround;
   const targetAmp = player.sprinting ? 0.011 : (movingGround ? 0.004 : 0);
   swayAmp += (targetAmp - swayAmp) * Math.min(1, dt * 8);
   swayPhase += dt * (player.sprinting ? 11 : 8) * (movingGround ? 1 : 0.4);
+  // footsteps ride the head-bob cycle: one step per half period, triggered at
+  // the bottom of the bob (phase = π/2 + kπ) so the audio matches the camera dip
+  const stepIdx = Math.floor((swayPhase - Math.PI / 2) / Math.PI);
+  if (stepIdx !== swayStepIdx) {
+    swayStepIdx = stepIdx;
+    if (movingGround && game.state === 'playing') AudioSys.footstep(player.sprinting);
+  }
   // roll: nadpisujemy w całości (gracz nie ma własnego przechyłu)
   camera.rotation.z = Math.sin(swayPhase) * swayAmp;
   // pionowy bob na pitchu: nakładany różnicowo, żeby nie walczyć z myszą

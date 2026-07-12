@@ -228,7 +228,7 @@ function killEnemy(enemy, silent = false) {
   const i = enemies.indexOf(enemy);
   if (i >= 0) enemies.splice(i, 1);
   if (!silent) {
-    AudioSys.kill();
+    AudioSys.kill(pos, enemy.typeName);
     addScore(enemy.type.points);
     addCredits(enemy.type.credits);
     rollDrop(pos, enemy.typeName);
@@ -356,7 +356,7 @@ function enemyFire(e) {
   if (dist < 1.0 || dist > e.type.range * 1.25) return;
   e.gunTip.getWorldPosition(_eGunPos);
   spawnEnemyFlash(_eGunPos);
-  AudioSys.enemyShot(e.type.weapon);
+  AudioSys.enemyShot(e.type.weapon, _eGunPos);
 
   const distFactor = 1 - 0.45 * Math.min(1, dist / e.type.range);
   const moveFactor = player.moving ? 0.72 : 1;
