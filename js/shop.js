@@ -23,38 +23,30 @@ function shopPrice(item) {
   return Math.round(item.basePrice * (1 + 0.6 * item.level));
 }
 
-function applyShopItem(item) {
-  switch (item.id) {
-    case 'w_shotgun': WEAPONS[1].owned = true; updateWeaponHud(); break;
-    case 'w_smg':     WEAPONS[2].owned = true; updateWeaponHud(); break;
-    case 'w_sniper':  WEAPONS[3].owned = true; updateWeaponHud(); break;
-    case 'heal':
-      player.hp = player.maxHp;
-      updateHpHud();
-      break;
-    case 'ammo':
-      for (const w of WEAPONS) w.reserve = w.maxReserve;
-      updateWeaponHud();
-      break;
-    case 'maxhp':
-      player.maxHp += 25;
-      player.hp += 25;
-      updateHpHud();
-      break;
-    case 'mag':
-      for (const w of WEAPONS) {
-        w.magSize = Math.round(w.baseMag * (1 + 0.5 * item.level));
-        w.maxReserve = Math.round(w.baseMaxReserve * (1 + 0.5 * item.level));
-      }
-      updateWeaponHud();
-      break;
-    case 'reload':
-      game.reloadMul = 1 - 0.15 * item.level;
-      break;
-    case 'dmg':
-      game.dmgMul = 1 + 0.15 * item.level;
-      break;
+function shopLevel(id) {
+  return SHOP_ITEMS.find(i => i.id === id).level;
+}
+
+/* Recompute EVERY derived stat from SHOP_ITEMS[].level. Idempotent — safe to
+   call on buy, on run reset and on campaign load. (The old per-item apply was
+   incremental — player.maxHp += 25 — and could not be replayed from a saved
+   level count.) Consumables (heal/ammo) stay one-shot in buyShopItem. */
+function applyAllShopEffects() {
+  player.maxHp = 100 + 25 * shopLevel('maxhp');
+  game.dmgMul = 1 + 0.15 * shopLevel('dmg');
+  game.reloadMul = 1 - 0.15 * shopLevel('reload');
+  const magL = shopLevel('mag');
+  for (const w of WEAPONS) {
+    w.magSize = Math.round(w.baseMag * (1 + 0.5 * magL));
+    w.maxReserve = Math.round(w.baseMaxReserve * (1 + 0.5 * magL));
   }
+  WEAPONS[0].owned = true;
+  WEAPONS[1].owned = shopLevel('w_shotgun') > 0;
+  WEAPONS[2].owned = shopLevel('w_smg') > 0;
+  WEAPONS[3].owned = shopLevel('w_sniper') > 0;
+  player.hp = Math.min(player.hp, player.maxHp);
+  updateHpHud();
+  updateWeaponHud();
 }
 
 function buyShopItem(id) {
@@ -64,8 +56,20 @@ function buyShopItem(id) {
   const price = shopPrice(item);
   if (game.credits < price) return;
   game.credits -= price;
-  if (item.maxLevel !== Infinity) item.level++;
-  applyShopItem(item);
+  if (item.maxLevel !== Infinity) {
+    item.level++;
+    applyAllShopEffects();
+    if (item.id === 'maxhp') { // armor also heals by the increment (as before)
+      player.hp = Math.min(player.maxHp, player.hp + 25);
+      updateHpHud();
+    }
+  } else if (item.id === 'heal') {
+    player.hp = player.maxHp;
+    updateHpHud();
+  } else if (item.id === 'ammo') {
+    for (const w of WEAPONS) w.reserve = w.maxReserve;
+    updateWeaponHud();
+  }
   AudioSys.buy();
   updateCreditsHud();
   renderShop();
@@ -74,7 +78,11 @@ function buyShopItem(id) {
 function renderShop() {
   document.getElementById('shop-credits').textContent = game.credits;
   const cont = document.getElementById('shop-items');
-  cont.innerHTML = SHOP_ITEMS.map(item => {
+  // the campaign armory hides consumables: every mission starts with full HP
+  // and ammo for free, so every credit goes into permanent power
+  const items = game.mode === 'campaign'
+    ? SHOP_ITEMS.filter(i => i.cat !== 'consumable') : SHOP_ITEMS;
+  cont.innerHTML = items.map(item => {
     const maxed = item.level >= item.maxLevel;
     const price = shopPrice(item);
     const lvl = item.maxLevel !== Infinity
@@ -94,17 +102,25 @@ function renderShop() {
     b.addEventListener('click', () => buyShopItem(b.dataset.item)));
 }
 
-function openShop() {
+function openShop({ armory = false, nextId = null } = {}) {
   game.state = 'shop';
   firing = false;
   setAiming(false);
   if (document.pointerLockElement) document.exitPointerLock();
+  // one screen, two skins: between-wave shop (arena) vs armory (campaign)
+  const next = nextId && MISSION_BY_ID[nextId];
+  document.getElementById('shop-title').textContent = armory ? 'Zbrojownia' : 'Sklep';
+  document.getElementById('shop-next').textContent =
+    armory && next ? `Następna symulacja: ${next.code} — ${next.name} · ${'★'.repeat(next.threat)}` : '';
+  document.getElementById('btn-shop-continue').textContent =
+    armory ? 'Dalej — odprawa' : 'Do walki — następna fala';
   renderShop();
   showScreen('shop');
 }
 
 function continueFromShop() {
   if (game.state !== 'shop') return;
+  if (game.mode === 'campaign') { armoryContinue(); return; }
   waveSystem.intermission = 1.5;
   hideScreens();
   if (TEST) { game.state = 'playing'; return; }

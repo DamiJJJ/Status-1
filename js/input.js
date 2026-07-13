@@ -17,17 +17,35 @@ document.addEventListener('pointerlockerror', () => {
   if (wantLock) { wantLock = false; beginPlaying(); }
 });
 
-el('btn-start').addEventListener('click', () => startGame({ usePointerLock: !TEST }));
+el('btn-start').addEventListener('click', () => startArena());
 el('btn-resume').addEventListener('click', resumeGame);
 el('btn-restart-pause').addEventListener('click', restartGame);
 el('btn-restart-over').addEventListener('click', restartGame);
 el('btn-restart-win').addEventListener('click', restartGame);
 el('btn-shop-continue').addEventListener('click', continueFromShop);
 el('btn-endless').addEventListener('click', startEndless);
+// campaign screens
+el('btn-campaign').addEventListener('click', () => openLevels());
+el('btn-campaign-back').addEventListener('click', () => backToMenu());
+el('btn-campaign-new').addEventListener('click', () => newCampaign());
+el('btn-armory').addEventListener('click', () => openArmory(null));
+el('btn-brief-start').addEventListener('click', () => startBriefedMission());
+el('btn-debrief-continue').addEventListener('click', () => debriefContinue());
+el('btn-debrief-replay').addEventListener('click', () => restartMission());
+el('btn-mission-retry').addEventListener('click', () => restartMission());
+el('btn-mfail-armory').addEventListener('click', () => openArmory(game.missionId));
+el('btn-mfail-levels').addEventListener('click', () => openLevels());
+el('screen-brief').addEventListener('click', e => {
+  if (game.state === 'brief' && !twDone && e.target.id !== 'btn-brief-start') skipTypewriter();
+});
+for (const b of document.querySelectorAll('#diff-seg .seg-btn')) {
+  b.addEventListener('click', () => setDifficulty(b.dataset.diff));
+}
 
 document.addEventListener('keydown', e => {
   if (e.repeat) return;
   keys[e.code] = true;
+  const enter = e.code === 'Enter' || e.code === 'NumpadEnter';
   if (game.state === 'playing') {
     if (e.code === 'KeyR') startReload();
     if (e.code === 'Digit1') switchWeapon(0);
@@ -36,8 +54,14 @@ document.addEventListener('keydown', e => {
     if (e.code === 'Digit4') switchWeapon(3);
   } else if ((game.state === 'over' || game.state === 'won') && e.code === 'KeyR') {
     restartGame();
-  } else if (game.state === 'shop' && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
+  } else if (game.state === 'mfail' && e.code === 'KeyR') {
+    restartMission();
+  } else if (game.state === 'shop' && enter) {
     continueFromShop();
+  } else if (game.state === 'brief' && enter) {
+    if (!twDone) skipTypewriter(); else startBriefedMission();
+  } else if (game.state === 'debrief' && enter) {
+    debriefContinue();
   }
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });

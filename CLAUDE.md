@@ -1,7 +1,21 @@
-# NEON ARENA — notatki dla Claude Code
+# STATUS 1 (dawniej NEON ARENA) — notatki dla Claude Code
 
-Przeglądarkowy FPS (Three.js, fale botów). Gra jest **w 100% po stronie klienta** —
-bez backendu, bez bundlera, bez node_modules.
+Przeglądarkowy FPS (Three.js). Gra jest **w 100% po stronie klienta** — bez backendu,
+bez bundlera, bez node_modules. **Rdzeniem gry jest KAMPANIA** (11 symulacji: tutorial
+S-00 → S-01…S-09 → grywalny epilog bez walki); dawny tryb fal został jako
+„Arena bez końca". Tytuł = policyjny kod statusu „w służbie" — w finale drony
+meldują „Status 1".
+
+**Fabuła:** niedaleka przyszłość, Los Santos; LSPD wdraża autonomiczne drony
+policyjne (linia SENTINEL, program STATUS 1). Gracz to **Nick Davidson — oficer
+SWAT z LSPD** oddelegowany jako szkoleniowiec-oponent czerwonego zespołu, callsign
+**R36 („Robert-36")**; drony uczą się na jego oporze (rosnące hpMul/accMul są
+diegetyczne). Głosy kanału: **CENTRALA** (prowadzi odprawy; w finale ujawnia, że
+jest AI), **BAKER** (proces-duch — profil bojowy poprzedniego szkoleniowca R35;
+stary alfabet fonetyczny: Baker=B, Robert=R; pisze małymi literami), **SYSTEM**
+(automat symulacji). Finał = cliffhanger: certyfikowane drony wychodzą na patrole,
+a w epilogu gracz mija ich kolumnę. Postać gracza jest zdefiniowana (mężczyzna),
+więc formy męskie w kwestiach DO gracza są OK.
 
 ## Architektura
 
@@ -19,24 +33,46 @@ bez backendu, bez bundlera, bez node_modules.
   THREE jest gotowe, zanim ruszy pierwszy plik gry. Dlatego każdy plik gry MUSI być
   ładowany przez `<script defer src="js/...">` — bez `defer` wykonałby się w trakcie
   parsowania, czyli PRZED bootstrapem.
-- **Kolejność `<script>` w `index.html` = kolejność dawnych sekcji i MA znaczenie**
-  (część kodu wykonuje się już przy ładowaniu, np. `generateArena()` w `world.js`).
-  Pliki w kolejności ładowania:
+- **Świat NIE buduje się już przy parsowaniu.** `world.js` tylko DEFINIUJE
+  `buildArena(def)` / `clearArena()`; pierwszą budowę woła `main.js` po wykonaniu
+  wszystkich skryptów (`buildArena(arenaModeDef())`). Dzięki temu arenę można
+  przebudowywać w runtime (misje kampanii), a kod świata może w czasie wywołania
+  używać helperów z późniejszych plików. Teardown: **geometrie z `worldGroup` MUSZĄ
+  być zwalniane** (`addBlock` tworzy świeże `BoxGeometry`, bo `applyBoxUV` mutuje UV) —
+  inaczej każdy restart misji przecieka VRAM; **materiały/tekstury modułowe są
+  współdzielone między arenami i NIE wolno ich zwalniać** (`decorGroup` = tylko
+  remove). Wyjątki per-build (zwalniane w `clearArena`): `logMats` (panele logów,
+  własne `CanvasTexture`) i materiały rdzeni propów (`propMatsToDispose` w props.js).
+  Determinizm i szczelność przebudowy testuje `__test.arenaHash` (ten sam seed →
+  identyczny hash po dowolnej liczbie przebudów).
+- **Kolejność `<script>` w `index.html` MA znaczenie.** Pliki w kolejności ładowania:
   `config.js` (konfig/paleta/parametry URL/diagnostyka `__test`) → `audio.js` (`AudioSys`:
-  szyna WebAudio, SFX, muzyka proceduralna) → `renderer.js` (renderer/kamera/
-  postprocessing/światła/niebo) →
-  `textures.js` (`TexGen`: proceduralne tekstury z canvasa — kolor/normal/roughness/
-  emisja; wymaga `renderer`, więc MUSI być po `renderer.js`) →
-  `world.js` (arena + generator przeszkód) → `effects.js` (pule: cząsteczki/tracery/
-  decale/flashe) → `collisions.js` → `player.js` (ruch/bunnyhop/sway/obrażenia gracza) →
-  `weapons.js` (WEAPONS/viewmodele/ADS/strzelanie) → `enemies.js` (ENEMY_TYPES/modele/AI) →
-  `icons.js` (`UI_ICONS`: inline SVG dla HUD/sklepu/znaczników, wypełnia `[data-icon]`;
-  MUSI być przed `pickups.js` — znaczniki pickupów biorą z niego ikony) →
-  `pickups.js` → `shop.js` → `waves.js` → `hud.js` → `state.js` (obiekt `game`/ekrany/
-  start/pauza/`resetGameState`) → `input.js` → `testmode.js` (`?test=...` + hooki) →
-  `main.js` (pętla `tick`). Nowy plik wpinaj w miejsce zgodne z zależnościami
-  wykonywanymi przy ładowaniu; odwołania wyłącznie z wnętrza funkcji mogą wskazywać
-  „w przód".
+  szyna WebAudio, SFX, muzyka proceduralna, stingery celów, robo-głosy `voice(who)`) →
+  `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
+  `textures.js` (`TexGen`: proceduralne tekstury z canvasa; `makeLogTexture` — panele
+  z polskim tekstem; wymaga `renderer`, więc MUSI być po `renderer.js`) →
+  `world.js` (cykl życia areny, generator parametryczny ze stylami open/pillars/
+  corridors, pierścień wewnętrzny dla mniejszych aren, flood-fill `validateArena`,
+  motywy `applyTheme`, panele holo/logów) →
+  `props.js` (set-piece'y misji: generatory/terminale/BRAMY/cele treningowe/strefy;
+  **płaskie meshe w `worldGroup` z `userData.propRef`** — lustrzane odbicie
+  `enemyRef`) → `effects.js` → `collisions.js` (okrąg-vs-AABB; parametr `minTop` —
+  latające jednostki omijają collidery niższe od pułapu) → `player.js` →
+  `weapons.js` (WEAPONS/viewmodele/ADS/strzelanie; gałąź `propRef`; blokada
+  `game.noCombat`) → `enemies.js` (ENEMY_TYPES/modele/AI; liberie policyjne + strobo,
+  UAV, tarcza bossa, jednostki pasywne parady) → `icons.js` (`UI_ICONS`; pętla
+  `[data-icon]` działa RAZ przy ładowaniu — dynamiczny markup wstawia
+  `UI_ICONS[key]` sam) → `pickups.js` (`placeArenaPickups` z danych `arena.pickups`) →
+  `shop.js` (`applyAllShopEffects` — IDEMPOTENTNE efekty sklepu, warunek zapisu;
+  tryb Zbrojowni) → `waves.js` (JEDEN reżyser dla obu trybów; polityka wstrzykiwana
+  przez `reset(policy)`: script/loop/maxAlive/onCleared/paused) →
+  `missions.js` (czyste dane: MISSIONS/DIFFICULTIES/teksty) → `campaign.js`
+  (OBJECTIVE_TYPES, obiekt `mission`, medale, radio, zapis localStorage, ekrany
+  kampanii, znaczniki celów z off-screen chevronami) → `hud.js` → `state.js`
+  (obiekt `game`; **`resetRunState`** = progresja, **`resetLevelState`** = świat/ciało;
+  `resetGameState` = obie, tylko arena) → `input.js` → `testmode.js` → `main.js`
+  (bootstrap + pętla `tick`). Nowy plik wpinaj zgodnie z zależnościami wykonywanymi
+  przy ładowaniu; odwołania z wnętrza funkcji mogą wskazywać „w przód".
 - Każdy plik `js/` zaczyna się od `'use strict';` (kod był modułem ES, czyli strict —
   to zachowuje identyczną semantykę). Nowe pliki też muszą go mieć.
 - `index.html` — markup (canvas, nakładki, HUD, ekrany start/pauza/koniec/wygrana/sklep),
@@ -73,15 +109,24 @@ bez backendu, bez bundlera, bez node_modules.
   **PNG w `assets/` są OK wyłącznie dla DOM/UI** (`<img>` w HUD i ekranach, favicony,
   OG) — DOM nie podlega temu ograniczeniu, dlatego branding działa z `file://`.
 - **Branding w `assets/`** — logo jako PNG, dotyczy WYŁĄCZNIE UI (ekrany, HUD, favicon).
-  `logo-mark.png` (sam emblemat, 256 px — HUD i nagłówki ekranów pauzy/przegranej/
-  zwycięstwa/sklepu), `logo-full.png` (lockup z napisem, 560 px — tytuł ekranu
-  startowego), `icon-*.png` + `favicon.ico` + `apple-touch-icon.png` (favicony,
-  linkowane w `<head>`), `icon-maskable-512.png` (PWA, ma margines bezpieczny),
-  `og-image.png` (podgląd w social media). `site.webmanifest` spina ikony PWA.
-  Pliki `neon arena logo*.png` to **źródła** (białe tło) — nieużywane w runtime, nie
-  linkuj ich. Tło wycięto miękką alfą (odwrócony premultiply względem bieli + rdzeń
-  z `binary_fill_holes`), więc poświata neonu zachowuje gradient — przy podmianie logo
-  nie używaj progowania alfy ani kwantyzacji PNG (widoczne ziarno na gradientach).
+  **Wszystko generuje `tools/gen_logo.py`** z dwóch źródeł (`status-1-logo.png` —
+  sam emblemat, `status-1-logo-txt.png` — lockup z napisem; ciemne tło, nieużywane
+  w runtime, nie linkuj ich). Nie edytuj wyników ręcznie — popraw skrypt i przegeneruj.
+  Wyniki: `logo-mark.png` (emblemat, 512 px — HUD `#hud-logo`, nagłówki ekranów
+  `.screen-mark`), `logo-full.png` (pełny lockup — tytuł ekranu startowego
+  `.game-lockup` i nagłówek README; **zastąpił CSS-owy wordmark**), `icon-*.png` +
+  `favicon.ico` + `apple-touch-icon.png` (favicony, linkowane w `<head>`),
+  `icon-maskable-512.png` (PWA, emblemat w bezpiecznym kole 40%), `og-image.png`
+  (podgląd social, 1200×630). `site.webmanifest` spina ikony PWA.
+  **Wycinanie tła:** źródła leżą na płaskim ciemnym tle `rgb(0,3,25)`, a neon jest na
+  nim addytywny, więc alfa NIE bierze się z progowania, tylko z **od-kompozycji**
+  (`C = B + a·(F − B)` → alfa z odległości od tła, kolor z rozwiązania na `F`) —
+  progowanie zamieniłoby poświatę w widoczną obwódkę. Ciemne wnętrze odznaki (panele,
+  sylwetka miasta, czarne kontury) jest nieodróżnialne od tła jasnością, więc wszystko
+  domknięte neonową ramką dostaje alfę 1 przez `binary_fill_holes`. Wnętrze panelu
+  z napisem zostaje półprzezroczyste (ramka HUD jest kreskowana, nic go nie domyka) —
+  to celowe, czyta się jak szkło na ciemnych ekranach gry. Przy podmianie logo **nie
+  używaj progowania alfy ani kwantyzacji PNG** (widoczne ziarno na gradientach).
 - UI i komunikaty po polsku; **komentarze w kodzie po angielsku** (nowe i edytowane;
   zastane polskie tłumacz przy okazji, gdy modyfikujesz dany fragment). Paleta: indygo
   `#232946` / teal `#00ebc7` / pomarańcz `#ff8906` / czerwień `#ff5470` / złoto
@@ -96,7 +141,8 @@ bez backendu, bez bundlera, bez node_modules.
 - Typy botów (`ENEMY_TYPES`): pole `weapon` ('pistol' | 'auto' | 'shotgun') steruje
   ostrzałem w `enemyFire()` — 'auto' strzela seriami (`burstCount`/`burstInterval`),
   'shotgun' ma obrażenia malejące z dystansem i krótki `range` (musi podejść).
-  Dropy per typ w `rollDrop()`: scout/assault → amunicja, heavy → apteczka.
+  Dropy per typ w `rollDrop()`: scout/assault/uav → amunicja, heavy → apteczka.
+  Typ latający: pole `fly` (pułap w metrach) — patrz sekcja Kampania → Drony.
 - Bronie gracza mają flagę `owned` — start tylko z pistoletem, reszta kupowana
   w sklepie (pozycje `w_*` w `SHOP_ITEMS`). Nowa broń = wpis w `WEAPONS`, viewmodel
   w `buildViewmodel()`, pozycja `w_...` w sklepie i slot na HUD.
@@ -154,11 +200,12 @@ bez backendu, bez bundlera, bez node_modules.
   FOV: luneta 24° / ADS 60° / sprint+bhop poszerzają.
 - Bunnyhop: `player.hopBoost` (do 1.35) rośnie za skok w oknie 0.25 s po lądowaniu
   (`player.sinceLand`), wygasa po dłuższym pobycie na ziemi; sprint nie wymaga ziemi.
-- Rozróżnianie botów: kolor ciała + kształt głowy — scout zielony/piramida (Cone, 4 seg.),
-  assault pomarańczowy/box, heavy czerwony/sfera. Nowy typ = nowy kolor I nowy kształt.
-  Głowa = kolor ciała × 0.55 (nie czerń); „oko" ma kształt zgodny z głową (trójkątny
-  pryzmat / kula / prostokąt). Nogi mają pivot w biodrze (geometria przesunięta w dół)
-  i machają wg `walkFactor` = faktyczna prędkość / nominalna.
+- Rozróżnianie botów: odcień liberii + kształt głowy + kolor oka — PATROL (scout)
+  jasnoniebieski/piramida (Cone, 4 seg.), SZTURM (assault) granat/box, TARAN (heavy)
+  czarno-granatowy/sfera (głowa jaśniejszym granatem, NIE czernią), WAŻKA (uav)
+  quadkopter. Nowy typ = nowy odcień I nowy kształt. Głowa = kolor ciała × 0.55
+  (wyjątek heavy); „oko" ma kształt zgodny z głową. Nogi mają pivot w biodrze
+  i machają wg `walkFactor`; wszystkie jednostki noszą biały pas służby i strobo.
 - Anti-stuck botów: gdy faktyczny ruch < 30% nominalnego przez 0.35 s → objazd boczny
   (`avoidT`/`avoidDir`) na ~1 s. Faktyczną prędkość mierzy się PO resolveCollisions.
 - Generator aren: `generateArena(ARENA_SEED)` (mulberry32, seed z `?seed=N` albo
@@ -184,6 +231,68 @@ bez backendu, bez bundlera, bez node_modules.
   wzory muszą być kafelkowe (szum z zawijaną kratą, stemple rysowane 3×3 przez
   `drawScratches`). Puls neonów: `updateWorldFx()` w `world.js`, wołane z `tick`.
 
+## Kampania (rdzeń gry)
+
+- **Misja = dane** (`js/missions.js`): `{ id, code, name, beat, brief[], outro[],
+  goalText, threat, rewardCredits, requires, icon, medals{time,hp,acc},
+  arena{seed,half,density,style,theme,playerSpawn,pickups,setPieces,logs},
+  waves[], loop, maxAlive, ramp, scale, startPaused, spawnAtStart[], parade,
+  objectives[], radio[] }`. Runtime w `js/campaign.js` (obiekt `mission`).
+- **Cele** (`OBJECTIVE_TYPES`, kontrakt `start/update/onEvent/isDone/text`):
+  `waves` · `eliminate` (opcjonalnie `enemyType`, `spawn[]`, `unpauseWaves`) ·
+  `survive` · `hack` (postęp PAUZUJE poza zasięgiem — bez cofania) · `destroy`
+  (flaga `shieldDown` zdejmuje tarczę bossa) · `extract` (wyjście RESETUJE) ·
+  `reach` (strefy po kolei) · `gates` (wszystkie strefy w oknie czasu — wymusza
+  bunnyhop). Łańcuchy przez `after: [ids]`. Zdarzenia wchodzą JEDNYM wejściem
+  `missionEvent(ev, payload)` (no-op poza kampanią): `kill` z `killEnemy`,
+  `prop` z `destroyProp`, fale przez callback `onCleared`.
+- **Propy** (`js/props.js`): płaskie meshe w `worldGroup` + `userData.propRef` —
+  NIGDY nie zagnieżdżaj `Group` w `worldGroup` (LOS botów jest NIEREKURENCYJNY:
+  grupa zatrzymałaby pociski, a bot strzelałby przez nią). Rodzaje: `generator`
+  (wybuch AoE — uczy dystansu), `terminal` (hak; ekran przebarwia się teal→złoto),
+  `target` (tutorial), `gate` (BRAMA: strumień jednostek co `interval`, limit
+  `maxAlive`/bramę, cykl `units[]`; zniszczenie zatrzymuje strumień), `extraction`
+  (pierścień w `decorGroup`, widoczny po aktywacji celu).
+- **Ekonomia:** kredyty za zabójstwa księgują się DOPIERO po ukończeniu misji
+  (porażka/restart = rollback do `mission.creditsAtStart` — inaczej farmienie);
+  premia za misję to główna dźwignia krzywej; powtórki płacą 25% premii; medale
+  +25 kr raz na kampanię; ceny NIE rosną między misjami; misja startuje z pełnym
+  HP/amunicją → Zbrojownia (sklep w trybie `armory`) ukrywa `consumable`.
+- **Medale** (po jednej regule): CHRONOMETR (czas ≤ progu), OCALAŁY (minHp ≥ progu),
+  PRECYZJA (celność ≥ progu). Liczniki: `missionShot(hit)` w `tryFire`,
+  `missionHpTrack()` w `playerTakeDamage`.
+- **Trudność** (`DIFFICULTIES`, kampania only — arena zawsze normal, żeby rekord
+  był porównywalny): składa się w JEDNYM punkcie (`waveSystem.startNextWave`):
+  `(1+(fala−1)·ramp) × difficulty × mission.scale`. Obrażenia botów NIGDY przez
+  mutację `ENEMY_TYPES` — stempel per jednostka (`e.dmgMul`).
+- **Radio** (dialogi w misji): kolejka linii `{who: centrala|baker|sys, text}`,
+  box `#radio-box`, typewriter + robo-blip `AudioSys.voice(who)` co 3 znaki
+  (każda postać ma inny syntetyczny tembr). Wyzwalacze `radio[]`: `start`,
+  id celu (po jego ukończeniu), `wN` (fala N odparta), `tSEC` (czas misji).
+- **Zapis** (`localStorage`, klucz `status1_save`, v1; fallback ze starszego
+  `czynnasluzba_save`): postęp misji
+  (done/bestTime/medals), bieg (`run`: kredyty/poziomy sklepu — bronie wynikają
+  z poziomów `w_*`), trudność, staty, `finished`. Każdy odczyt/zapis w try/catch
+  (file:// + tryb prywatny). Loadout odtwarza `applyAllShopEffects()` —
+  dlatego efekty sklepu MUSZĄ pozostać idempotentne (żadnych `+=`).
+  Rekord areny: `status1_best` (fallback: `czynnasluzba_best`, `neonarena_best`).
+- **Epilog** (`ep`): `noCombat` (broń schowana, celownik ukryty, tryFire/switch/
+  reload zablokowane), `parade` (pasywne jednostki maszerują przez halę i cicho
+  znikają na krawędzi), finał = typewriter na ekranie odprawy (STATUS 1).
+- **Drony:** liberie policyjne — PATROL jasnoniebieski/piramida, SZTURM granat/box,
+  TARAN czarno-granatowy/kula (głowa jaśniejsza specjalnym kolorem, nie czernią),
+  WAŻKA (uav) = quadkopter: `fly: 3.0` w ENEMY_TYPES, wisi na pułapie, przelatuje
+  NAD niskimi osłonami (`resolveCollisions(..., minTop)`), model bez nóg (guardy
+  `e.legL`), rotory się kręcą. Wszystkie jednostki mają zsynchronizowane strobo
+  (współdzielone `matStrobeR/B`, animowane raz na klatkę). Boss = heavy ze
+  `scaleMul`/`hpMul`/`invulnerable` (tarcza: blady flash, zero obrażeń) —
+  per-jednostkowy `e.radius` zamiast `e.type.radius`.
+- **Motywy aren** (`ARENA_THEMES` w world.js): indigo/ember/alert — mgła + kolor
+  listw granicznych; arena bez końca zawsze wraca do indigo (materiały współdzielone).
+- **Anti-stuck botów:** kierunek objazdu jest UTRWALANY (ponowne wyzwolenie w <2,5 s
+  trzyma ten sam kierunek) — losowanie za każdym razem to błądzenie losowe wzdłuż
+  długich murów stylu corridors.
+
 ## Uruchamianie i testy
 
 - Dev-serwer: `python -m http.server 8137` w katalogu projektu.
@@ -192,16 +301,28 @@ bez backendu, bez bundlera, bez node_modules.
   `--use-angle=swiftshader --enable-unsafe-swiftshader` (WebGL w headless).
   Do testów audio dodaj `--autoplay-policy=no-user-gesture-required` — bez tego
   `AudioContext` startuje zawieszony i nic się nie planuje.
+- **Gotowe zestawy testów leżą w `tests/`** (opis w `tests/README.md`):
+  phase0–phase5d pokrywają cykl życia świata, generator, kampanię, propy,
+  medale i pełne przejście; `status1_test.py` to smoke rebrandingu;
+  `shots*.py` robią zrzuty ekranu do oceny wizualnej. Po większych zmianach
+  odpal przynajmniej `phase0_test.py` (regresja świata/areny)
+  i `phase5d_test.py` (pełne przejście kampanii).
 - Hooki diagnostyczne w grze (nie usuwać):
   - `window.__test` — stan aktualizowany co klatkę (state, hp, score, wave, enemies,
-    ammo, fov, credits, headshots, endless, errors[]); audio: `sfxPlayed` (licznik
-    zagranych głosów), `musicSteps`/`musicRunning` (sekwencer), `musicError`
-    (pierwszy błąd kroku muzyki — pętla go połyka, żeby nie umrzeć);
-  - parametry URL: `?test=play` (autostart bez pointer locka), `?test=shoot`
-    (autostart + auto-celowanie w głowę + ogień), `?test=over` (wymuszona śmierć),
-    `?test=win` (przewinięcie fal — sklep jest wtedy pomijany); dodatkowo
-    `&wave=N` startuje od fali N (np. `?test=play&wave=3` — od razu ciężcy);
-  - `window.__addCredits(n)` i `window.__buyItem(id)` — zakupy w testach.
+    ammo, fov, credits, headshots, endless, errors[], mode, difficulty,
+    mission {id, active, time, kills, objectives[]}, seed, arenaHash,
+    arenaReachable); audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`;
+  - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
+    (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);
+    `&wave=N` (arena od fali N); **`?test=mission&m=<id>&diff=easy|normal|hard`**
+    (autostart misji kampanii ze świeżym biegiem); debug generatora (arena):
+    `?style=open|pillars|corridors&half=N&density=X`; `?seed=N` jak dawniej;
+  - `window.__addCredits(n)`, `window.__buyItem(id)`, `window.__startMission(id)`,
+    `window.__teleport(x, z)` (niezbędne do testów stref), `window.__rebuildArena(seed)`
+    (regresja teardownu: 2× ten sam seed ⇒ identyczny `arenaHash`), `window.__killAll()`.
+- ⚠️ `dt` jest clampowany do `[0, 0.05]` — pod SwiftShaderem czas gry płynie wolniej
+  niż zegar ścienny; cele czasowe (survive/hack) w testach przewijaj przez stan
+  (`mission.objectives[i].t = ...`), a timeouty dawaj z zapasem.
 - Scenariusz `file://` też musi działać — po zmianach sprawdzaj oba warianty.
 
 ## Backlog pomysłów (do przyszłej rozbudowy)
@@ -272,24 +393,34 @@ C. **Bogatsze modele proceduralne** — ✅ ZROBIONE. Boty: tors z dwóch segmen
 
 ### Rozgrywka
 
-1. **Czwarty typ bota** — kamikaze (biegnie i eksploduje wręcz) albo snajper (trzyma się
-   murów, laser celowania telegrafuje strzał). Wymusza zmianę pozycji gracza.
-2. **Boss co 5. falę** — duży bot z paskiem HP u góry ekranu i atakiem obszarowym.
-3. **Granaty** (klawisz G) — pociski z fizyką łuku (grawitacja jak w cząsteczkach),
-   eksplozja obszarowa + odrzut.
-4. **Ustawienia w pauzie** — czułość myszy, głośność master/muzyki, przełącznik
+Zrobione w przebudowie na STATUS 1 (2026-07): **kampania 11 symulacji**
+(tutorial, cele hack/destroy/extract/reach/gates/survive, BRAMY, boss z tarczą,
+pościg, epilog bez walki), **czwarty typ bota** (WAŻKA — latający quadkopter),
+**boss** (prototyp SENTINEL-1), **poziomy trudności**, **medale** (3/misję),
+**zapis kampanii**, **dialogi radiowe z robo-głosami**, **liberie policyjne +
+strobo**, **motywy aren**, **holo-logi tekstowe**, rebranding.
+
+Pomysły na dalszą rozbudowę:
+
+1. **Granaty** (klawisz G) — pociski z fizyką łuku (grawitacja jak w cząsteczkach),
+   eksplozja obszarowa + odrzut. (Generator AoE z props.js to gotowy wzorzec obrażeń.)
+2. **Ustawienia w pauzie** — czułość myszy, głośność master/muzyki, przełącznik
    bloom/cieni (dla słabszych maszyn), zapisywane w localStorage. Audio ma już
    osobne węzły do podpięcia suwaków: `master.gain` (całość) i `musicGain.gain`
    (sam podkład) — trzeba je tylko wystawić z closure `AudioSys`.
+3. **Nagroda za komplet medali (30/33)** — bonusowa linia w outro / skórka broni;
+   zapis ma już liczniki.
+4. **Ekran wyników misji ze szczegółami** — wykres HP w czasie, mapa trasy.
 5. **Sterowanie dotykowe** — wirtualne gałki dla telefonów (gra jest lekka).
-6. **Minimapa / kompas** — kierunki botów na obwódce ekranu lub mały radar.
-7. **Dostępność** — remapowanie klawiszy, tryb dla daltonistów (zamiana czerwieni
-   wrogów), opcja redukcji migotania.
-8. **Multiplayer co-op (WebRTC)** — największy skok złożoności (autorytet hosta,
-   synchronizacja stanu); wymaga sygnalizacji, więc łamie zasadę „zero backendu" —
-   rozważyć dopiero po wyczerpaniu pomysłów single-player.
-9. **Pickupy na przełomie fal zamiast na starcie** — apteczki i amunicja nie mają leżeć
-   na arenie od początku gry (`placeInitialPickups()` w `pickups.js`); zamiast tego
-   świeża dostawa pojawia się w przerwie między falami (np. przy `waveSystem.onEnemyDown`
-   / starcie intermission), w strefach chronionych przez `keepClear`. Uwzględnić
-   `resetGameState()` i to, że startowe pickupy mają dziś `life = 9999`.
+6. **Minimapa / kompas** — kierunki botów na obwódce ekranu lub mały radar
+   (znaczniki celów z off-screen chevronami już istnieją — to ich rozszerzenie).
+7. **Dostępność** — remapowanie klawiszy, tryb dla daltonistów, redukcja migotania
+   (strobo dronów powinno mieć wyłącznik!).
+8. **Multiplayer co-op (WebRTC)** — największy skok złożoności; wymaga sygnalizacji,
+   więc łamie zasadę „zero backendu" — rozważyć dopiero po wyczerpaniu single-player.
+9. **Pickupy na przełomie fal (arena)** — świeża dostawa w przerwie między falami
+   zamiast wszystkiego na starcie; w kampanii pickupy są już autorskie per misja
+   (`arena.pickups`).
+10. ~~**Nowe logo/og-image**~~ — ✅ ZROBIONE (2026-07-13): cały komplet (emblemat,
+   lockup, favicony, PWA, og-image) leci z `tools/gen_logo.py` — patrz Architektura →
+   Branding. Ekran startowy pokazuje pełny lockup zamiast CSS-owego wordmarku.

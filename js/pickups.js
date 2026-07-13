@@ -124,11 +124,8 @@ function updatePickupMarkers() {
   }
 }
 
-function placeInitialPickups() {
-  spawnPickup('ammo', 0, 0);
-  spawnPickup('ammo', -16, 16);
-  spawnPickup('ammo', 16, -16);
-  spawnPickup('med', 26, 26);
-  spawnPickup('med', -26, -26);
-  for (const p of pickups) p.life = 9999; // startowe nie znikają
+/* starting pickups come from the built arena's data (world.js `arena`) */
+function placeArenaPickups() {
+  for (const def of arena.pickups) spawnPickup(def.kind, def.x, def.z);
+  for (const p of pickups) p.life = 9999; // starters never expire
 }

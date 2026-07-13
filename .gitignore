@@ -15,3 +15,6 @@ venv/
 
 # Claude Code — ustawienia lokalne
 .claude/settings.local.json
+
+# Testing
+tests/_shots/

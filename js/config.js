@@ -31,8 +31,14 @@ const JUMP_SPEED = 7.5;
 const TOTAL_WAVES = 5;
 
 const params = new URLSearchParams(location.search);
-const TEST = params.get('test');   // null | play | shoot | over | win
+const TEST = params.get('test');   // null | play | shoot | over | win | mission
 const TEST_WAVE = parseInt(params.get('wave') || '0', 10); // testy: start od fali N
+const TEST_MISSION = params.get('m'); // ?test=mission&m=m2 — autostart misji kampanii
+const TEST_DIFF = params.get('diff'); // easy | normal | hard (kampania w testach)
+// generator debug overrides (arena mode only): ?style=open|pillars|corridors&half=N&density=X
+const TEST_STYLE = params.get('style');
+const TEST_HALF = parseInt(params.get('half') || '0', 10);
+const TEST_DENSITY = parseFloat(params.get('density') || '');
 
 // seed areny: z URL (?seed=N — ten sam układ do podzielenia się) albo losowy
 const ARENA_SEED = (() => {

@@ -323,7 +323,10 @@ const AudioSys = (() => {
   }
 
   function scheduleMusicStep(t, s) {
-    const combat = game.state === 'playing' && waveSystem.active;
+    // gate/objective missions fight without an active "wave" — live enemies
+    // must count as combat too, or the music goes calm mid-firefight
+    const combat = game.state === 'playing' &&
+      (waveSystem.active || enemies.some(e => !e.passive));
     // crossfade combat<->calm layers over roughly a bar instead of a hard cut
     moodBlend += ((combat ? 1 : 0) - moodBlend) * 0.14;
     const cb = moodBlend, calm = 1 - moodBlend;
@@ -535,5 +538,41 @@ const AudioSys = (() => {
     },
     win()  { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone({ type: 'square', f0: f, dur: 0.22, vol: 0.15, delay: i * 0.13 }); ping({ f: f * 2, dur: 0.3, vol: 0.04, delay: i * 0.13 }); }); },
     lose() { [330, 262, 196, 131].forEach((f, i) => tone({ type: 'sawtooth', f0: f, dur: 0.28, vol: 0.16, delay: i * 0.16, filter: 1200 })); },
+
+    /* --- campaign: objectives & set-pieces (A minor, like the other stingers) --- */
+    objective() { // new objective: two rising notes E5 → A5 + a high ping
+      tone({ type: 'square', f0: 659.25, dur: 0.07, vol: 0.13 });
+      tone({ type: 'square', f0: 880, dur: 0.09, vol: 0.13, delay: 0.08 });
+      ping({ f: 1760, dur: 0.18, vol: 0.05, delay: 0.16 });
+    },
+    objDone() { // resolved: A5 → C6
+      tone({ type: 'square', f0: 880, dur: 0.07, vol: 0.14 });
+      tone({ type: 'square', f0: 1046.5, dur: 0.12, vol: 0.13, delay: 0.08 });
+    },
+    objWarn() { // low interrupted buzz — leaving a zone, timer running out
+      tone({ type: 'sawtooth', f0: 220, f1: 175, dur: 0.16, vol: 0.14, filter: 900 });
+    },
+    explode(pos) { // generator/gate demolition — layered spatial boom
+      burst({ dur: 0.05, vol: 0.45, freq: 2400, type: 'highpass', pos, send: 0.3 });
+      burst({ dur: 0.5, vol: 0.65, freq: 420, jitter: 0.1, pos, send: 0.5 });
+      burst({ dur: 0.9, vol: 0.3, freq: 190, jitter: 0.1, pos, send: 0.8, delay: 0.05 });
+      tone({ type: 'sine', f0: 70, f1: 34, dur: 0.5, vol: 0.38, pos });
+    },
+    /* robotic radio voice: ONE short blip per call — the dialog system calls
+       this every few typed characters, so each speaker gets a distinct
+       "machine language" timbre without any audio files */
+    voice(who) {
+      if (who === 'baker') {
+        // pure synth: soft FM-ish sine chirp, lowercase character
+        tone({ type: 'sine', f0: 500 + Math.random() * 180, f1: 430, dur: 0.035, vol: 0.05, send: 0.15 });
+      } else if (who === 'centrala') {
+        // a human squeezed through a duty radio channel: click + narrow tone
+        burst({ dur: 0.02, vol: 0.045, freq: 1800, type: 'bandpass', q: 4 });
+        tone({ type: 'square', f0: 190 + Math.random() * 70, dur: 0.03, vol: 0.035, filter: 1200 });
+      } else {
+        // the simulation automaton: dry ticks
+        tone({ type: 'square', f0: 980, dur: 0.018, vol: 0.03, filter: 3000 });
+      }
+    },
   };
 })();

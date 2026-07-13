@@ -10,29 +10,46 @@ const enemiesGroup = new THREE.Group();
 scene.add(enemiesGroup);
 const enemies = [];
 
+/* Police drone liveries (fiction: training units of the SENTINEL program).
+   Type readability = livery shade + head shape + eye color; every unit also
+   carries a red/blue strobe bar. Fiction names: PATROL / SZTURM / TARAN / WAŻKA. */
 const ENEMY_TYPES = {
-  // zwiadowca: pistolet, dystans; dropi amunicję
+  // PATROL (scout): pistol, keeps distance; drops ammo — light blue, pyramid head
   scout: {
     weapon: 'pistol',
     hp: 55, speed: 4.6, damage: 6, fireCooldown: 1.4, range: 30, preferred: 12,
     accuracy: 0.42, points: 100, credits: 10, radius: 0.55, scale: 1,
-    body: 0x3ecf7a, accent: 0xff8906, // zielony, trójkątna głowa
+    body: 0x5b9de8, accent: 0x9fe8ff,
   },
-  // szturmowiec: szybszy zwiadowca z karabinem automatycznym (serie); dropi amunicję
+  // SZTURM (assault): burst auto rifle, fastest; drops ammo — navy, box head
   assault: {
     weapon: 'auto', burstCount: 4, burstInterval: 0.13,
     hp: 45, speed: 5.6, damage: 3, fireCooldown: 1.7, range: 26, preferred: 10,
     accuracy: 0.45, points: 150, credits: 15, radius: 0.55, scale: 0.95,
-    body: 0xf0a03c, accent: 0xff5470, // pomarańczowy, kwadratowa głowa
+    body: 0x2f55c4, accent: 0xff8906,
   },
-  // ciężki: strzelba — musi podejść blisko, bije mocno; dropi apteczki
+  // TARAN (heavy): shotgun — must close in, hits hard; drops medkits — black-navy, sphere head
   heavy: {
     weapon: 'shotgun',
     hp: 220, speed: 2.9, damage: 30, fireCooldown: 2.4, range: 15, preferred: 7,
     accuracy: 0.75, points: 300, credits: 30, radius: 0.7, scale: 1.25,
-    body: 0xe0455f, accent: 0x00ebc7, // czerwony, okrągła głowa
+    body: 0x1c2748, accent: 0xff5470,
+  },
+  // WAŻKA (uav): hovering quadcopter — flies OVER low cover, weak but nagging
+  uav: {
+    weapon: 'pistol', fly: 3.0,
+    hp: 35, speed: 6.4, damage: 4, fireCooldown: 1.1, range: 24, preferred: 9,
+    accuracy: 0.5, points: 150, credits: 15, radius: 0.5, scale: 1,
+    body: 0x4f7fe0, accent: 0x9fe8ff,
   },
 };
+
+/* shared strobe materials — ALL drones flash in sync (police vibe, zero cost);
+   animated once per frame in updateEnemies */
+const matStrobeR = new THREE.MeshStandardMaterial({ color: 0x30060c, emissive: 0xff2244, emissiveIntensity: 2.4, roughness: 0.5 });
+const matStrobeB = new THREE.MeshStandardMaterial({ color: 0x061030, emissive: 0x2266ff, emissiveIntensity: 0.35, roughness: 0.5 });
+const matLivery = new THREE.MeshStandardMaterial({ color: 0xcfd8ee, roughness: 0.7, flatShading: true });
+let strobeT = 0;
 
 const enemyMatCache = new Map();
 function enemyMat(color, emissive = null, ei = 1) {
@@ -74,6 +91,35 @@ function buildEnemyModel(type) {
   const matDark = enemyMat(0x1e2138);
   const matEye  = enemyMat(0x1a0b00, t.accent, 2.2);
 
+  /* --- WAŻKA: hovering quadcopter, built around y=0 (updateEnemies keeps
+     the group at t.fly meters). Eye = head (precision reward). --- */
+  if (t.fly) {
+    enemyBox(g, matBody, 0.55, 0.2, 0.55, 0, 0, 0);                       // hull
+    enemyBox(g, matLivery, 0.57, 0.05, 0.3, 0, 0.02, 0);                  // white service stripe
+    const rotors = [];
+    for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      enemyBox(g, matDark, 0.4, 0.05, 0.08, ax * 0.38, 0.05, az * 0.38,
+        { ry: Math.atan2(az, ax) });                                      // arm
+      const rot = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.03, 10), matDark);
+      rot.position.set(ax * 0.52, 0.12, az * 0.52);
+      g.add(rot);
+      rotors.push(rot);
+    }
+    enemyBox(g, matStrobeR, 0.1, 0.06, 0.1, -0.1, 0.16, 0);               // strobe bar
+    enemyBox(g, matStrobeB, 0.1, 0.06, 0.1, 0.1, 0.16, 0);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), matEye);
+    eye.position.set(0, -0.05, 0.3);
+    eye.userData.isHead = true;
+    g.add(eye);
+    enemyCyl(g, matDark, 0.025, 0.26, 0, -0.16, 0.14);                    // gun under the hull
+    const gunTip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.08), matEye);
+    gunTip.position.set(0, -0.16, 0.32);
+    g.add(gunTip);
+    g.scale.setScalar(t.scale);
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+    return { group: g, gunTip, legL: null, legR: null, rotors };
+  }
+
   // torso: chest + pelvis (chest top stays at 1.575 — heads sink into it)
   enemyBox(g, matBody, 0.85, 0.72, 0.55, 0, 1.215, 0);
   enemyBox(g, matBodyDim, 0.62, 0.36, 0.44, 0, 0.7, 0);
@@ -87,13 +133,19 @@ function buildEnemyModel(type) {
   const padH = type === 'heavy' ? 0.26 : 0.18;
   enemyBox(g, matBodyDim, padW, padH, 0.44, -(0.4 + padW / 2), 1.5, 0);
   enemyBox(g, matBodyDim, padW, padH, 0.44, 0.4 + padW / 2, 1.5, 0);
+  // police livery: white service band + synced red/blue strobes on the pads
+  enemyBox(g, matLivery, 0.87, 0.1, 0.57, 0, 0.98, 0);
+  enemyBox(g, matStrobeR, 0.14, 0.07, 0.3, -(0.4 + padW / 2), 1.5 + padH / 2 + 0.035, 0);
+  enemyBox(g, matStrobeB, 0.14, 0.07, 0.3, 0.4 + padW / 2, 1.5 + padH / 2 + 0.035, 0);
   enemyBox(g, matDark, 0.16, 0.4, 0.2, -0.5, 1.2, 0);
   enemyBox(g, matDark, 0.16, 0.4, 0.2, 0.5, 1.2, 0);
   enemyBox(g, matDark, 0.13, 0.13, 0.45, 0.42, 1.25, 0.1);
   // głowa: jaśniejsza (przyciemniony kolor ciała), kształt identyfikuje typ:
   // zwiadowca trójkąt (piramida), ciężki koło (kula), szturmowiec kwadrat (box)
   // głowa lekko zagłębiona w korpus (top tułowia = 1.575), żeby nie lewitowała
-  const matHead = enemyMat(new THREE.Color(t.body).multiplyScalar(0.55).getHex());
+  // heavy's body is near-black — a scaled-down shade would read as void
+  const matHead = enemyMat(type === 'heavy'
+    ? 0x33427a : new THREE.Color(t.body).multiplyScalar(0.55).getHex());
   let headGeo, eyeGeo, headY, eyeY, eyeZ;
   if (type === 'scout') {
     headGeo = new THREE.ConeGeometry(0.34, 0.52, 4); // piramida = trójkątna sylwetka
@@ -171,32 +223,51 @@ function buildEnemyModel(type) {
   g.traverse(o => {
     if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; }
   });
-  return { group: g, gunTip, legL, legR };
+  return { group: g, gunTip, legL, legR, rotors: null };
 }
 
-function spawnEnemy(type, hpMul, accMul) {
-  // wybierz punkt spawnu daleko od gracza
-  let best = null, bestD = -1;
-  for (const [sx, sz] of spawnPoints) {
-    const d = (sx - player.pos.x) ** 2 + (sz - player.pos.z) ** 2;
-    if (d > bestD) { bestD = d; best = [sx, sz]; }
+function spawnEnemy(type, { hpMul = 1, accMul = 1, dmgMul = 1, tag = null, at = null,
+                            scaleMul = 1, invulnerable = false, isBoss = false,
+                            passive = false, marchDir = null } = {}) {
+  let sx, sz;
+  if (at) {
+    // scripted entrance (gate, set-piece, parade)
+    sx = at.x; sz = at.z;
+  } else {
+    // pick a spawn point far from the player; `tag` restricts the pool so a
+    // mission can direct units through a specific entrance
+    const pool = tag ? spawnPoints.filter(s => s.tag === tag) : spawnPoints;
+    let best = null, bestD = -1;
+    for (const s of (pool.length ? pool : spawnPoints)) {
+      const d = (s.x - player.pos.x) ** 2 + (s.z - player.pos.z) ** 2;
+      if (d > bestD) { bestD = d; best = s; }
+    }
+    sx = best.x; sz = best.z;
   }
-  const jitter = () => (Math.random() - 0.5) * 4;
+  const jitter = () => (Math.random() - 0.5) * (at ? 2.4 : 4);
   const t = ENEMY_TYPES[type];
-  const { group, gunTip, legL, legR } = buildEnemyModel(type);
-  group.position.set(best[0] + jitter(), 0, best[1] + jitter());
-  resolveCollisions(group.position, t.radius);
+  const { group, gunTip, legL, legR, rotors } = buildEnemyModel(type);
+  if (scaleMul !== 1) group.scale.multiplyScalar(scaleMul);
+  group.position.set(sx + jitter(), 0, sz + jitter());
+  if (!passive) resolveCollisions(group.position, t.radius * scaleMul, t.fly ? 2.4 : 0);
 
   const enemy = {
     type: t, typeName: type,
-    group, gunTip, legL, legR,
+    group, gunTip, legL, legR, rotors,
     hp: t.hp * hpMul, maxHp: t.hp * hpMul,
     accuracy: Math.min(0.85, t.accuracy * accMul),
+    dmgMul, // difficulty/mission damage scale — never mutate shared ENEMY_TYPES
+    radius: t.radius * scaleMul,
+    scaleMul,
+    flyY: t.fly || 0,
+    invulnerable, isBoss,
+    passive,
+    marchDir: marchDir ? new THREE.Vector3(marchDir.x, 0, marchDir.z).normalize() : null,
     cooldown: 1 + Math.random() * 1.5,
     burst: 0, burstT: 0,
     strafeDir: Math.random() < 0.5 ? -1 : 1,
     strafeT: 1 + Math.random() * 2,
-    stuckT: 0, avoidT: 0, avoidDir: 1,   // objazd przeszkód
+    stuckT: 0, avoidT: 0, avoidDir: 1, sinceAvoid: 99, // obstacle detour state
     bobT: Math.random() * 10,
     alive: true,
   };
@@ -212,6 +283,12 @@ function spawnEnemy(type, hpMul, accMul) {
 
 function damageEnemy(enemy, dmg, isHead = false) {
   if (!enemy.alive) return false;
+  if (enemy.invulnerable) {
+    // shielded (boss until its stabilizers fall): distinct pale flash, no damage
+    spawnParticles(enemy.group.position.clone().setY(1.4 * enemy.scaleMul), 0xcfe0ff, 6, 4, 0.3, 6);
+    AudioSys.hit();
+    return false;
+  }
   enemy.hp -= dmg;
   if (isHead) AudioSys.headshot(); else AudioSys.hit();
   if (enemy.hp <= 0) { killEnemy(enemy); return true; }
@@ -233,6 +310,7 @@ function killEnemy(enemy, silent = false) {
     addCredits(enemy.type.credits);
     rollDrop(pos, enemy.typeName);
   }
+  missionEvent('kill', enemy); // no-op outside the campaign
   updateEnemiesHud();
   waveSystem.onEnemyDown();
 }
@@ -247,7 +325,7 @@ const losRaycaster = new THREE.Raycaster();
 
 function enemyHasLos(enemy, dist) {
   _eHead.copy(enemy.group.position);
-  _eHead.y = 1.8 * enemy.type.scale;
+  _eHead.y = enemy.flyY ? enemy.flyY : 1.8 * enemy.type.scale * enemy.scaleMul;
   _eLosDir.copy(player.pos).sub(_eHead).normalize();
   losRaycaster.set(_eHead, _eLosDir);
   losRaycaster.far = dist;
@@ -256,9 +334,39 @@ function enemyHasLos(enemy, dist) {
 }
 
 function updateEnemies(dt) {
+  // synced strobes: every drone flashes red/blue together (police vibe)
+  strobeT += dt;
+  const sOn = Math.floor(strobeT * 5) % 2 === 0;
+  matStrobeR.emissiveIntensity = sOn ? 2.6 : 0.35;
+  matStrobeB.emissiveIntensity = sOn ? 0.35 : 2.6;
+
+  let despawned = false;
   for (const e of enemies) {
     if (!e.alive) continue;
     const g = e.group;
+
+    /* passive parade units (the epilogue): march a straight line, ignore
+       the player and collisions, quietly leave at the arena edge */
+    if (e.passive) {
+      g.position.addScaledVector(e.marchDir, e.type.speed * 0.55 * dt);
+      g.rotation.y = Math.atan2(e.marchDir.x, e.marchDir.z);
+      e.bobT += dt * 6;
+      g.position.y = e.flyY ? e.flyY + Math.sin(e.bobT * 0.7) * 0.15
+                            : Math.abs(Math.sin(e.bobT)) * 0.05;
+      if (e.legL) {
+        e.legL.rotation.x = Math.sin(e.bobT) * 0.45;
+        e.legR.rotation.x = -Math.sin(e.bobT) * 0.45;
+      }
+      if (e.rotors) for (const r of e.rotors) r.rotation.y += dt * 45;
+      const lim = arena.half + 2;
+      if (Math.abs(g.position.x) > lim || Math.abs(g.position.z) > lim) {
+        e.alive = false;
+        e.despawn = true; // removed after the loop — no FX, no score
+        despawned = true;
+      }
+      continue;
+    }
+
     _eToPlayer.copy(player.pos).sub(g.position);
     _eToPlayer.y = 0;
     const dist = _eToPlayer.length();
@@ -288,35 +396,41 @@ function updateEnemies(dt) {
       _eMove.normalize();
       g.position.addScaledVector(_eMove, e.type.speed * dt);
     }
-    // rozdzielanie botów
+    // unit separation (fliers only push against other fliers)
     for (const o of enemies) {
-      if (o === e || !o.alive) continue;
+      if (o === e || !o.alive || !!o.flyY !== !!e.flyY) continue;
       const dx = g.position.x - o.group.position.x;
       const dz = g.position.z - o.group.position.z;
       const d2 = dx * dx + dz * dz;
-      const minD = e.type.radius + o.type.radius + 0.2;
+      const minD = e.radius + o.radius + 0.2;
       if (d2 < minD * minD && d2 > 1e-6) {
         const d = Math.sqrt(d2);
         g.position.x += (dx / d) * (minD - d) * 0.5;
         g.position.z += (dz / d) * (minD - d) * 0.5;
       }
     }
-    resolveCollisions(g.position, e.type.radius);
+    // fliers pass over low cover (colliders below their altitude are skipped)
+    resolveCollisions(g.position, e.radius, e.flyY ? 2.4 : 0);
 
-    // wykrywanie utknięcia: faktyczny ruch dużo mniejszy od zamierzonego → objazd
+    // stuck detection: actual movement far below intended → sidestep detour.
+    // The detour direction is COMMITTED: re-randomizing on every trigger
+    // degenerates into a random walk along long walls (corridors style) —
+    // keep going the same way unless the last detour was a while ago.
+    e.sinceAvoid += dt;
     const actualSpeed = Math.hypot(g.position.x - prevX, g.position.z - prevZ) / Math.max(dt, 1e-4);
     if (wantsMove && e.avoidT <= 0 && actualSpeed < e.type.speed * 0.3) {
       e.stuckT += dt;
       if (e.stuckT > 0.35) {
         e.stuckT = 0;
+        if (e.sinceAvoid > 2.5) e.avoidDir = Math.random() < 0.5 ? -1 : 1;
         e.avoidT = 0.6 + Math.random() * 0.7;
-        e.avoidDir = Math.random() < 0.5 ? -1 : 1;
+        e.sinceAvoid = 0;
       }
     } else if (e.stuckT > 0) {
       e.stuckT = Math.max(0, e.stuckT - dt * 2);
     }
 
-    // obrót w stronę gracza + bob chodu i wymach nóg wg faktycznego ruchu
+    // face the player + walk bob / hover, legs swing with actual movement
     const targetYaw = Math.atan2(_eToPlayer.x, _eToPlayer.z);
     let dy = targetYaw - g.rotation.y;
     while (dy > Math.PI) dy -= Math.PI * 2;
@@ -324,10 +438,15 @@ function updateEnemies(dt) {
     g.rotation.y += dy * Math.min(1, dt * 8);
     const walkFactor = Math.min(1, actualSpeed / e.type.speed);
     e.bobT += dt * (2 + e.type.speed * 1.6) * Math.max(0.15, walkFactor);
-    g.position.y = Math.abs(Math.sin(e.bobT)) * 0.06 * walkFactor;
-    const legAmp = 0.5 * walkFactor;
-    e.legL.rotation.x = Math.sin(e.bobT) * legAmp;
-    e.legR.rotation.x = -Math.sin(e.bobT) * legAmp;
+    if (e.flyY) {
+      g.position.y = e.flyY + Math.sin(e.bobT * 0.6) * 0.18;
+      if (e.rotors) for (const r of e.rotors) r.rotation.y += dt * 45;
+    } else {
+      g.position.y = Math.abs(Math.sin(e.bobT)) * 0.06 * walkFactor;
+      const legAmp = 0.5 * walkFactor;
+      e.legL.rotation.x = Math.sin(e.bobT) * legAmp;
+      e.legR.rotation.x = -Math.sin(e.bobT) * legAmp;
+    }
 
     // --- strzelanie (pistolet / strzelba / seria z karabinu) ---
     e.cooldown -= dt;
@@ -342,6 +461,15 @@ function updateEnemies(dt) {
       e.cooldown = e.type.fireCooldown * (0.75 + Math.random() * 0.5);
       if (e.type.weapon === 'auto') { e.burst = e.type.burstCount; e.burstT = 0; }
       else enemyFire(e);
+    }
+  }
+  // remove parade units that left the arena (marked in the loop above)
+  if (despawned) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (enemies[i].despawn) {
+        enemiesGroup.remove(enemies[i].group);
+        enemies.splice(i, 1);
+      }
     }
   }
 }
@@ -363,7 +491,7 @@ function enemyFire(e) {
   const chance = e.accuracy * distFactor * moveFactor;
   const hit = Math.random() < chance && enemyHasLos(e, dist);
 
-  let dmg = e.type.damage;
+  let dmg = e.type.damage * e.dmgMul;
   if (e.type.weapon === 'shotgun') {
     // z bliska pełne obrażenia, przy granicy zasięgu ~40%
     dmg = Math.max(6, Math.round(dmg * (1 - 0.6 * (dist / e.type.range))));

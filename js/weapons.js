@@ -200,6 +200,7 @@ function updateViewmodel(dt) {
 }
 
 function switchWeapon(idx) {
+  if (game.noCombat) return; // epilogue: weapons stay stowed
   if (idx === currentWeapon || idx < 0 || idx >= WEAPONS.length) return;
   if (!WEAPONS[idx].owned) {
     AudioSys.empty();
@@ -226,6 +227,7 @@ function setAiming(on) {
 }
 
 function startReload() {
+  if (game.noCombat) return;
   const w = WEAPONS[currentWeapon];
   if (reloading || w.mag >= w.magSize || w.reserve <= 0) return;
   reloading = true;
@@ -258,6 +260,7 @@ const _muzzleWorld = new THREE.Vector3();
 const _hitNormal = new THREE.Vector3();
 
 function tryFire() {
+  if (game.noCombat) return; // epilogue: no shooting at the parade
   const w = WEAPONS[currentWeapon];
   if (fireCooldown > 0 || reloading) return;
   if (w.mag <= 0) {
@@ -314,11 +317,19 @@ function tryFire() {
         const dmg = w.damage * game.dmgMul * (isHead ? 2 : 1);
         if (damageEnemy(enemy, dmg, isHead)) anyKill = true;
       } else {
-        spawnParticles(h.point, 0xaab2e8, 4, 3.5, 0.3, 7);
-        if (h.face) {
-          _hitNormal.copy(h.face.normal)
-            .transformDirection(h.object.matrixWorld);
-          spawnDecal(h.point, _hitNormal);
+        const prop = h.object.userData.propRef;
+        if (prop && prop.destructible && !prop.dead) {
+          anyHit = true; // the hitmarker must fire — feedback matters
+          spawnParticles(h.point, PALETTE.orange, 6, 4.5, 0.35, 8);
+          AudioSys.hit();
+          if (damageProp(prop, w.damage * game.dmgMul)) anyKill = true;
+        } else {
+          spawnParticles(h.point, 0xaab2e8, 4, 3.5, 0.3, 7);
+          if (h.face) {
+            _hitNormal.copy(h.face.normal)
+              .transformDirection(h.object.matrixWorld);
+            spawnDecal(h.point, _hitNormal);
+          }
         }
       }
     } else {
@@ -328,8 +339,9 @@ function tryFire() {
   }
 
   if (anyHit) showHitmarker(anyKill, anyHead);
+  missionShot(anyHit); // campaign accuracy counter (no-op outside)
 
-  // odrzut: viewmodel + podbicie kamery
+  // recoil: viewmodel + camera kick
   vmRecoil = Math.min(0.25, vmRecoil + w.vmKick);
   camera.rotation.x += w.kick;
 

@@ -430,6 +430,43 @@ const TexGen = (() => {
     return t;
   }
 
+  /* Real-text log panel (campaign worldbuilding): short Polish fragments
+     over a faint glyph stream. ≤22 monospace chars per line at this size;
+     lines starting with '>' render in warning orange. */
+  function makeLogTexture(seed, lines) {
+    const W = 256, H = 512;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    const rand = rng(seed);
+    // faint dash noise beneath the text
+    g.fillStyle = 'rgba(0,235,199,0.15)';
+    for (let r = 0; r < 20; r++) {
+      let x = 10 + rand() * 20;
+      const y = 12 + r * 25;
+      while (x < W - 30) {
+        const w = 6 + rand() * 20;
+        g.fillRect(x, y, w, 4);
+        x += w + 8;
+      }
+    }
+    g.font = 'bold 19px Consolas, "Courier New", monospace';
+    g.textBaseline = 'top';
+    let y = 30;
+    for (const ln of lines) {
+      g.fillStyle = ln.startsWith('>')
+        ? 'rgba(255,137,6,0.95)' : 'rgba(0,235,199,0.95)';
+      g.fillText(ln, 14, y);
+      y += 46;
+    }
+    g.fillStyle = 'rgba(0,235,199,0.10)';
+    for (let sy = 0; sy < H; sy += 4) g.fillRect(0, sy, W, 1);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
   /* World-scale box UVs: `scale` = meters per texture tile, so a 72 m wall
      and a 2 m pillar share one material without stretching. (ou, ov)
      de-syncs the pattern between blocks. Call before first render. */
@@ -447,5 +484,5 @@ const TexGen = (() => {
     return geom;
   }
 
-  return { makeFloorSet, makeWallSet, makeCrateSet, makeHologramTexture, applyBoxUV };
+  return { makeFloorSet, makeWallSet, makeCrateSet, makeHologramTexture, makeLogTexture, applyBoxUV };
 })();

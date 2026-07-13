@@ -6,9 +6,12 @@
 
 /* ==================== KOLIZJE (okrąg vs AABB w XZ) ==================== */
 
-function resolveCollisions(pos, radius) {
+/* minTop: skip colliders whose top edge is below it — flying units (UAV)
+   pass over low cover but still collide with pillars, walls and the ring */
+function resolveCollisions(pos, radius, minTop = 0) {
   for (let iter = 0; iter < 2; iter++) {
     for (const c of colliders) {
+      if (minTop > 0 && c.top !== undefined && c.top < minTop) continue;
       const cx = Math.max(c.minX, Math.min(pos.x, c.maxX));
       const cz = Math.max(c.minZ, Math.min(pos.z, c.maxZ));
       let dx = pos.x - cx, dz = pos.z - cz;

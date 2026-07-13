@@ -1,12 +1,18 @@
 <p align="center">
-  <img src="assets/logo-full.png" alt="Neon Arena" width="360">
+  <img src="assets/logo-full.png" alt="STATUS 1" width="520">
 </p>
 
-# NEON ARENA — browser FPS
+<h1 align="center">STATUS 1 — browser FPS</h1>
 
-A stylized first-person survival shooter that runs entirely in your browser.
-Survive **5 waves** of armed bots in a neon arena. No install, no backend —
-Three.js is loaded from a CDN and all sound is synthesized at runtime (WebAudio).
+> *"Status 1"* is police radio code for **unit in service, ready for duty**.
+> For most of the game you think it's about you. In the finale you realize it's about them.
+
+A story-driven first-person shooter that runs entirely in your browser.
+You are **Nick Davidson**, an LSPD SWAT officer assigned to a drone-training
+program as the red team's live adversary — callsign **R36** ("Robert-36").
+Every simulation you survive makes the autonomous police drones better,
+because they learn by copying *you*. No install, no backend — Three.js from
+a CDN, everything else procedural.
 
 ## ▶ [Play now](https://damijjj.github.io/Neon-Arena/)
 
@@ -14,122 +20,106 @@ No download required — click and play in your browser.
 
 ![Gameplay](screenshots/rozgrywka-2.png)
 
-## How to run
+## Story
 
-### Option 1 — play online
-Just open **[damijjj.github.io/Neon-Arena](https://damijjj.github.io/Neon-Arena/)** —
-the game is 100% static and hosted on GitHub Pages.
+Near-future Los Santos. The LSPD is certifying an autonomous police drone
+line — **SENTINEL** — under a training initiative called **program STATUS 1**.
+Before the machines are cleared for the streets, they must train against a
+live opponent. That's you.
 
-### Option 2 — simplest, offline (verified in Chrome)
-**Double-click `index.html`.** The game opens in your default browser and works
-right away — the game code loads as classic scripts from the `js/` folder (keep it
-next to `index.html`) and Three.js loads from a CDN (an internet connection is
-required).
+Across eleven simulations you play the threat: the burglar, the saboteur, the
+fleeing suspect. Briefings come from **CENTRALA** — the program's dry, darkly
+funny controller. Halfway through, an unregistered process calling itself
+**baker** hijacks your channel, types in lowercase, and knows too much. The
+old phonetic alphabet is a hint: Baker is "B" the way Robert is "R".
 
-### Option 3 — fallback, via a local server
-Use this only if your browser blocks the game opened from disk (you'll see a
-blank/black screen or a CORS/modules error in the console):
+The campaign ends on a cliffhanger: the freshly certified SENTINELs march out
+to active duty — and you walk past their column on your way out. They move
+light on their feet. You know that stride.
 
-- **Windows:** double-click `start-windows.bat` — it starts a local server (Python)
-  on port **8137** and opens `http://localhost:8137/index.html`. Closing the console
-  window stops the server.
-- **macOS / Linux:** run `sh start.sh` in a terminal (requires `python3`).
+## Game modes
 
-> Port 8137 was chosen deliberately unusual so it won't clash with other local
-> servers (e.g. PHP on 8000).
+- **Campaign** — 11 simulations: a tutorial, nine scenarios (eliminations,
+  terminal hacking, sabotage with exploding power cells, survival, uplink
+  defense, drop-gates, a pursuit run, a shielded prototype boss fight, final
+  certification) and a playable no-combat epilogue. Story is delivered through
+  typewriter terminal briefings and **in-mission radio** — each character
+  "speaks" its own synthesized robotic voice (WebAudio, no audio files).
+- **Endless Arena** — the classic wave-survival mode with a persistent
+  high score.
+
+## Campaign features
+
+- **Persistent progression:** credits and upgrades carry across the whole
+  campaign (the Armory replaces the between-wave shop); dying restarts the
+  mission instantly and keeps your upgrades, but forfeits the attempt's
+  earnings.
+- **33 medals** (time / health / accuracy) with authored per-mission
+  thresholds — missions are worth replaying.
+- **3 difficulty levels** and browser-side save (localStorage).
+- **Objective system:** hack terminals (progress pauses when you step away),
+  destroy shootable set-pieces, hold zones, relay runs, momentum gates that
+  demand bunnyhopping, extraction points — with a persistent objective HUD
+  and world markers that clamp to the screen edge with directional chevrons.
+- **Four enemy classes** in police livery with synchronized red/blue strobes:
+  **PATROL** (scout, pistol), **SZTURM** (burst rifle, fastest), **TARAN**
+  (heavy, shotgun — has to close in), and **WAŻKA** — a hovering quadcopter
+  that flies *over* low cover and forces you to rethink your hiding spots.
 
 ## Controls
 
 | Action | Key |
 |---|---|
 | Move | **W / A / S / D** |
-| Look / aim | **mouse** (Pointer Lock — activates after clicking "Play") |
+| Look / aim | **mouse** (Pointer Lock) |
 | Fire | **LMB** |
-| Aim down sights (ADS) | **RMB** (hold) — any weapon; the sniper gives a full scope |
+| Aim down sights | **RMB** (hold) — the sniper gives a full scope |
 | Reload | **R** |
 | Switch weapon | **1 / 2 / 3 / 4** or **scroll** |
 | Sprint | **Shift** (works in the air too) |
-| Jump / bunnyhop | **Space** (holding auto-jumps; chained jumps ramp speed up to +35%) |
-| Pause | **Esc** (releases the mouse) |
-| Restart after game over | **R** or the on-screen button |
-| Leave the shop (next wave) | **Enter** or the button |
+| Jump / bunnyhop | **Space** — chained jumps ramp speed up to +35% |
+| Pause | **Esc** |
 
-## Gameplay
+## How to run
 
-- **Wave mode (survival):** 5 waves of bots, each more numerous and tougher (more HP,
-  better accuracy). Clear the last wave for the victory screen; drop to 0 HP and it's
-  game over.
-- **Endless mode:** after winning you can keep going — waves 6, 7, 8… scale forever.
-  Your best score is saved permanently (localStorage).
-- **Headshots:** hitting a bot's head deals **×2 damage** (a gold hitmarker and a
-  distinct sound confirm the hit).
-- **Damage indicator:** a red arc at the edge of the screen shows which direction a
-  shot came from — it rotates with the camera.
-- **Between-wave shop:** spend **credits** (10 per scout, 15 per assault, 30 per heavy,
-  plus a per-wave bonus) between waves on:
-  - **weapons** — you start with only the pistol; unlock the shotgun (50 cr),
-    SMG (90 cr) and sniper (140 cr) in the shop;
-  - **supplies** — full heal (30 cr), full ammo (40 cr);
-  - **upgrades** (prices scale with level) — armor +25 max HP, magazines +50%,
-    reload −15%, damage +15%.
-- **Procedural music** (WebAudio): calm ambient in the menu/shop; during a wave a beat
-  kicks in (kick, hi-hat, bass) — intensity rises with the wave number.
-- **Arena generator:** every page load rolls a fresh obstacle layout (pillars, crate
-  clusters, low walls). The arena number is shown on the start screen — append
-  **`?seed=N`** to the URL (e.g. `index.html?seed=555`) to return to the same layout
-  or share it. Spawn and pickup zones always stay clear.
-- **Bots** are armed: they close to their preferred range, strafe, check line of sight
-  and **shoot back** with limited accuracy. Three types (tell them apart by body color
-  and head shape):
-  - **Scout** (green, **triangular head**) — pistol, fights at range; randomly drops
-    **ammo**;
-  - **Assault** (orange, **square head**) — faster than the scout, fires **rifle bursts**;
-    randomly drops **ammo**;
-  - **Heavy** (red, **round head**) — **shotgun**: must close in but hits very hard up
-    close; lots of HP; randomly drops a **medkit** (+30 HP).
-- A few pickups (ammo/medkits) also sit on the arena from the start.
-- **Score:** scout 100, heavy 250, plus a wave-completion bonus. The high score is saved
-  in the browser (localStorage).
-
-## Weapons
-
-| # | Weapon | Profile | Magazine | Price |
-|---|--------|---------|----------|-------|
-| 1 | **Pistol** | accurate, medium damage, semi-auto | 12 / reserve 72 | start |
-| 2 | **Shotgun** | 8 pellets in a spread, lethal up close, slow | 6 / reserve 30 | 50 cr |
-| 3 | **SMG** | full-auto, fast, wider spread | 30 / reserve 150 | 90 cr |
-| 4 | **Sniper** | huge damage, very accurate with zoom (RMB) | 5 / reserve 20 | 140 cr |
-
-A **headshot** deals ×2 damage (gold hitmarker + a distinctive sound).
-
-**Aiming (RMB):** hip-firing is fast but inaccurate (large spread). Every weapon has an
-iron sight — on RMB the weapon slides to screen center (front sight on the firing axis),
-FOV narrows to 60°, and spread drops ~3×. The trade-off: **aiming disables sprint and
-slows movement** (~half walking speed). Instead of a sight, the sniper gives a full
-scope (24°).
-
-**Bunnyhop:** sprint doesn't break in the air, and jumps performed right after landing
-(a 0.25 s window — just hold Space) stack a speed boost up to +35%.
+1. **Online:** [damijjj.github.io/Neon-Arena](https://damijjj.github.io/Neon-Arena/) —
+   100% static, hosted on GitHub Pages.
+2. **Offline:** double-click `index.html` (classic scripts work under
+   `file://`; only Three.js comes from a CDN, so you need an internet
+   connection).
+3. **Local server fallback:** `start-windows.bat` (Windows) or `sh start.sh`
+   (macOS/Linux) — serves on port **8137**.
 
 ## Tech
 
-- **Three.js r160** from a CDN (jsdelivr) via an import map; addons: `PointerLockControls`,
-  `EffectComposer`, `RenderPass`, `UnrealBloomPass`, `OutputPass`.
-- The game code is split into **classic scripts** in `js/` (config, audio, renderer,
-  world, effects, player, weapons, enemies, pickups, shop, waves, HUD, state, input,
-  main loop) that share the global scope and load in order via `<script defer>`.
-  Deliberately **no local ES modules and no bundler**: browsers block local ES modules
-  under `file://`, while classic scripts and CDN modules (HTTPS) work even on a
-  double-click — a tiny bootstrap ES module in `index.html` imports Three.js from the
-  CDN and exposes it globally before the game scripts run.
-- Presentation: flat-shaded low-poly, a consistent palette (indigo / teal / orange / red),
-  shadow-mapped shadows (directional light), hemisphere + ambient, **bloom** + ACES tone
-  mapping, distance fog, a gradient sky (shader), muzzle flash, tracers, sparks and
-  hit/death particles, bullet decals, a procedural floor texture (canvas).
-- Sound and music are synthesized (WebAudio) — zero external files; the music is a
-  procedural 16-step sequencer (118 BPM, A minor) that reacts to game state.
-- Hitscan via `THREE.Raycaster`, game loop on `requestAnimationFrame` with delta time,
-  object pools for particles/tracers/decals (no leaks on restart).
+- **Three.js r160** (CDN, import map); bloom + ACES tone mapping, shadow maps,
+  gradient shader sky, distance fog.
+- Game code = **classic scripts** sharing one global scope (deliberately no
+  bundler and no local ES modules — the game must run from a double-click).
+- **Everything is generated:** deterministic procedural arenas (seeded, three
+  layout styles, flood-fill reachability validation, rebuildable at runtime
+  for campaign missions), canvas-generated textures and holo-panels, low-poly
+  models built from primitives, object pools for all effects.
+- **100% synthetic audio** (WebAudio): layered gunshots, 3D-positioned enemy
+  fire, a 16-step procedural sequencer (118 BPM, A minor) that crossfades
+  between calm and combat, and per-character robotic voice blips for the
+  radio dialogue.
+
+## Visual identity (logo brief)
+
+- **Name:** `STATUS 1` — uppercase; the "1" may take the accent color.
+- **Mood:** neon-noir police cyberpunk; a duty terminal screen, a VR training
+  simulation, a night city. Serious with a cold technical edge — no gore,
+  no grimdark.
+- **Palette:** background indigo `#232946` / navy `#151833`; primary accent
+  **teal `#00ebc7`** (neon, HUD); police strobe accents **red `#ff5470` +
+  blue `#2266ff`**; support orange `#ff8906` and gold `#ffd166`.
+- **Motifs:** hexagonal badge/emblem (the current mark is a hex with a
+  visor-crosshair), a quadcopter drone with a light bar, a walking patrol
+  robot silhouette, radio status codes, terminal scanlines, soft neon glow.
+- **Deliverables:** horizontal lockup with the wordmark (title screen,
+  og-image 1200×630), standalone hex emblem (favicon — must read at 32×32),
+  dark-background variants. Keep glow gradients soft — no hard alpha cutoffs.
 
 ## Screenshots
 

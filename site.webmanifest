@@ -1,7 +1,7 @@
 {
-  "name": "Neon Arena",
-  "short_name": "Neon Arena",
-  "description": "Przeglądarkowy FPS — przetrwaj fale botów w neonowej arenie.",
+  "name": "Status 1",
+  "short_name": "Status 1",
+  "description": "Przeglądarkowy FPS — jako oficer SWAT trenujesz drony policyjne LSPD w symulacji.",
   "start_url": ".",
   "scope": ".",
   "display": "fullscreen",

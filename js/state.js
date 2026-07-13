@@ -8,12 +8,19 @@
 
 const game = {
   state: 'menu',   // menu | playing | paused | shop | over | won
+  mode: 'arena',   // 'arena' (endless waves) | 'campaign' — do NOT overload `endless`
+  missionId: null,
+  difficulty: 'normal',
   score: 0,
   credits: 0,
-  endless: false,
-  dmgMul: 1,       // mnożnik obrażeń (sklep)
-  reloadMul: 1,    // mnożnik czasu przeładowania (sklep)
-  best: Number(localStorage.getItem('neonarena_best') || 0),
+  endless: false,  // arena mode past the final wave
+  noCombat: false, // campaign epilogue: weapons stowed, crosshair hidden
+  dmgMul: 1,       // damage multiplier (shop)
+  reloadMul: 1,    // reload-time multiplier (shop)
+  // arena best score; reads pre-rename keys as fallback (migration)
+  best: Number(localStorage.getItem('status1_best')
+    || localStorage.getItem('czynnasluzba_best')
+    || localStorage.getItem('neonarena_best') || 0),
 };
 
 const screens = {
@@ -22,6 +29,10 @@ const screens = {
   over: el('screen-over'),
   win: el('screen-win'),
   shop: el('screen-shop'),
+  campaign: el('screen-campaign'),
+  brief: el('screen-brief'),
+  debrief: el('screen-debrief'),
+  mfail: el('screen-mfail'),
 };
 
 function showScreen(name) {
@@ -38,15 +49,24 @@ function beginPlaying() {
   hideScreens();
 }
 
+/* arena mode entry: always rebuild the default arena first — the campaign
+   may have left a mission layout behind */
+function startArena() {
+  game.mode = 'arena';
+  game.missionId = null;
+  buildArena(arenaModeDef());
+  startGame({ usePointerLock: !TEST });
+}
+
 function startGame({ usePointerLock = true } = {}) {
   AudioSys.init();
   AudioSys.startMusic();
   resetGameState();
-  if (TEST && TEST_WAVE > 0) waveSystem.wave = TEST_WAVE - 1; // testy: start od zadanej fali
+  if (TEST && TEST_WAVE > 0) waveSystem.wave = TEST_WAVE - 1; // tests: start at wave N (arena only)
   if (usePointerLock) {
     wantLock = true;
     lockPointer();
-    // stan przełączy się w evencie 'lock' (lub w 'pointerlockerror' jako fallback)
+    // the state flips in the 'lock' event (or 'pointerlockerror' as fallback)
   } else {
     beginPlaying();
   }
@@ -75,7 +95,7 @@ function endMatch(won) {
   setAiming(false);
   if (game.score > game.best) {
     game.best = game.score;
-    localStorage.setItem('neonarena_best', String(game.best));
+    try { localStorage.setItem('status1_best', String(game.best)); } catch (e) { /* ignore */ }
   }
   if (document.pointerLockElement) document.exitPointerLock();
   if (won) {
@@ -92,20 +112,39 @@ function endMatch(won) {
   }
 }
 
-function gameOver() { endMatch(false); }
-function victory() { endMatch(true); }
+function gameOver() {
+  if (game.mode === 'campaign') { mission.fail('death'); return; }
+  endMatch(false);
+}
+function victory() { endMatch(true); } // arena only; the campaign never calls it
 
-function resetGameState() {
+/* RUN state — the progression: score, credits, shop levels, weapon ownership.
+   Wiped on: new arena game, new campaign run. NOT touched between campaign
+   missions (upgrades and credits carry over). */
+function resetRunState() {
+  game.score = 0;
+  game.endless = false;
+  game.credits = 0;
+  for (const item of SHOP_ITEMS) item.level = 0;
+  applyAllShopEffects(); // idempotent: derives maxHp/mults/mags/ownership from levels
+  scoreEl.textContent = '0';
+  updateCreditsHud();
+}
+
+/* LEVEL state — the world & the body: enemies, pickups, FX pools, player
+   HP/position/camera, ammo, wave system. Wiped on every mission start and
+   restart; shop upgrades and credits SURVIVE this. */
+function resetLevelState() {
   // stop heartbeat/breath loops and reopen the damage-muffle filter
   AudioSys.resetFx();
-  // usuń wrogów
+  // remove enemies
   for (let i = enemies.length - 1; i >= 0; i--) {
     enemiesGroup.remove(enemies[i].group);
   }
   enemies.length = 0;
   // remove pickups (incl. their screen markers)
   clearPickups();
-  // schowaj efekty
+  // hide pooled FX
   for (const p of particles) p.mesh.visible = false;
   for (const t of tracers) t.mesh.visible = false;
   for (const d of decals) d.visible = false;
@@ -114,33 +153,25 @@ function resetGameState() {
   muzzleLight.intensity = 0;
   muzzleFlashMesh.material.opacity = 0;
 
-  // gracz
+  // player — spawn comes from the currently built arena
   player.hp = player.maxHp;
   player.vel.set(0, 0, 0);
-  player.pos.set(0, PLAYER_EYE, 26);
+  player.pos.set(arena.playerSpawn.x, PLAYER_EYE, arena.playerSpawn.z);
   player.sprinting = false;
   swayPitchPrev = 0;
   swayAmp = 0;
-  camera.rotation.set(0, 0, 0);
+  camera.rotation.set(0, arena.playerSpawn.yaw || 0, 0);
   camera.fov = BASE_FOV;
   camera.updateProjectionMatrix();
 
-  // sklep / ulepszenia
-  game.credits = 0;
-  game.endless = false;
-  game.dmgMul = 1;
-  game.reloadMul = 1;
-  player.maxHp = 100;
-  for (const item of SHOP_ITEMS) item.level = 0;
-  updateCreditsHud();
+  game.noCombat = false;
+  el('crosshair').style.display = '';
 
-  // bronie (przywróć wartości bazowe; zostaje tylko pistolet)
+  // weapons: refill ammo, keep upgrades. The reserve scales with the bought
+  // mag upgrade — refilling to the base value would feel like a demotion.
   for (const w of WEAPONS) {
-    w.magSize = w.baseMag;
-    w.maxReserve = w.baseMaxReserve;
     w.mag = w.magSize;
-    w.reserve = w.startReserve;
-    w.owned = w.id === 'pistol';
+    w.reserve = Math.round(w.startReserve * (w.maxReserve / w.baseMaxReserve));
   }
   viewmodels[currentWeapon].visible = false;
   currentWeapon = 0;
@@ -152,11 +183,8 @@ function resetGameState() {
   setAiming(false);
   hideReloadHud();
 
-  // fale i wynik
-  game.score = 0;
-  scoreEl.textContent = '0';
   waveSystem.reset();
-  placeInitialPickups();
+  placeArenaPickups();
 
   updateHpHud();
   updateWeaponHud();
@@ -167,7 +195,14 @@ function resetGameState() {
   damageFlashEl.style.opacity = 0;
 }
 
+/* arena mode: a fresh run — behavior identical to the historical reset */
+function resetGameState() {
+  resetRunState();
+  resetLevelState();
+}
+
 function restartGame() {
+  if (game.mode === 'campaign') { restartMission(); return; }
   hideScreens();
   startGame({ usePointerLock: !TEST });
 }

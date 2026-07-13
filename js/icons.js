@@ -99,6 +99,27 @@ const UI_ICONS = {
       stroke="currentColor" stroke-width="2"/>
     <circle cx="12" cy="12" r="3"/>
   </svg>`,
+  /* --- campaign objectives: markers & mission rows --- */
+  terminal: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M4 3.5h16a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z
+      M5.5 6h9v1.6h-9zM5.5 9h6v1.6h-6zM5.5 12h7.5v1.2h-7.5z" fill-rule="evenodd"/>
+    <rect x="11" y="15" width="2" height="3.4"/>
+    <rect x="7" y="18.4" width="10" height="2"/>
+  </svg>`,
+  generator: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M7 3h10v18H7z" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M13.2 6.5l-3.6 5h2.6l-1.4 5.8 4.6-6.6h-2.8z"/>
+  </svg>`,
+  extraction: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M4 4h4v2H6v12h2v2H4zM20 4h-4v2h2v12h-2v2h4z"/>
+    <path d="M12 5.5l4.5 4.5h-2.7v3.6h-3.6V10H7.5z"/>
+    <rect x="9" y="15.6" width="6" height="1.6"/>
+    <rect x="10" y="18.2" width="4" height="1.4"/>
+  </svg>`,
+  mission: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <rect x="5" y="2.6" width="2" height="18.8"/>
+    <path d="M8 4h11l-2.6 3.6L19 11H8z"/>
+  </svg>`,
 };
 
 /* Fill every <span data-icon="…"> placeholder in the static markup.

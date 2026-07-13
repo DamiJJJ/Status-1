@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEON ARENA — przeglądarkowy FPS</title>
-<meta name="description" content="Neon Arena — przeglądarkowy FPS na Three.js. Przetrwaj fale botów w neonowej arenie. Bez instalacji, bez backendu.">
+<title>STATUS 1 — przeglądarkowy FPS</title>
+<meta name="description" content="Status 1 — przeglądarkowy FPS na Three.js. Jako oficer SWAT trenujesz drony policyjne w symulacji — i patrzysz, czego się od ciebie nauczą. Bez instalacji, bez backendu.">
 <meta name="theme-color" content="#151833">
 
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
@@ -15,8 +15,8 @@
 <link rel="manifest" href="site.webmanifest">
 
 <meta property="og:type" content="website">
-<meta property="og:title" content="NEON ARENA — przeglądarkowy FPS">
-<meta property="og:description" content="Przetrwaj fale botów w neonowej arenie. Gra działa w przeglądarce — bez instalacji.">
+<meta property="og:title" content="STATUS 1 — przeglądarkowy FPS">
+<meta property="og:description" content="Jako oficer SWAT trenujesz drony policyjne w symulacji — i patrzysz, czego się od ciebie nauczą. Gra działa w przeglądarce, bez instalacji.">
 <meta property="og:image" content="https://damijjj.github.io/Neon-Arena/assets/og-image.png">
 <meta property="og:url" content="https://damijjj.github.io/Neon-Arena/">
 <meta name="twitter:card" content="summary_large_image">
@@ -56,6 +56,13 @@
 
 <!-- ======================= HUD ======================= -->
 <div id="pickup-markers" class="hud"></div>
+<div id="objective-markers" class="hud"></div>
+
+<div id="hud-objective" class="hud">
+  <div class="obj-head"><span class="icon obj-ic" data-icon="wave"></span>CEL</div>
+  <div class="obj-row"><span id="obj-text">—</span><span id="obj-count"></span></div>
+  <div id="obj-bar"><div id="obj-fill"></div></div>
+</div>
 
 <div id="hud-top-left" class="hud hud-panel">
   <div class="stat" id="hud-score">
@@ -100,6 +107,11 @@
   </div>
 </div>
 
+<div id="radio-box" class="hud">
+  <div class="radio-who" id="radio-who"></div>
+  <div class="radio-text" id="radio-text"></div>
+</div>
+
 <div id="center-msg"></div>
 <div id="reload-msg">
   <div class="txt">Przeładowywanie…</div>
@@ -110,9 +122,9 @@
 <div id="screen-start" class="screen visible">
   <div class="screen-box">
     <h1 class="game-title">
-      <img src="assets/logo-full.png" alt="Neon Arena" class="game-logo" draggable="false">
+      <img src="assets/logo-full.png" alt="STATUS 1" class="game-lockup" draggable="false">
     </h1>
-    <div class="game-subtitle">Przetrwaj 5 fal &middot; przeglądarkowy FPS</div>
+    <div class="game-subtitle">Symulacja szkoleniowa dronów LSPD &middot; przeglądarkowy FPS</div>
     <div class="controls-grid">
       <div class="key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div><div class="desc">ruch</div>
       <div class="key"><kbd>Mysz</kbd></div><div class="desc">rozglądanie / celowanie</div>
@@ -124,9 +136,64 @@
       <div class="key"><kbd>Spacja</kbd></div><div class="desc">skok</div>
       <div class="key"><kbd>Esc</kbd></div><div class="desc">pauza</div>
     </div>
-    <button class="btn" id="btn-start">Kliknij, aby grać</button>
-    <div class="screen-hint">Amunicję dropią zwiadowcy i szturmowcy, apteczki — ciężcy.<br>Nowe bronie i ulepszenia kupisz za kredyty w sklepie między falami.</div>
+    <button class="btn" id="btn-campaign">Kampania</button>
+    <button class="btn secondary" id="btn-start">Arena bez końca</button>
+    <div class="screen-hint">Amunicję dropią jednostki PATROL i SZTURM, apteczki — TARAN.<br>Nowe bronie i ulepszenia kupisz za kredyty.</div>
     <div class="screen-hint" id="arena-seed-hint"></div>
+  </div>
+</div>
+
+<div id="screen-campaign" class="screen">
+  <div class="screen-box shop-box campaign-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-small" draggable="false">
+    <h2>Kampania</h2>
+    <div class="campaign-meta" id="campaign-meta"></div>
+    <div class="seg" id="diff-seg">
+      <button class="seg-btn" data-diff="easy">Łatwy</button>
+      <button class="seg-btn active" data-diff="normal">Normalny</button>
+      <button class="seg-btn" data-diff="hard">Trudny</button>
+    </div>
+    <div id="mission-list"></div>
+    <div class="campaign-actions">
+      <button class="btn secondary" id="btn-armory">Zbrojownia</button>
+      <button class="btn secondary" id="btn-campaign-back">Menu</button>
+    </div>
+    <div class="screen-hint"><button class="linklike" id="btn-campaign-new">zacznij kampanię od nowa</button></div>
+  </div>
+</div>
+
+<div id="screen-brief" class="screen">
+  <div class="screen-box brief-box">
+    <div class="brief-title" id="brief-title"></div>
+    <div id="brief-body"></div>
+    <div class="brief-meta" id="brief-meta"></div>
+    <button class="btn" id="btn-brief-start">Wejście do symulacji</button>
+    <div class="screen-hint">klik — pomiń animację &middot; <b>Enter</b> — start</div>
+  </div>
+</div>
+
+<div id="screen-debrief" class="screen">
+  <div class="screen-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-win" draggable="false">
+    <h2 class="win">Symulacja zaliczona</h2>
+    <div class="debrief-sub" id="debrief-title"></div>
+    <div class="end-stats" id="debrief-stats"></div>
+    <div class="medal-strip" id="debrief-medals"></div>
+    <button class="btn" id="btn-debrief-continue">Dalej</button>
+    <button class="btn secondary" id="btn-debrief-replay">Powtórz</button>
+    <div class="screen-hint">…albo wciśnij <b>Enter</b></div>
+  </div>
+</div>
+
+<div id="screen-mfail" class="screen">
+  <div class="screen-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-lose" draggable="false">
+    <h2 class="lose">Symulacja przerwana</h2>
+    <div class="end-stats" id="mfail-stats"></div>
+    <button class="btn" id="btn-mission-retry">Restart misji</button>
+    <button class="btn secondary" id="btn-mfail-armory">Zbrojownia</button>
+    <button class="btn secondary" id="btn-mfail-levels">Wybór misji</button>
+    <div class="screen-hint">…albo wciśnij <b>R</b></div>
   </div>
 </div>
 
@@ -146,8 +213,8 @@
     <h2 class="lose">Koniec gry</h2>
     <div class="end-stats">
       Twój wynik: <b id="over-score">0</b><br>
-      Dotarłeś do fali: <b id="over-wave">1</b><br>
-      <span class="best">Rekord sesji: <b id="over-best">0</b></span>
+      Osiągnięta fala: <b id="over-wave">1</b><br>
+      <span class="best">Rekord: <b id="over-best">0</b></span>
     </div>
     <button class="btn" id="btn-restart-over">Zagraj ponownie</button>
     <div class="screen-hint">…albo wciśnij <b>R</b></div>
@@ -159,9 +226,9 @@
     <img src="assets/logo-mark.png" alt="" class="screen-mark mark-win" draggable="false">
     <h2 class="win">Zwycięstwo!</h2>
     <div class="end-stats">
-      Przetrwałeś wszystkie 5 fal.<br>
+      Wszystkie 5 fal odparte.<br>
       Końcowy wynik: <b id="win-score">0</b><br>
-      <span class="best">Rekord sesji: <b id="win-best">0</b></span>
+      <span class="best">Rekord: <b id="win-best">0</b></span>
     </div>
     <button class="btn" id="btn-endless">Graj dalej — tryb endless</button>
     <button class="btn secondary" id="btn-restart-win">Zagraj ponownie</button>
@@ -172,7 +239,8 @@
 <div id="screen-shop" class="screen">
   <div class="screen-box shop-box">
     <img src="assets/logo-mark.png" alt="" class="screen-mark mark-small" draggable="false">
-    <h2 class="shop-title">Sklep</h2>
+    <h2 class="shop-title" id="shop-title">Sklep</h2>
+    <div class="shop-next" id="shop-next"></div>
     <div class="shop-credits">Kredyty: <b id="shop-credits">0</b></div>
     <div id="shop-items"></div>
     <button class="btn" id="btn-shop-continue">Do walki — następna fala</button>
@@ -206,6 +274,7 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/renderer.js"></script>
 <script defer src="js/textures.js"></script>
 <script defer src="js/world.js"></script>
+<script defer src="js/props.js"></script>
 <script defer src="js/effects.js"></script>
 <script defer src="js/collisions.js"></script>
 <script defer src="js/player.js"></script>
@@ -215,6 +284,8 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/pickups.js"></script>
 <script defer src="js/shop.js"></script>
 <script defer src="js/waves.js"></script>
+<script defer src="js/missions.js"></script>
+<script defer src="js/campaign.js"></script>
 <script defer src="js/hud.js"></script>
 <script defer src="js/state.js"></script>
 <script defer src="js/input.js"></script>

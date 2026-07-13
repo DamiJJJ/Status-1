@@ -43,12 +43,15 @@ function updateWeaponHud() {
 
 function updateWaveHud() {
   if (waveSystem.wave === 0) { waveEl.textContent = '–'; return; }
-  waveEl.textContent = game.endless
-    ? `${waveSystem.wave}` : `${waveSystem.wave}/${TOTAL_WAVES}`;
+  const total = waveSystem.totalWaves;
+  waveEl.textContent = (game.endless || !isFinite(total))
+    ? `${waveSystem.wave}` : `${waveSystem.wave}/${total}`;
 }
 
 function updateEnemiesHud() {
-  enemiesEl.textContent = enemies.length + waveSystem.pending.length;
+  // parade units (epilogue) are not enemies
+  enemiesEl.textContent =
+    enemies.filter(e => !e.passive).length + waveSystem.pending.length;
 }
 
 function addScore(n) {

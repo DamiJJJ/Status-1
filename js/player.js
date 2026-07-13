@@ -74,6 +74,7 @@ let adsBlend = 0;     // płynne przejście viewmodelu do pozycji celowania
 function playerTakeDamage(dmg, fromPos = null) {
   if (game.state !== 'playing' || player.hp <= 0) return;
   player.hp = Math.max(0, player.hp - dmg);
+  missionHpTrack(); // campaign medal counter (no-op outside)
   damageFlash = Math.min(1, damageFlash + 0.55);
   if (fromPos) showDamageIndicator(fromPos);
   AudioSys.hurt(dmg, fromPos);

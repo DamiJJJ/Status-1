@@ -21,15 +21,18 @@ function tick(now) {
     updateEnemies(dt);
     updatePickups(dt);
     waveSystem.update(dt);
+    if (game.mode === 'campaign') mission.update(dt);
     if (TEST === 'shoot') testAutoAim();
     if (TEST === 'win' && waveSystem.active) {
-      // szybkie „przewinięcie" fal: zabijaj boty od razu
+      // fast-forward the waves: kill bots on sight
       if (enemies.length > 0) killEnemy(enemies[0]);
     }
   }
   AudioSys.update(dt); // stateful audio (heartbeat / breathing); no-op pre-init
   updateFx(dt);
   updateWorldFx(dt);
+  updateProps(dt);
+  updateRadio(dt);
   updateHudFx(dt);
 
   // diagnostyka
@@ -44,10 +47,26 @@ function tick(now) {
   __test.credits = game.credits;
   __test.endless = game.endless;
   __test.hopBoost = Math.round(player.hopBoost * 100) / 100;
+  __test.mode = game.mode;
+  __test.difficulty = game.difficulty;
+  __test.mission = (game.mode === 'campaign' && mission.def) ? {
+    id: mission.def.id,
+    active: mission.active,
+    time: Math.round(mission.time * 10) / 10,
+    kills: mission.kills,
+    objectives: mission.objectives.map(o => ({
+      id: o.def.id, type: o.def.type, state: o.state,
+      cur: Math.round(o.cur * 10) / 10, max: o.max,
+    })),
+  } : null;
 
   composer.render();
 }
 
+/* bootstrap: every script has executed by now — build the initial world.
+   (The arena is no longer built at world.js parse time, so it can be
+   rebuilt at runtime for campaign missions.) */
+buildArena(arenaModeDef());
 updateHpHud();
 updateWeaponHud();
 requestAnimationFrame(tick);
