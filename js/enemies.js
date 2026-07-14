@@ -35,11 +35,12 @@ const ENEMY_TYPES = {
     accuracy: 0.75, points: 300, credits: 30, radius: 0.7, scale: 1.25,
     body: 0x1c2748, accent: 0xff5470,
   },
-  // WAŻKA (uav): hovering quadcopter — flies OVER low cover, weak but nagging
+  // WAŻKA (uav): hovering quadcopter — flies OVER low cover; the basic, cheap
+  // line present from the first missions (BOT-2), so it stays weak but nagging
   uav: {
     weapon: 'pistol', fly: 3.0,
-    hp: 35, speed: 6.4, damage: 4, fireCooldown: 1.1, range: 24, preferred: 9,
-    accuracy: 0.5, points: 150, credits: 15, radius: 0.5, scale: 1,
+    hp: 30, speed: 6.4, damage: 3, fireCooldown: 1.15, range: 24, preferred: 9,
+    accuracy: 0.45, points: 120, credits: 10, radius: 0.5, scale: 1,
     body: 0x4f7fe0, accent: 0x9fe8ff,
   },
 };
@@ -502,7 +503,7 @@ function enemyFire(e) {
     _tv.copy(player.pos);
     _tv.x += (Math.random() - 0.5) * (hit ? 1.7 : 3.4);
     _tv.z += (Math.random() - 0.5) * (hit ? 1.7 : 3.4);
-    _tv.y = PLAYER_EYE + (Math.random() - 0.5) * 1.5;
+    _tv.y = player.pos.y + (Math.random() - 0.5) * 1.5; // aim at the ACTUAL eye (crouch lowers it)
     _tv.lerp(_eGunPos, 0.12); // utnij smugę przed graczem, żeby nie przelatywała przez kamerę
     spawnTracer(_eGunPos, _tv.clone(), 0xff6a7a);
   }

@@ -285,10 +285,11 @@ function tryFire() {
   }
   flashMuzzle(_muzzleWorld, w.id === 'shotgun' || w.id === 'sniper');
 
-  // z biodra strzela się niecelnie; ADS zbija rozrzut (snajperka: spreadZoom)
+  // z biodra strzela się niecelnie; ADS zbija rozrzut (snajperka: spreadZoom),
+  // kucanie daje mniejszy bonus do strzału z biodra
   const spread = aiming
     ? (w.spreadZoom !== undefined ? w.spreadZoom : w.spread * (w.adsMul || 0.3))
-    : w.spread;
+    : w.spread * (player.crouching ? 0.65 : 1);
   let anyHit = false, anyKill = false, anyHead = false;
 
   for (let p = 0; p < w.pellets; p++) {

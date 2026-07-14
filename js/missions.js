@@ -13,10 +13,12 @@
 
 /* ==================== TRUDNOŚĆ ==================== */
 
+/* pressureMul: interval multiplier for the MISJA-1 pressure drip (waves.js) —
+   higher = slower reinforcements while a hack/survive/gates objective runs */
 const DIFFICULTIES = {
-  easy:   { id: 'easy',   name: 'Łatwy',    hpMul: 0.90, accMul: 0.75, dmgMul: 0.70, creditMul: 0.85, timerMul: 1.2 },
-  normal: { id: 'normal', name: 'Normalny', hpMul: 1.00, accMul: 1.00, dmgMul: 1.00, creditMul: 1.00, timerMul: 1.0 },
-  hard:   { id: 'hard',   name: 'Trudny',   hpMul: 1.15, accMul: 1.20, dmgMul: 1.30, creditMul: 1.25, timerMul: 1.0 },
+  easy:   { id: 'easy',   name: 'Łatwy',    hpMul: 0.90, accMul: 0.75, dmgMul: 0.70, creditMul: 0.85, timerMul: 1.2, pressureMul: 1.4 },
+  normal: { id: 'normal', name: 'Normalny', hpMul: 1.00, accMul: 1.00, dmgMul: 1.00, creditMul: 1.00, timerMul: 1.0, pressureMul: 1.0 },
+  hard:   { id: 'hard',   name: 'Trudny',   hpMul: 1.15, accMul: 1.20, dmgMul: 1.30, creditMul: 1.25, timerMul: 1.0, pressureMul: 0.8 },
 };
 
 /* difficulty applies to the campaign only — the arena mode stays on normal
@@ -90,18 +92,20 @@ const MISSIONS = [
         unpauseWaves: true, after: ['o4'] },
       { id: 'o6', type: 'extract', label: 'Wróć do strefy startowej', zone: 'ext', seconds: 2, after: ['o5'] },
     ],
+    /* hold: true (MISJA-5) — the instructor's lines freeze movement while
+       they type; combat lines (o4) and the return leg (o5) stay free */
     radio: [
-      { on: 'start', lines: [
+      { on: 'start', hold: true, lines: [
         { who: 'sys', text: 'Kalibracja stanowiska R36. Wykonuj polecenia w kolejności.' },
         { who: 'centrala', text: 'Widzisz znacznik? Podejdź do niego. Reszta przyjdzie sama.' },
       ] },
-      { on: 'o1', lines: [
+      { on: 'o1', hold: true, lines: [
         { who: 'centrala', text: 'Dobrze. Teraz broń: rozbij trzy cele. Celuj w świecącą płytę.' },
       ] },
-      { on: 'o2', lines: [
+      { on: 'o2', hold: true, lines: [
         { who: 'centrala', text: 'Ten wzmocniony wytrzyma więcej niż magazynek. Przeładowanie: R. Nie czekaj na pustą komorę.' },
       ] },
-      { on: 'o3', lines: [
+      { on: 'o3', hold: true, lines: [
         { who: 'centrala', text: 'Kalibracja ruchu. Trzy bramki, mało czasu. Sam sprint nie wystarczy.' },
         { who: 'centrala', text: 'Skacz w rytmie lądowań — utrzymasz pęd i przyspieszysz. Jednostki tego jeszcze nie umieją.' },
       ] },
@@ -126,7 +130,7 @@ const MISSIONS = [
     medals: { time: 100, hp: 70, acc: 40 },
     brief: [
       { cls: 'chan',     text: '>> SYMULACJA S-01 „KWALIFIKACJA" // KANAŁ SŁUŻBOWY' },
-      { cls: 'centrala', text: 'CENTRALA: Właściwy sparing, R36. Na poligon wchodzą jednostki klasy PATROL. SWAT ma opinię najlepszych — pokaż dlaczego.' },
+      { cls: 'centrala', text: 'CENTRALA: Właściwy sparing, R36. Na poligon wchodzą jednostki klasy PATROL i latające WAŻKI — najtańsza linia SENTINEL. SWAT ma opinię najlepszych — pokaż dlaczego.' },
       { cls: 'centrala', text: 'CENTRALA: Twoje zadanie: stawiać opór. Ich zadanie: nauczyć się, jak go łamać.' },
       { cls: 'centrala', text: 'CENTRALA: Odeprzyj dwie fale. System rejestruje każdy twój ruch.' },
     ],
@@ -144,13 +148,14 @@ const MISSIONS = [
         { kind: 'med', x: 18, z: -18, clearR: 2.2 },
       ],
     },
-    waves: [{ scout: 4 }, { scout: 5, assault: 2 }],
+    waves: [{ scout: 3, uav: 1 }, { scout: 4, assault: 2, uav: 1 }],
     objectives: [
       { id: 'o1', type: 'waves', label: 'Odeprzyj fale' },
     ],
     radio: [
       { on: 'start', lines: [
         { who: 'centrala', text: 'Trybuny puste, za to analityka ogląda w dwustu osobach. Nie zepsuj im wykresów.' },
+        { who: 'sys', text: 'W powietrzu jednostki klasy WAŻKA. Niskie osłony ich nie zatrzymują — lecą nad nimi.' },
       ] },
       { on: 'w1', lines: [
         { who: 'centrala', text: 'Fala odparta. Druga grupa dostaje klasę SZTURM — strzelają seriami. Głowa nisko.' },
@@ -194,7 +199,7 @@ const MISSIONS = [
         { id: 'ext', kind: 'extraction', x: 18, z: 20, radius: 3 },
       ],
     },
-    waves: [{ scout: 2 }, { scout: 2, assault: 1 }],
+    waves: [{ scout: 2, uav: 1 }, { scout: 1, assault: 1, uav: 1 }],
     loop: true,
     maxAlive: 4,
     ramp: { hp: 0.05, acc: 0.03 },
@@ -248,7 +253,7 @@ const MISSIONS = [
         { id: 'ext', kind: 'extraction', x: 0, z: 25, radius: 3 },
       ],
     },
-    waves: [{ scout: 3 }, { scout: 2, assault: 2 }],
+    waves: [{ scout: 2, uav: 1 }, { scout: 2, assault: 1, uav: 1 }],
     loop: true,
     maxAlive: 5,
     ramp: { hp: 0.06, acc: 0.03 },
@@ -297,7 +302,7 @@ const MISSIONS = [
         { kind: 'med', x: 0, z: -20, clearR: 2.2 },
       ],
     },
-    waves: [{ scout: 3, assault: 1 }, { scout: 2, assault: 2 }],
+    waves: [{ scout: 2, assault: 1, uav: 1 }, { scout: 1, assault: 2, uav: 1 }],
     loop: true,
     maxAlive: 4,
     ramp: { hp: 0.05, acc: 0.03 },
@@ -351,7 +356,7 @@ const MISSIONS = [
         { id: 'ext', kind: 'extraction', x: 0, z: 18, radius: 3 },
       ],
     },
-    waves: [{ scout: 3 }, { scout: 2, assault: 2 }, { assault: 2, heavy: 1 }],
+    waves: [{ scout: 2, uav: 1 }, { scout: 2, assault: 1, uav: 1 }, { assault: 2, heavy: 1, uav: 1 }],
     loop: true,
     maxAlive: 6,
     ramp: { hp: 0.06, acc: 0.04 },
@@ -401,9 +406,9 @@ const MISSIONS = [
         { kind: 'med', x: 0, z: -16, clearR: 2.2 },
       ],
       setPieces: [
-        { id: 'gate1', kind: 'gate', x: -22, z: -20, hp: 380, units: ['scout', 'scout', 'assault'], interval: 6 },
-        { id: 'gate2', kind: 'gate', x: 22, z: -20, hp: 380, units: ['assault', 'scout'], interval: 7 },
-        { id: 'gate3', kind: 'gate', x: 0, z: -26, hp: 380, units: ['scout', 'assault', 'heavy'], interval: 8 },
+        { id: 'gate1', kind: 'gate', x: -22, z: -20, hp: 380, units: ['scout', 'uav', 'assault'], interval: 6 },
+        { id: 'gate2', kind: 'gate', x: 22, z: -20, hp: 380, units: ['assault', 'scout', 'uav'], interval: 7 },
+        { id: 'gate3', kind: 'gate', x: 0, z: -26, hp: 380, units: ['scout', 'uav', 'assault', 'heavy'], interval: 8 },
         { id: 'ext', kind: 'extraction', x: 0, z: 25, radius: 3 },
       ],
     },
@@ -512,7 +517,7 @@ const MISSIONS = [
         { id: 's2', kind: 'generator', x: 18, z: -14, hp: 300, boomR: 2.5, boomDmg: 25 },
       ],
     },
-    waves: [{ scout: 2, assault: 2 }],
+    waves: [{ scout: 1, assault: 2, uav: 1 }],
     loop: true,
     maxAlive: 4,
     ramp: { hp: 0.05, acc: 0.03 },

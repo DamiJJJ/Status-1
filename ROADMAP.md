@@ -10,16 +10,16 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 
 | ID | Zadanie | Rozmiar | Faza |
 |---|---|---|---|
-| BUG-1 | Zepsuty pointer lock po „Ponów" (mysz nie znika, nie da się grać) | S/M | teraz |
-| BUG-2 | Brak wyjścia do menu / przerwania misji w trakcie gry | S | teraz |
-| RUCH-1 | Kucanie | M | 1 |
+| BUG-1 | ✅ Zepsuty pointer lock po „Ponów" (mysz nie znika, nie da się grać) | S/M | teraz |
+| BUG-2 | ✅ Brak wyjścia do menu / przerwania misji w trakcie gry | S | teraz |
+| RUCH-1 | ✅ Kucanie | M | 1 |
 | RUCH-2 | Wchodzenie na niskie przeszkody | L | 1 |
-| MISJA-1 | Endless-spawn przy celach typu hack/strefy | M | 1 |
-| MISJA-4 | Blokada końca misji do końca dialogu | S | 1 |
-| MISJA-5 | Tutorial: blokada ruchu podczas instrukcji | S | 1 |
+| MISJA-1 | ✅ Endless-spawn przy celach typu hack/strefy | M | 1 |
+| MISJA-4 | ✅ Blokada końca misji do końca dialogu | S | 1 |
+| MISJA-5 | ✅ Tutorial: blokada ruchu podczas instrukcji | S | 1 |
 | PROG-1 | Drzewko umiejętności zamiast kredytów; bronie odblokowywane fabularnie | L | 1 |
 | TRUD-1 | Globalne podniesienie poziomu trudności | M | 1 |
-| BOT-2 | WAŻKA jako częsty przeciwnik od początku | M | 1 |
+| BOT-2 | ✅ WAŻKA jako częsty przeciwnik od początku | M | 1 |
 | PROP-1 | Ustawienia w pauzie | M | 1 |
 | PROP-6 | Dostępność (wyłącznik strobo, remap klawiszy) | S | 1 |
 | BOT-1 | Redesign botów wg emblematu z logo | L | 2 |
@@ -47,7 +47,13 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 
 ## Bugi — do naprawy przed wszystkim innym
 
-### BUG-1 · Zepsuty pointer lock po „Ponów" — S/M
+### BUG-1 · Zepsuty pointer lock po „Ponów" — S/M — ✅ ZROBIONE (2026-07-13)
+
+> Przyczyną był handler `pointerlockerror`, który mimo odmowy locka odpalał
+> `beginPlaying()`. Teraz odmowa pokazuje ekran `screen-lock` („kliknij, aby
+> grać" — świeży gest), stan `playing` włącza wyłącznie zdarzenie `lock`,
+> a `__test.pointerLock`/`wantLock` wystawiają stan do testów. Opcjonalny
+> link „graj bez przechwycenia myszy" zachowuje starą ścieżkę awaryjną.
 
 - Objaw: po kliknięciu „Ponów" kursor myszy nie znika, nie da się celować,
   ESC i inne klawisze przestają działać — gra jest nieużywalna do przeładowania
@@ -66,7 +72,11 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
   ręcznej; w `__test` warto wystawić stan locka, żeby przynajmniej rozjazd
   stanu był widoczny.
 
-### BUG-2 · Brak wyjścia do menu / przerwania misji — S
+### BUG-2 · Brak wyjścia do menu / przerwania misji — S — ✅ ZROBIONE (2026-07-13)
+
+> W pauzie doszedł przycisk „Przerwij misję" / „Wyjdź do menu" (`quitToMenu`):
+> kampania robi `mission.abort()` (rollback kredytów jak przy porażce) i wraca
+> do wyboru misji; arena zapisuje rekord i wraca na ekran startowy.
 
 - W trakcie gry nie da się wyjść do ekranu startowego — pauza nie daje opcji
   przerwania misji; jedyna droga to przeładowanie strony.
@@ -81,7 +91,11 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 
 ## Ruch gracza
 
-### RUCH-1 · Kucanie — M
+### RUCH-1 · Kucanie — M — ✅ ZROBIONE (2026-07-13)
+
+> Ctrl/C (trzymane): `player.eyeH` lerpuje PLAYER_EYE↔CROUCH_EYE, ruch ×0.55,
+> rozrzut z biodra ×0.65, sprint przerwany, płytszy/wolniejszy head-bob.
+> Boty celują w `player.pos.y` (LOS mierzył do `player.pos` już wcześniej).
 
 - Klawisz (domyślnie Ctrl/C): obniżenie `PLAYER_EYE` (płynny lerp, nie skok),
   spowolnienie ruchu, mniejszy rozrzut z biodra jako bonus.
@@ -126,7 +140,11 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 - Zostają w mocy: przód = lokalne +Z, `userData.isHead` na głowie,
   `userData.enemyRef` na każdym meshu, biały pas służby + strobo.
 
-### BOT-2 · WAŻKA jako częsty, prosty przeciwnik od początku — M
+### BOT-2 · WAŻKA jako częsty, prosty przeciwnik od początku — M — ✅ ZROBIONE (2026-07-13)
+
+> Rebalans (hp 30, dmg 3, acc 0.45, 120 pkt / 10 kr), wpisy w `waves[]`
+> od S-01 (i w bramach S-06), fale areny z uav od fali 1, formuła endless
+> dostała człon uav. S-01 zapowiada WAŻKĘ w odprawie i linii SYSTEMU.
 
 - Obecnie UAV to rzadkość — ma być podstawowym, tanim przeciwnikiem obecnym
   praktycznie od pierwszych misji (fabularnie pasuje: drony latające to
@@ -254,7 +272,11 @@ obejścia, której wtedy nie rozważono**:
 
 ## Fabuła i misje
 
-### MISJA-1 · Endless-spawn przy celach hack/strefy — M
+### MISJA-1 · Endless-spawn przy celach hack/strefy — M — ✅ ZROBIONE (2026-07-13)
+
+> `waveSystem.setPressure(on)`: cele hack/survive/gates włączają ciągłą dokrutkę
+> (interwał ~3,6 s × `pressureMul` trudności, tempo rośnie z czasem celu, skład
+> z bieżącej fali; szanuje `paused` i `maxAlive`). Wyłączana w `finishObjective`.
 
 - Problem: przy celach typu „przejmij/czekaj" fale można obejść — zostawić
   jednego bota i mieć spokój przez całą misję.
@@ -290,7 +312,11 @@ obejścia, której wtedy nie rozważono**:
   (± kilkanaście stopni — gracz może się rozglądać, ale nie zatrzymać).
 - Finałowy typewriter STATUS 1 zostaje jako zwieńczenie.
 
-### MISJA-4 · Blokada końca misji do końca dialogu — S
+### MISJA-4 · Blokada końca misji do końca dialogu — S — ✅ ZROBIONE (2026-07-13)
+
+> Komplet celów ustawia `mission.completePending` (spawny od razu stają);
+> debrief odpala się przy pustej kolejce radia. Zegar misji stoi w oczekiwaniu
+> (bez kary do CHRONOMETRU). Decyzja: porażka przerywa dialog, sukces czeka.
 
 - Ukończenie ostatniego celu nie kończy misji, dopóki kolejka radia nie jest
   pusta (typewriter dopisał + krótka pauza). Ekran końcowy czeka na
@@ -299,7 +325,11 @@ obejścia, której wtedy nie rozważono**:
   się na ekranie porażki? — do decyzji przy realizacji; prościej: porażka
   przerywa dialog, sukces czeka).
 
-### MISJA-5 · Tutorial: blokada ruchu podczas instrukcji — S
+### MISJA-5 · Tutorial: blokada ruchu podczas instrukcji — S — ✅ ZROBIONE (2026-07-13)
+
+> Flaga `hold: true` na wyzwalaczach `radio[]` (S-00: start/o1/o2/o3 — kwestie
+> bojowe o4/o5 wolne): WSAD/skok zablokowane, póki linia się pisze (+0,5 s),
+> obrót kamery zostaje. W TEST linie dopisują się natychmiast.
 
 - Dopóki linia instruktażowa się „pisze" (typewriter aktywny), gracz nie może
   ruszyć dalej: blokada WSAD/skoku (obrót kamery zostaje — zamrożenie myszy

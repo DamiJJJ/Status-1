@@ -11,18 +11,21 @@
 
 /* ==================== FALE ==================== */
 
+/* BOT-2: WAŻKA is a basic, cheap unit — present from wave 1 (fiction: flying
+   drones are the cheapest SENTINEL line), not a late-game rarity */
 const WAVE_DEFS = [
-  { scout: 4 },
-  { scout: 5, assault: 2 },
-  { scout: 5, assault: 2, heavy: 2 },
-  { scout: 5, assault: 4, heavy: 2 },
-  { scout: 6, assault: 5, heavy: 3 },
+  { scout: 3, uav: 2 },
+  { scout: 4, assault: 2, uav: 2 },
+  { scout: 4, assault: 2, heavy: 2, uav: 2 },
+  { scout: 4, assault: 3, heavy: 2, uav: 2 },
+  { scout: 5, assault: 4, heavy: 3, uav: 3 },
 ];
 
 /* endless-mode waves: ever-growing scale */
 function getWaveDef(wave) {
   if (wave <= WAVE_DEFS.length) return WAVE_DEFS[wave - 1];
-  return { scout: 4 + Math.ceil(wave / 2), assault: wave - 2, heavy: wave - 4 };
+  return { scout: 4 + Math.ceil(wave / 2), assault: wave - 2, heavy: wave - 4,
+           uav: Math.ceil(wave / 2) };
 }
 
 const waveSystem = {
@@ -46,6 +49,29 @@ const waveSystem = {
   onCleared: null,        // fn(wave); null = arena default (endlessOnCleared)
   totalWaves: TOTAL_WAVES, // for the HUD wave counter
 
+  /* --- MISJA-1: pressure — continuous drip while a hack/survive/gates
+     objective runs, so leaving one bot alive no longer buys a quiet mission.
+     The drip ramps up over the objective's lifetime (waiting it out only
+     makes the stream denser) and respects `paused` and `maxAlive`. --- */
+  pressure: false,
+  pressureT: 0,       // time since the pressure objective became active
+  pressureTimer: 0,   // countdown to the next drip spawn
+
+  setPressure(on) {
+    this.pressure = on;
+    this.pressureT = 0;
+    this.pressureTimer = 2.2; // first reinforcement arrives shortly after
+  },
+
+  /* a random type drawn from the current wave's composition */
+  pressureType() {
+    const def = this.waveDef(Math.max(1, this.wave)) || { scout: 1 };
+    const pool = [];
+    for (const [type, count] of Object.entries(def))
+      for (let i = 0; i < count; i++) pool.push(type);
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 'scout';
+  },
+
   reset(policy = {}) {
     this.wave = 0;
     this.pending = [];
@@ -64,6 +90,9 @@ const waveSystem = {
     this.scale = { hp: 1, acc: 1, dmg: 1 };
     this.onCleared = null;
     this.totalWaves = TOTAL_WAVES;
+    this.pressure = false;
+    this.pressureT = 0;
+    this.pressureTimer = 0;
     Object.assign(this, policy);
   },
 
@@ -115,6 +144,19 @@ const waveSystem = {
       this.shopPending -= dt;
       if (this.shopPending <= 0) openShop();
       return;
+    }
+    // MISJA-1: pressure drip runs on top of the normal wave flow — when the
+    // arena is at maxAlive, the next kill is replaced near-instantly
+    if (this.pressure) {
+      this.pressureT += dt;
+      this.pressureTimer -= dt;
+      if (this.pressureTimer <= 0 && enemies.length < this.maxAlive) {
+        const ramp = Math.max(0.5, 1 - this.pressureT / 75); // twice the tempo after ~40 s
+        this.pressureTimer = Math.max(1.3, 3.6 * (difficulty().pressureMul || 1) * ramp);
+        spawnEnemy(this.pressureType(), {
+          hpMul: this.hpMul, accMul: this.accMul, dmgMul: this.dmgMul, tag: this.spawnTag,
+        });
+      }
     }
     if (!this.active) {
       this.intermission -= dt;

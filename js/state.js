@@ -33,6 +33,7 @@ const screens = {
   brief: el('screen-brief'),
   debrief: el('screen-debrief'),
   mfail: el('screen-mfail'),
+  lock: el('screen-lock'),
 };
 
 function showScreen(name) {
@@ -86,7 +87,29 @@ function pauseGame() {
   setAiming(false);
   el('pause-score').textContent = game.score;
   el('pause-wave').textContent = Math.max(1, waveSystem.wave);
+  el('btn-quit-pause').textContent =
+    game.mode === 'campaign' ? 'Przerwij misję' : 'Wyjdź do menu';
   showScreen('pause');
+}
+
+/* pause → menu: abandon the mission (the attempt's credits roll back exactly
+   like on a failure) or leave the endless arena (best score saved first) —
+   the only exit used to be reloading the page */
+function quitToMenu() {
+  if (game.state !== 'paused') return;
+  firing = false;
+  setAiming(false);
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (game.mode === 'campaign') {
+    mission.abort();
+    openLevels();
+  } else {
+    if (game.score > game.best) {
+      game.best = game.score;
+      try { localStorage.setItem('status1_best', String(game.best)); } catch (e) { /* ignore */ }
+    }
+    backToMenu();
+  }
 }
 
 function endMatch(won) {
@@ -158,6 +181,8 @@ function resetLevelState() {
   player.vel.set(0, 0, 0);
   player.pos.set(arena.playerSpawn.x, PLAYER_EYE, arena.playerSpawn.z);
   player.sprinting = false;
+  player.crouching = false;
+  player.eyeH = PLAYER_EYE;
   swayPitchPrev = 0;
   swayAmp = 0;
   camera.rotation.set(0, arena.playerSpawn.yaw || 0, 0);

@@ -13,13 +13,23 @@ controls.addEventListener('unlock', () => {
   if (game.state === 'playing') pauseGame();
 });
 document.addEventListener('pointerlockerror', () => {
-  // przeglądarka odmówiła pointer locka — graj mimo to (mysz bez przechwycenia)
+  // the browser refused the lock (e.g. Chrome's ~1.25 s cooldown after an ESC
+  // exit) — do NOT start playing blind: show the overlay and wait for a fresh
+  // click gesture; starting anyway used to leave the game unplayable (BUG-1)
+  if (wantLock) showScreen('lock');
+});
+el('btn-lock-retry').addEventListener('click', () => {
+  if (wantLock) lockPointer(); // click = fresh gesture; 'lock' event starts play
+});
+el('btn-lock-skip').addEventListener('click', () => {
+  // explicit opt-in to the old behavior (mouse not captured)
   if (wantLock) { wantLock = false; beginPlaying(); }
 });
 
 el('btn-start').addEventListener('click', () => startArena());
 el('btn-resume').addEventListener('click', resumeGame);
 el('btn-restart-pause').addEventListener('click', restartGame);
+el('btn-quit-pause').addEventListener('click', quitToMenu);
 el('btn-restart-over').addEventListener('click', restartGame);
 el('btn-restart-win').addEventListener('click', restartGame);
 el('btn-shop-continue').addEventListener('click', continueFromShop);

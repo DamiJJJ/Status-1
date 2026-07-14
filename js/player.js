@@ -49,7 +49,13 @@ function lockPointer() {
   const el = document.body;
   try {
     const p = el.requestPointerLock({ unadjustedMovement: true });
-    if (p && p.catch) p.catch(() => el.requestPointerLock());
+    if (p && p.catch) p.catch(() => {
+      // unadjustedMovement unsupported or a transient refusal — plain retry;
+      // a swallowed rejection here would land in __test.errors, and a second
+      // failure fires 'pointerlockerror' (handled by the overlay in input.js)
+      const p2 = el.requestPointerLock();
+      if (p2 && p2.catch) p2.catch(() => { /* pointerlockerror handles it */ });
+    });
   } catch (err) {
     el.requestPointerLock();
   }
@@ -62,6 +68,8 @@ const player = {
   onGround: true,
   moving: false,
   sprinting: false,
+  crouching: false, // kucanie (Ctrl/C): wolniej, niżej, mniejszy rozrzut z biodra
+  eyeH: PLAYER_EYE, // bieżąca wysokość oka (płynny lerp PLAYER_EYE ↔ CROUCH_EYE)
   hopBoost: 1,      // bunnyhop: mnożnik prędkości za łańcuch skoków
   sinceLand: 10,    // czas od ostatniego lądowania
 };
@@ -132,19 +140,29 @@ function updatePlayer(dt) {
   _fwd.normalize();
   _right.crossVectors(_fwd, UP);
 
+  // a held instructor line (radio hold, tutorial) freezes WSAD/jump —
+  // camera look stays free, freezing the mouse would just feel broken
+  const inputHold = radioHoldT > 0;
   let ix = 0, iz = 0;
-  if (keys['KeyW']) iz += 1;
-  if (keys['KeyS']) iz -= 1;
-  if (keys['KeyD']) ix += 1;
-  if (keys['KeyA']) ix -= 1;
+  if (!inputHold) {
+    if (keys['KeyW']) iz += 1;
+    if (keys['KeyS']) iz -= 1;
+    if (keys['KeyD']) ix += 1;
+    if (keys['KeyA']) ix -= 1;
+  }
   _wish.set(0, 0, 0).addScaledVector(_fwd, iz).addScaledVector(_right, ix);
   const hasInput = _wish.lengthSq() > 0;
   if (hasInput) _wish.normalize();
-  // celowanie wyłącza sprint i spowalnia ruch
-  const sprintKey = (keys['ShiftLeft'] || keys['ShiftRight']) && !aiming;
+  // crouch (hold Ctrl/C): slower, lower eye, tighter hip fire; bots aim at
+  // player.pos.y, so ducking behind low cover genuinely hides the player
+  player.crouching = !!(keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC']);
+  const targetEye = player.crouching ? CROUCH_EYE : PLAYER_EYE;
+  player.eyeH += (targetEye - player.eyeH) * Math.min(1, dt * 10);
+  // celowanie i kucanie wyłączają sprint i spowalniają ruch
+  const sprintKey = (keys['ShiftLeft'] || keys['ShiftRight']) && !aiming && !player.crouching;
   player.sprinting = sprintKey && hasInput; // sprint trwa też w powietrzu (bunnyhop)
   let speed = (sprintKey ? SPRINT_SPEED : WALK_SPEED) * player.hopBoost;
-  if (aiming) speed *= 0.55;
+  if (aiming || player.crouching) speed *= 0.55;
 
   // wygładzanie przyspieszenia (w powietrzu mniejsza kontrola, ale pęd zostaje)
   const accel = player.onGround ? 14 : 5;
@@ -154,7 +172,7 @@ function updatePlayer(dt) {
 
   // grawitacja / skok; trzymanie spacji auto-skacze przy lądowaniu (autohop)
   player.vel.y -= GRAVITY * dt;
-  if (keys['Space'] && player.onGround) {
+  if (keys['Space'] && !inputHold && player.onGround) {
     player.vel.y = JUMP_SPEED;
     player.onGround = false;
     AudioSys.jump();
@@ -169,8 +187,8 @@ function updatePlayer(dt) {
   player.pos.z += player.vel.z * dt;
   player.pos.y += player.vel.y * dt;
 
-  if (player.pos.y <= PLAYER_EYE) {
-    player.pos.y = PLAYER_EYE;
+  if (player.pos.y <= player.eyeH) {
+    player.pos.y = player.eyeH;
     if (!player.onGround) {
       player.sinceLand = 0;
       // landing thud scaled by fall speed (vel.y still holds the impact velocity)
@@ -178,6 +196,11 @@ function updatePlayer(dt) {
     }
     player.vel.y = 0;
     player.onGround = true;
+  } else if (player.onGround && player.vel.y <= 0) {
+    // standing: the eye follows the crouch lerp directly — letting gravity
+    // pull the camera down would read as a fall (and could trigger a land thud)
+    player.pos.y = player.eyeH;
+    player.vel.y = 0;
   }
   if (player.onGround) {
     player.sinceLand += dt;
@@ -198,9 +221,11 @@ let swayStepIdx = 0;
 
 function updateCameraSway(dt) {
   const movingGround = player.moving && player.onGround;
-  const targetAmp = player.sprinting ? 0.011 : (movingGround ? 0.004 : 0);
+  // crouched: shallower and slower bob (short careful steps)
+  const walkAmp = player.crouching ? 0.0025 : 0.004;
+  const targetAmp = player.sprinting ? 0.011 : (movingGround ? walkAmp : 0);
   swayAmp += (targetAmp - swayAmp) * Math.min(1, dt * 8);
-  swayPhase += dt * (player.sprinting ? 11 : 8) * (movingGround ? 1 : 0.4);
+  swayPhase += dt * (player.sprinting ? 11 : player.crouching ? 6 : 8) * (movingGround ? 1 : 0.4);
   // footsteps ride the head-bob cycle: one step per half period, triggered at
   // the bottom of the bob (phase = π/2 + kπ) so the audio matches the camera dip
   const stepIdx = Math.floor((swayPhase - Math.PI / 2) / Math.PI);

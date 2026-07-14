@@ -49,6 +49,13 @@ function tick(now) {
   __test.hopBoost = Math.round(player.hopBoost * 100) / 100;
   __test.mode = game.mode;
   __test.difficulty = game.difficulty;
+  // pointer lock state vs intent — a mismatch is exactly the old BUG-1
+  __test.pointerLock = !!document.pointerLockElement;
+  __test.wantLock = wantLock;
+  __test.crouch = player.crouching;
+  __test.eyeH = Math.round(player.eyeH * 100) / 100;
+  __test.pressure = waveSystem.pressure;
+  __test.radioHold = radioHoldT > 0;
   __test.mission = (game.mode === 'campaign' && mission.def) ? {
     id: mission.def.id,
     active: mission.active,

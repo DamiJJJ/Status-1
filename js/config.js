@@ -23,6 +23,7 @@ const PALETTE = {
 
 const ARENA_HALF = 35;          // arena 70 × 70
 const PLAYER_EYE = 1.7;
+const CROUCH_EYE = 1.05;        // eye height while crouched (Ctrl/C)
 const PLAYER_RADIUS = 0.5;
 const GRAVITY = 22;
 const WALK_SPEED = 6.2;

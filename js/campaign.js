@@ -141,6 +141,7 @@ const OBJECTIVE_TYPES = {
     start(o) {
       o.max = o.def.zones.length;
       o.data = { window: o.def.window * difficulty().timerMul };
+      waveSystem.setPressure(true); // MISJA-1 (a paused director stays silent)
       for (const id of o.def.zones) {
         const z = getProp(id);
         if (z) { z.active = true; for (const m of z.meshes) m.visible = true; }
@@ -175,7 +176,10 @@ const OBJECTIVE_TYPES = {
   },
   // stay alive for T seconds (timers stretch on easy via timerMul)
   survive: {
-    start(o) { o.max = Math.round(o.def.seconds * difficulty().timerMul); },
+    start(o) {
+      o.max = Math.round(o.def.seconds * difficulty().timerMul);
+      waveSystem.setPressure(true); // MISJA-1: the wait can't be camped out
+    },
     update(o, dt) { o.t += dt; o.cur = Math.min(o.max, o.t); },
     isDone(o) { return o.t >= o.max; },
     text(o) { return `${o.def.label} — ${Math.ceil(Math.max(0, o.max - o.t))} s`; },
@@ -186,6 +190,7 @@ const OBJECTIVE_TYPES = {
     start(o) {
       o.max = o.def.terminals.length;
       const need = o.def.seconds;
+      waveSystem.setPressure(true); // MISJA-1: no camping next to the console
       for (const id of o.def.terminals) {
         const p = getProp(id);
         if (p) { p.active = true; p.hackNeed = need; }
@@ -281,6 +286,7 @@ const mission = {
     this.def = def;
     this.time = 0;
     this.active = true;
+    this.completePending = false;
     this.creditsAtStart = game.credits;
     this.scoreAtStart = game.score;
     this.kills = 0;
@@ -328,6 +334,16 @@ const mission = {
 
   update(dt) {
     if (!this.active || game.state !== 'playing') return; // shop/pause must freeze objectives
+    // MISJA-4: all objectives done → the debrief waits for the radio queue to
+    // drain; the clock is stopped so the wait can't cost the CHRONOMETR medal
+    if (this.completePending) {
+      if (!radioCur && radioQueue.length === 0) {
+        this.completePending = false;
+        this.active = false;
+        missionComplete();
+      }
+      return;
+    }
     this.time += dt;
     // parade stream (epilogue): passive units marching across the hall
     if (this.def.parade) {
@@ -345,7 +361,7 @@ const mission = {
       for (const r of this.def.radio) {
         if (r.on[0] === 't' && !this.radioFired.has(r) && this.time >= Number(r.on.slice(1))) {
           this.radioFired.add(r);
-          radioSay(r.lines);
+          radioSay(r.lines, !!r.hold);
         }
       }
     }
@@ -364,7 +380,7 @@ const mission = {
     for (const r of this.def.radio) {
       if (r.on === key && !this.radioFired.has(r)) {
         this.radioFired.add(r);
-        radioSay(r.lines);
+        radioSay(r.lines, !!r.hold);
       }
     }
   },
@@ -395,6 +411,10 @@ const mission = {
     o.state = 'done';
     showCenterMsg(`Cel wykonany: ${o.def.label}`, 2.0);
     AudioSys.objDone();
+    // MISJA-1: pressure objectives switch the drip off once they're done
+    if (o.def.type === 'hack' || o.def.type === 'survive' || o.def.type === 'gates') {
+      waveSystem.setPressure(false);
+    }
     if (o.def.shieldDown) { // stabilizers down → the prototype loses its shield
       for (const e of enemies) if (e.isBoss) e.invulnerable = false;
       showCenterMsg('Tarcza prototypu wyłączona', 2.2, true);
@@ -402,9 +422,10 @@ const mission = {
     this.fireRadio(o.def.id);
     this.unlockReady();
     if (this.objectives.every(x => x.state === 'done')) {
-      this.active = false;
+      // MISJA-4: don't end the mission mid-sentence — update() completes it
+      // once the radio queue is empty (spawns stop immediately, though)
       waveSystem.paused = true;
-      missionComplete();
+      this.completePending = true;
     }
   },
 
@@ -433,8 +454,26 @@ const mission = {
   fail(reason) {
     if (!this.active) return;
     this.active = false;
+    this.completePending = false; // death interrupts the dialogue, success waits
     waveSystem.paused = true;
     missionFailed(reason);
+  },
+
+  /* abandoning from the pause menu (BUG-2): the attempt's earnings roll back
+     exactly like on a failure, but with no fail screen — the caller decides
+     where to navigate (mission list) */
+  abort() {
+    if (!this.active) return;
+    this.active = false;
+    this.completePending = false;
+    waveSystem.paused = true;
+    game.credits = this.creditsAtStart;
+    game.score = this.scoreAtStart;
+    scoreEl.textContent = game.score;
+    updateCreditsHud();
+    radioClear();
+    clearObjectiveMarkers();
+    updateObjectiveHud();
   },
 };
 
@@ -866,20 +905,26 @@ function rebuildObjectiveMarkers() {
 const RADIO_WHO = { centrala: 'CENTRALA', baker: 'baker', sys: 'SYSTEM' };
 const radioQueue = [];
 let radioCur = null, radioChar = 0, radioTick = 0, radioHold = 0;
+/* MISJA-5: radio triggers with hold:true freeze WSAD/jump while their lines
+   type (+ a short tail) — read by updatePlayer; look stays free */
+let radioHoldT = 0;
 
-function radioSay(lines) {
-  for (const l of lines) radioQueue.push(l);
+function radioSay(lines, hold = false) {
+  // copy when tagging — the line objects are shared mission data
+  for (const l of lines) radioQueue.push(hold ? { ...l, hold: true } : l);
 }
 
 function radioClear() {
   radioQueue.length = 0;
   radioCur = null;
+  radioHoldT = 0;
   const box = el('radio-box');
   if (box) box.classList.remove('on');
 }
 
 function updateRadio(dt) {
   if (game.state !== 'playing') return;
+  radioHoldT = Math.max(0, radioHoldT - dt);
   const box = el('radio-box');
   if (!radioCur) {
     if (!radioQueue.length) {
@@ -896,16 +941,21 @@ function updateRadio(dt) {
     el('radio-text').textContent = '';
   }
   if (radioChar < radioCur.text.length) {
-    radioTick -= dt;
-    while (radioTick <= 0 && radioChar < radioCur.text.length) {
-      radioChar++;
-      radioTick += 0.026; // ~38 chars/s
-      if (radioChar % 3 === 0) AudioSys.voice(radioCur.who);
+    if (radioCur.hold) radioHoldT = 0.5; // movement unlocks 0.5 s after the line lands
+    if (TEST) {
+      radioChar = radioCur.text.length; // tests never wait on prose
+    } else {
+      radioTick -= dt;
+      while (radioTick <= 0 && radioChar < radioCur.text.length) {
+        radioChar++;
+        radioTick += 0.026; // ~38 chars/s
+        if (radioChar % 3 === 0) AudioSys.voice(radioCur.who);
+      }
     }
     el('radio-text').textContent = radioCur.text.slice(0, radioChar);
   } else {
     radioHold += dt;
-    if (radioHold >= 1.1 + radioCur.text.length * 0.028) radioCur = null;
+    if (radioHold >= (TEST ? 0.15 : 1.1 + radioCur.text.length * 0.028)) radioCur = null;
   }
 }
 

@@ -134,6 +134,7 @@
       <div class="key"><kbd>1</kbd>–<kbd>4</kbd> / <kbd>scroll</kbd></div><div class="desc">zmiana broni</div>
       <div class="key"><kbd>Shift</kbd></div><div class="desc">bieg</div>
       <div class="key"><kbd>Spacja</kbd></div><div class="desc">skok</div>
+      <div class="key"><kbd>Ctrl</kbd> / <kbd>C</kbd></div><div class="desc">kucanie</div>
       <div class="key"><kbd>Esc</kbd></div><div class="desc">pauza</div>
     </div>
     <button class="btn" id="btn-campaign">Kampania</button>
@@ -204,6 +205,19 @@
     <div class="end-stats">Wynik: <b id="pause-score">0</b> &middot; Fala <b id="pause-wave">1</b></div>
     <button class="btn" id="btn-resume">Wznów</button>
     <button class="btn secondary" id="btn-restart-pause">Restart</button>
+    <button class="btn secondary" id="btn-quit-pause">Wyjdź do menu</button>
+  </div>
+</div>
+
+<!-- pointer lock refused (e.g. Chrome's ~1.25 s cooldown after ESC) — the game
+     never starts "blind"; this overlay waits for a fresh click gesture -->
+<div id="screen-lock" class="screen">
+  <div class="screen-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-small" draggable="false">
+    <h2>Przechwycenie myszy</h2>
+    <div class="end-stats">Przeglądarka odmówiła przechwycenia kursora<br>(chwila karencji po wyjściu z gry).</div>
+    <button class="btn" id="btn-lock-retry">Kliknij, aby grać</button>
+    <div class="screen-hint"><button class="linklike" id="btn-lock-skip">graj bez przechwycenia myszy</button></div>
   </div>
 </div>
 

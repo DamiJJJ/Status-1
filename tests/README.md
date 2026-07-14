@@ -32,6 +32,7 @@ bez serwera. Uruchamianie: `python tests/phase0_test.py` itd.
 | `phase4_test.py` | Tutorial (łańcuch celów, bramki pędu), medale (progi + wypłata + zapis), TARAN jako set-piece, radio (w tym debiut BAKERA) |
 | `phase5_test.py` | BRAMY (strumień jednostek, gaśnięcie po zniszczeniu), UAV (pułap ~3 m), boss z tarczą/stabilizatorami, m9 → epilog (parada, karta finału), regresja areny |
 | `phase5d_test.py` | **Pełne przejście kampanii** t0→…→m9→epilog przez prawdziwy przepływ ekranów + `file://` |
+| `phase6_test.py` | Partia roadmapy 2026-07-13: kucanie (lerp oka, blokada sprintu), WAŻKA w 1. fali areny, pressure przy hack/survive/gates (dokrutka mimo zatrzymanego reżysera), koniec misji czeka na radio, hold radia blokuje WSAD, wyjście do menu z pauzy (rollback/rekord), nakładka odmowy pointer locka |
 | `status1_test.py` | Smoke po rebrandingu: tytuł/wordmark STATUS 1, treść odprawy (Davidson/R36), migracja starych kluczy zapisu, karta finału, `file://` |
 | `shots.py`, `shots2.py` | Nie-testy: zrzuty ekranów (menu, wybór misji, odprawa, drony w liberiach, motyw ember) do `tests/_shots/` — do ręcznej oceny wizualnej |
 

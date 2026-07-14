@@ -136,6 +136,20 @@ więc formy męskie w kwestiach DO gracza są OK.
 
 - Kamera: `rotation.order = 'YXZ'`; PointerLockControls tylko do obrotu, pozycja liczona
   ręcznie (kolizje okrąg-vs-AABB w XZ, lista `colliders`). Przeszkody muszą być osiowe.
+- **Pointer lock — nigdy nie startuj gry „na ślepo".** Każde wejście do rozgrywki
+  (start / ponów / wznów / misja) ustawia `wantLock = true` i woła `lockPointer()`;
+  stan `playing` włącza dopiero zdarzenie `lock`. Odmowa (`pointerlockerror` — np.
+  ~1,25 s karencji Chrome po wyjściu ESC) pokazuje ekran `screen-lock` („kliknij,
+  aby grać" = świeży gest) zamiast odpalać grę bez przechwyconej myszy. Diagnostyka:
+  `__test.pointerLock` / `__test.wantLock`. Z pauzy wychodzi się przez `quitToMenu()`
+  (kampania: `mission.abort()` z rollbackiem kredytów jak przy porażce → wybór misji;
+  arena: zapis rekordu → ekran startowy).
+- **Kucanie** (Ctrl/C, trzymane): `player.crouching` + `player.eyeH` (płynny lerp
+  `PLAYER_EYE`↔`CROUCH_EYE`; podłoga to `pos.y <= eyeH` — stojąc na ziemi oko podąża
+  za lerpem wprost, bez grawitacji, żeby zejście w kucki nie brzmiało jak upadek).
+  Kucanie wyłącza sprint, spowalnia ruch ×0.55 i zbija rozrzut z biodra ×0.65.
+  **Boty celują w `player.pos.y`** (nie w stałą `PLAYER_EYE`) — kucnięcie za niską
+  osłoną realnie zrywa im LOS i punkt celowania. Reset stanu w `resetLevelState`.
 - Model bota: przód to lokalne **+Z** (yaw = `atan2(dx, dz)`); meshe głowy mają
   `userData.isHead` (headshot ×2), wszystkie meshe `userData.enemyRef`.
 - Typy botów (`ENEMY_TYPES`): pole `weapon` ('pistol' | 'auto' | 'shotgun') steruje
@@ -246,6 +260,18 @@ więc formy męskie w kwestiach DO gracza są OK.
   bunnyhop). Łańcuchy przez `after: [ids]`. Zdarzenia wchodzą JEDNYM wejściem
   `missionEvent(ev, payload)` (no-op poza kampanią): `kill` z `killEnemy`,
   `prop` z `destroyProp`, fale przez callback `onCleared`.
+- **Pressure (anty-camping):** cele `hack`/`survive`/`gates` włączają w reżyserze
+  ciągły dopływ — `waveSystem.setPressure(true)` w ich `start`, wyłączany
+  w `finishObjective`. Dokrutka co ~3,6 s × `pressureMul` trudności, tempo rośnie
+  z czasem celu (po ~40 s dwukrotnie), typ losowany ze składu bieżącej fali;
+  szanuje `paused` (tutorial ze wstrzymanym reżyserem zostaje cichy) i `maxAlive`
+  (przy suficie zabity bot jest zastępowany niemal od ręki). Zostawienie jednego
+  żywego bota nie kupuje już spokoju.
+- **Koniec misji czeka na radio:** komplet celów ustawia `mission.completePending`
+  (spawny stają od razu — `waveSystem.paused`), a `missionComplete()` odpala
+  `mission.update` dopiero przy pustej kolejce radia. Zegar misji stoi w trakcie
+  oczekiwania (dialog nie kosztuje medalu CHRONOMETR). Śmierć gracza przerywa
+  dialog i failuje normalnie — czeka tylko sukces.
 - **Propy** (`js/props.js`): płaskie meshe w `worldGroup` + `userData.propRef` —
   NIGDY nie zagnieżdżaj `Group` w `worldGroup` (LOS botów jest NIEREKURENCYJNY:
   grupa zatrzymałaby pociski, a bot strzelałby przez nią). Rodzaje: `generator`
@@ -264,11 +290,16 @@ więc formy męskie w kwestiach DO gracza są OK.
 - **Trudność** (`DIFFICULTIES`, kampania only — arena zawsze normal, żeby rekord
   był porównywalny): składa się w JEDNYM punkcie (`waveSystem.startNextWave`):
   `(1+(fala−1)·ramp) × difficulty × mission.scale`. Obrażenia botów NIGDY przez
-  mutację `ENEMY_TYPES` — stempel per jednostka (`e.dmgMul`).
+  mutację `ENEMY_TYPES` — stempel per jednostka (`e.dmgMul`). `pressureMul`
+  w `DIFFICULTIES` skaluje interwał dokrutki pressure (łatwy wolniej, trudny szybciej).
 - **Radio** (dialogi w misji): kolejka linii `{who: centrala|baker|sys, text}`,
   box `#radio-box`, typewriter + robo-blip `AudioSys.voice(who)` co 3 znaki
   (każda postać ma inny syntetyczny tembr). Wyzwalacze `radio[]`: `start`,
   id celu (po jego ukończeniu), `wN` (fala N odparta), `tSEC` (czas misji).
+  Wyzwalacz z `hold: true` blokuje WSAD/skok, póki jego linie się piszą
+  (+0,5 s po dopisaniu; `radioHoldT`, czyta go `updatePlayer`) — obrót kamery
+  zostaje wolny; używane w instruktażu S-00. W trybie TEST linie radia dopisują
+  się natychmiast (testy nie czekają na prozę), a hold trwa tylko ten ogon.
 - **Zapis** (`localStorage`, klucz `status1_save`, v1; fallback ze starszego
   `czynnasluzba_save`): postęp misji
   (done/bestTime/medals), bieg (`run`: kredyty/poziomy sklepu — bronie wynikają
@@ -283,7 +314,9 @@ więc formy męskie w kwestiach DO gracza są OK.
   TARAN czarno-granatowy/kula (głowa jaśniejsza specjalnym kolorem, nie czernią),
   WAŻKA (uav) = quadkopter: `fly: 3.0` w ENEMY_TYPES, wisi na pułapie, przelatuje
   NAD niskimi osłonami (`resolveCollisions(..., minTop)`), model bez nóg (guardy
-  `e.legL`), rotory się kręcą. Wszystkie jednostki mają zsynchronizowane strobo
+  `e.legL`), rotory się kręcą. WAŻKA to **podstawowy, tani przeciwnik od S-01
+  i od 1. fali areny** (BOT-2: mało HP, słaby ostrzał, chodzi w 2–3 sztuki;
+  fabularnie najtańsza linia SENTINEL) — nie traktuj jej jak rzadkości. Wszystkie jednostki mają zsynchronizowane strobo
   (współdzielone `matStrobeR/B`, animowane raz na klatkę). Boss = heavy ze
   `scaleMul`/`hpMul`/`invulnerable` (tarcza: blady flash, zero obrażeń) —
   per-jednostkowy `e.radius` zamiast `e.type.radius`.
@@ -311,7 +344,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   - `window.__test` — stan aktualizowany co klatkę (state, hp, score, wave, enemies,
     ammo, fov, credits, headshots, endless, errors[], mode, difficulty,
     mission {id, active, time, kills, objectives[]}, seed, arenaHash,
-    arenaReachable); audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`;
+    arenaReachable, pointerLock/wantLock, crouch/eyeH, pressure, radioHold);
+    audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`;
   - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
     (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);
     `&wave=N` (arena od fali N); **`?test=mission&m=<id>&diff=easy|normal|hard`**
@@ -399,6 +433,14 @@ pościg, epilog bez walki), **czwarty typ bota** (WAŻKA — latający quadkopte
 **boss** (prototyp SENTINEL-1), **poziomy trudności**, **medale** (3/misję),
 **zapis kampanii**, **dialogi radiowe z robo-głosami**, **liberie policyjne +
 strobo**, **motywy aren**, **holo-logi tekstowe**, rebranding.
+
+Zrobione w fazie „teraz/1" roadmapy (2026-07-13): **naprawa pointer locka**
+(ekran `screen-lock` zamiast startu bez myszy — BUG-1), **wyjście do menu
+z pauzy** (`quitToMenu`/`mission.abort` — BUG-2), **kucanie** (RUCH-1),
+**koniec misji czeka na dialog** (`completePending` — MISJA-4), **hold radia
+w tutorialu** (MISJA-5), **pressure przy celach hack/survive/gates** (MISJA-1),
+**WAŻKA jako częsty przeciwnik od S-01 i w arenie** (BOT-2). Szczegóły
+w Konwencjach i sekcji Kampania.
 
 Pomysły na dalszą rozbudowę:
 
