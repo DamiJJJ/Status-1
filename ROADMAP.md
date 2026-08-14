@@ -25,7 +25,7 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 | PROP-6 | Dostępność (✅ wyłącznik strobo; remap klawiszy — otwarte) | S | 1 |
 | BOT-1 | Redesign botów wg emblematu z logo | L | 2 |
 | BRON-1 | Remodeling broni na realne odpowiedniki | L | 2 |
-| MENU-1 | Menu główne z animowaną panoramą Los Santos | L | 2 |
+| MENU-1 | ✅ Menu główne z animowaną panoramą Los Santos | L | 2 |
 | MENU-2 | Synth-ambient w menu (SUNO) | M + decyzja | 2 |
 | PROP-12 | Panorama miasta jako skybox w rozgrywce | M | 2 |
 | PROP-3 | Nawigacja botów (graf waypointów) | L | 3 |
@@ -197,18 +197,19 @@ Docelowe pierwowzory (sylwetka i charakter, nie kopia 1:1):
 
 ## Menu i oprawa
 
-### MENU-1 · Menu główne z animowaną panoramą Los Santos — L
+### MENU-1 · Menu główne z animowaną panoramą Los Santos — L — ✅ ZROBIONE (2026-08-14)
 
-- Pełnoprawny ekran główny przed obecnym ekranem startowym: animowane tło
-  futurystyczno-cyberpunkowe — panorama Los Santos przyszłości (wieżowce,
-  neony, przelatujące drony SENTINEL, może deszcz/smog w świetle reflektorów).
-- Rekomendacja techniczna: **lekka scena Three.js** (sylwetki wieżowców
-  z boxów + emisyjne okna z `TexGen`, warstwy paralaksy, bloom już jest
-  w pipeline) zamiast wideo/obrazka — zero assetów, spójne z resztą gry,
-  animowalne. Kamera powoli dryfuje.
-- Menu: Kampania / Arena bez końca / Zbrojownia / Ustawienia (PROP-1) /
-  statystyki. Obecne ekrany start/pauza zostają pod spodem — menu to
-  nadrzędna warstwa nawigacji.
+> Zrealizowane wg rekomendacji: lekka scena Three.js w `js/menubg.js`
+> (3 pasma wieżowców z boxów + okna z `TexGen.makeCityWindows`, neony,
+> drony SENTINEL ze strobo, reflektory, smog, dryf kamery), renderowana
+> współdzielonym composerem (bloom gratis) przez przełączenie `renderPass`
+> w `tick`. Układ menu w stylu Cyberpunka (kolumna po lewej, pozycje
+> tekstowe), panorama w tonacji niebiesko-czerwonej z doświetlonym dołem
+> kadru. Menu: Kampania / Arena bez końca / Zbrojownia / Ustawienia /
+> Statystyki; stary ekran startowy został jako ekran wejścia do areny.
+> HUD rozgrywki chowany na ekranach nawigacji (`body.menu-bg`).
+> Szczegóły w CLAUDE.md (Konwencje techniczne → Menu główne);
+> testy: `tests/menu_test.py`.
 
 ### MENU-2 · Synth-ambient w menu (SUNO) — M + decyzja
 

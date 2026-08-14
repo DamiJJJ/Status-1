@@ -7,6 +7,7 @@
 /* ==================== GŁÓWNA PĘTLA ==================== */
 
 let lastTime = performance.now();
+let menuBgWas = null; // last body.menu-bg state (HUD hidden on the panorama)
 
 function tick(now) {
   requestAnimationFrame(tick);
@@ -70,6 +71,19 @@ function tick(now) {
     })),
   } : null;
 
+  // MENU-1: navigation screens render the animated city panorama instead of
+  // the game world — retarget the shared render pass (bloom stays in place)
+  const onMenuBg = menuBgActive();
+  if (onMenuBg) MenuBg.update(dt);
+  renderPass.scene = onMenuBg ? MenuBg.scene : scene;
+  renderPass.camera = onMenuBg ? MenuBg.camera : camera;
+  if (onMenuBg !== menuBgWas) {
+    // the transparent menu screen would let the gameplay HUD bleed through
+    menuBgWas = onMenuBg;
+    document.body.classList.toggle('menu-bg', onMenuBg);
+  }
+  __test.menuBg = onMenuBg;
+
   composer.render();
 }
 
@@ -77,6 +91,8 @@ function tick(now) {
    (The arena is no longer built at world.js parse time, so it can be
    rebuilt at runtime for campaign missions.) */
 buildArena(arenaModeDef());
+MenuBg.build();       // the panorama greets the player on frame one
+renderMenuMeta();     // campaign/record summary under the menu buttons
 updateHpHud();
 updateWeaponHud();
 requestAnimationFrame(tick);

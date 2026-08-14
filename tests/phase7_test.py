@@ -33,8 +33,8 @@ with sync_playwright() as pw:
     page = browser.new_page()
     page.goto(f"{BASE}/")
     page.evaluate("localStorage.removeItem('status1_settings')")
-    page.click("#btn-settings-start")
-    check("settings: opens from the start screen",
+    page.click("#btn-menu-settings")
+    check("settings: opens from the main menu",
           page.evaluate("game.state === 'settings'"
                         " && screens.settings.classList.contains('visible')"), "")
     page.evaluate("el('set-sens').value = 150;"
@@ -54,9 +54,9 @@ with sync_playwright() as pw:
           saved and saved["sens"] == 1.5 and saved["strobe"] is False
           and saved["volMaster"] == 0.4, str(saved))
     page.click("#btn-settings-back")
-    check("settings: back returns to the start screen",
+    check("settings: back returns to the main menu",
           page.evaluate("game.state === 'menu'"
-                        " && screens.start.classList.contains('visible')"), "")
+                        " && screens.menu.classList.contains('visible')"), "")
     check("settings: no errors", not page.evaluate("window.__test.errors"),
           str(page.evaluate("window.__test.errors"))[:200])
 
@@ -95,10 +95,12 @@ with sync_playwright() as pw:
     page.evaluate("window.__killAll(); waveSystem.paused = true;"
                   "waveSystem.pending = []; waveSystem.intermission = 99999")
     # crouch from a standstill: plain crouch, NO slide
+    # (poll instead of a fixed sleep — SwiftShader renders a handful of FPS,
+    # so the crouch may need ~1 s of wall clock to be processed at all)
     page.keyboard.down("c")
-    time.sleep(0.6)
+    ok = wait_for(page, "player.crouching === true", 15)
     check("slide: not triggered from a standstill",
-          page.evaluate("player.sliding === false && player.crouching === true"), "")
+          ok and page.evaluate("player.sliding === false"), "")
     page.keyboard.up("c")
     wait_for(page, "player.crouching === false && player.eyeH > 1.65", 15)
     # build sprint speed, then crouch -> slide

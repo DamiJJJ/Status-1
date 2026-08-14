@@ -392,6 +392,103 @@ html, body {
 
 .screen-hint { margin-top: 18px; font-size: 12px; color: var(--text-dim); letter-spacing: 1px; }
 
+/* ---------- menu główne (MENU-1) ---------- */
+/* the panorama replaces the game world, so the gameplay HUD must not bleed
+   through the transparent menu screens (main.js toggles body.menu-bg) */
+body.menu-bg .hud,
+body.menu-bg #crosshair,
+body.menu-bg #vignette { display: none !important; } /* beats the id-level display rules */
+
+/* transparent screen: the animated city panorama renders behind it.
+   Cyberpunk-style composition: the menu lives in a translucent command-panel
+   column on the LEFT, the right 2/3 of the frame belongs to the city */
+.screen--panorama {
+  background: transparent;
+  backdrop-filter: none;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+.screen--panorama::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg,
+    rgba(14, 5, 16, 0.86) 0%, rgba(14, 5, 16, 0.6) 28%,
+    rgba(14, 5, 16, 0.26) 46%, transparent 64%);
+  pointer-events: none;
+}
+.menu-box {
+  position: relative;
+  text-align: left;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 6vh 0 4vh clamp(28px, 6vw, 96px);
+}
+.menu-box .game-lockup {
+  /* top auto-margin mirrors #menu-progress's, keeping the block centered */
+  margin: auto 0 4px;
+  width: min(360px, 38vw);
+}
+.menu-box .game-subtitle { margin-bottom: 5vh; }
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(300px, 72vw);
+}
+/* menu items: text list, not boxed buttons — primary entry gets the framed
+   "selected" look, the rest are red text that flips teal on hover */
+.menu-buttons .btn {
+  margin: 0;
+  text-align: left;
+  color: var(--teal);
+  background: rgba(0, 235, 199, 0.1);
+  border: 1px solid rgba(0, 235, 199, 0.5);
+  border-left: 3px solid var(--teal);
+  border-radius: 2px;
+  box-shadow: none;
+  padding: 12px 16px;
+  font-size: 15px;
+  letter-spacing: 4px;
+}
+.menu-buttons .btn:hover {
+  transform: none;
+  background: rgba(0, 235, 199, 0.2);
+  box-shadow: 0 0 18px rgba(0, 235, 199, 0.25);
+}
+.menu-buttons .btn.secondary {
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  color: rgba(255, 84, 112, 0.92);
+  text-shadow: 0 0 10px rgba(255, 84, 112, 0.25);
+}
+.menu-buttons .btn.secondary:hover {
+  color: var(--teal);
+  border-left-color: var(--teal);
+  background: linear-gradient(90deg, rgba(0, 235, 199, 0.14), transparent 85%);
+  text-shadow: 0 0 12px rgba(0, 235, 199, 0.5);
+}
+/* progress line pinned to the bottom of the column, like a version stamp */
+#menu-progress {
+  margin-top: auto;
+  padding-top: 4vh;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+}
+
+/* ---------- ekran statystyk ---------- */
+#stats-list { margin-bottom: 22px; }
+.stats-section {
+  font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--teal); margin: 18px 0 8px;
+}
+.stats-section:first-child { margin-top: 0; }
+.stats-row {
+  display: flex; justify-content: space-between; gap: 24px;
+  font-size: 14px; color: var(--text-dim);
+  padding: 4px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.stats-row b { color: var(--text); }
+
 /* short windows: the logo and the gaps give way so the start button stays in frame */
 @media (max-height: 780px) {
   .game-lockup { width: min(400px, 62vw); }

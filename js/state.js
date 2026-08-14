@@ -25,6 +25,8 @@ const game = {
 };
 
 const screens = {
+  menu: el('screen-menu'),
+  stats: el('screen-stats'),
   start: el('screen-start'),
   pause: el('screen-pause'),
   over: el('screen-over'),
@@ -50,6 +52,13 @@ let wantLock = false; // czy kliknięto Graj/Wznów i czekamy na pointer lock
 function beginPlaying() {
   game.state = 'playing';
   hideScreens();
+}
+
+/* MENU-1: the arena pre-run screen (controls reference + seed hint); the main
+   menu is the navigation layer above it, so it shares the 'menu' state */
+function openArenaEntry() {
+  game.state = 'menu';
+  showScreen('start');
 }
 
 /* arena mode entry: always rebuild the default arena first — the campaign

@@ -47,8 +47,8 @@ function applySettings() {
   __test.settings = { ...SETTINGS };
 }
 
-/* --- screen flow: the panel opens over the start screen or the pause --- */
-let settingsReturn = 'start';
+/* --- screen flow: the panel opens over the main menu or the pause --- */
+let settingsReturn = 'menu';
 
 function openSettings(from) {
   settingsReturn = from;
@@ -63,8 +63,7 @@ function closeSettings() {
     game.state = 'paused';
     showScreen('pause');
   } else {
-    game.state = 'menu';
-    showScreen('start');
+    backToMenu();
   }
 }
 
@@ -111,7 +110,7 @@ function syncSettingsUi() {
   bindToggle('set-strobe', 'strobe');
   bindToggle('set-fullscreen', 'fullscreen');
 
-  el('btn-settings-start').addEventListener('click', () => openSettings('start'));
+  el('btn-menu-settings').addEventListener('click', () => openSettings('menu'));
   el('btn-settings-pause').addEventListener('click', () => openSettings('pause'));
   el('btn-settings-back').addEventListener('click', closeSettings);
   document.addEventListener('keydown', e => {

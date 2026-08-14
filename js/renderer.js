@@ -24,7 +24,9 @@ camera.position.set(0, PLAYER_EYE, 26);
 const BASE_FOV = 75, ZOOM_FOV = 24;
 
 const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
+// kept by name: main.js retargets this pass at the menu panorama (MENU-1)
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.5, 0.55, 0.82);
 composer.addPass(bloomPass);

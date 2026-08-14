@@ -124,12 +124,42 @@
 </div>
 
 <!-- ======================= ekrany ======================= -->
-<div id="screen-start" class="screen visible">
-  <div class="screen-box">
+<!-- MENU-1: the top navigation layer — an animated Los Santos panorama
+     (js/menubg.js) renders behind this transparent screen -->
+<div id="screen-menu" class="screen screen--panorama visible">
+  <div class="menu-box">
     <h1 class="game-title">
       <img src="assets/logo-full.png" alt="STATUS 1" class="game-lockup" draggable="false">
     </h1>
     <div class="game-subtitle">Symulacja szkoleniowa dronów LSPD &middot; przeglądarkowy FPS</div>
+    <div class="menu-buttons">
+      <button class="btn" id="btn-menu-campaign">Kampania</button>
+      <button class="btn secondary" id="btn-menu-arena">Arena bez końca</button>
+      <button class="btn secondary" id="btn-menu-armory">Zbrojownia</button>
+      <button class="btn secondary" id="btn-menu-settings">Ustawienia</button>
+      <button class="btn secondary" id="btn-menu-stats">Statystyki</button>
+    </div>
+    <div class="screen-hint" id="menu-progress"></div>
+  </div>
+</div>
+
+<div id="screen-stats" class="screen">
+  <div class="screen-box shop-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-small" draggable="false">
+    <h2>Statystyki</h2>
+    <div id="stats-list"></div>
+    <button class="btn" id="btn-stats-back">Wróć</button>
+    <div class="screen-hint">…albo wciśnij <b>Esc</b></div>
+  </div>
+</div>
+
+<!-- arena entry: the pre-run screen with the controls reference; the main
+     menu above it owns campaign/settings navigation -->
+<div id="screen-start" class="screen">
+  <div class="screen-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark" draggable="false">
+    <h2>Arena bez końca</h2>
+    <div class="game-subtitle">Fale dronów bez limitu &middot; rekord zapisuje się lokalnie</div>
     <div class="controls-grid">
       <div class="key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div><div class="desc">ruch</div>
       <div class="key"><kbd>Mysz</kbd></div><div class="desc">rozglądanie / celowanie</div>
@@ -143,9 +173,8 @@
       <div class="key"><kbd>G</kbd></div><div class="desc">granat</div>
       <div class="key"><kbd>Esc</kbd></div><div class="desc">pauza</div>
     </div>
-    <button class="btn" id="btn-campaign">Kampania</button>
-    <button class="btn secondary" id="btn-start">Arena bez końca</button>
-    <button class="btn secondary" id="btn-settings-start">Ustawienia</button>
+    <button class="btn" id="btn-start">Start</button>
+    <button class="btn secondary" id="btn-start-back">Menu</button>
     <div class="screen-hint">Amunicję dropią jednostki PATROL i SZTURM, apteczki — TARAN.<br>Nowe bronie i ulepszenia kupisz za kredyty.</div>
     <div class="screen-hint" id="arena-seed-hint"></div>
   </div>
@@ -339,6 +368,7 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/audio.js"></script>
 <script defer src="js/renderer.js"></script>
 <script defer src="js/textures.js"></script>
+<script defer src="js/menubg.js"></script>
 <script defer src="js/world.js"></script>
 <script defer src="js/props.js"></script>
 <script defer src="js/effects.js"></script>

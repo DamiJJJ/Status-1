@@ -34,6 +34,7 @@ bez serwera. Uruchamianie: `python tests/phase0_test.py` itd.
 | `phase5d_test.py` | **Pełne przejście kampanii** t0→…→m9→epilog przez prawdziwy przepływ ekranów + `file://` |
 | `phase6_test.py` | Partia roadmapy 2026-07-13: kucanie (lerp oka, blokada sprintu), WAŻKA w 1. fali areny, pressure przy hack/survive/gates (dokrutka mimo zatrzymanego reżysera), koniec misji czeka na radio, hold radia blokuje WSAD, wyjście do menu z pauzy (rollback/rekord), nakładka odmowy pointer locka |
 | `phase7_test.py` | Partia roadmapy 2026-08-14: ustawienia (suwaki/przełączniki, zapis i odczyt po przeładowaniu, powrót do startu/pauzy), strobo OFF = stały blask (PROP-6), wślizg (start tylko z pędem, utrzymanie prędkości, cooldown), granaty (rzut, zapalnik, AoE zabija bota, obrażenia własne, pusty zapas, sklep z limitem 4, reset poziomu), tarcza skrótów przeglądarki (preventDefault klawiszy gry/Ctrl-kombinacji/repeat/wheel w grze, rozbrojona w menu; BUG-3) |
+| `menu_test.py` | MENU-1: menu główne z panoramą (boot do `screen-menu`, dryf kamery, zapełniona scena), pełna pętla nawigacji (arena/statystyki/kampania/ustawienia/zbrojownia i powroty), panorama wyłączona w rozgrywce i przy pauzie, powrót po `quitToMenu`, `file://` |
 | `status1_test.py` | Smoke po rebrandingu: tytuł/wordmark STATUS 1, treść odprawy (Davidson/R36), migracja starych kluczy zapisu, karta finału, `file://` |
 | `shots.py`, `shots2.py` | Nie-testy: zrzuty ekranów (menu, wybór misji, odprawa, drony w liberiach, motyw ember) do `tests/_shots/` — do ręcznej oceny wizualnej |
 

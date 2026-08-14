@@ -46,6 +46,13 @@ el('btn-lock-skip').addEventListener('click', () => {
   if (wantLock) { wantLock = false; beginPlaying(); }
 });
 
+// main menu (MENU-1) + arena entry
+el('btn-menu-campaign').addEventListener('click', () => openLevels());
+el('btn-menu-arena').addEventListener('click', () => openArenaEntry());
+el('btn-menu-armory').addEventListener('click', () => openArmoryFromMenu());
+el('btn-menu-stats').addEventListener('click', () => openStats());
+el('btn-stats-back').addEventListener('click', () => backToMenu());
+el('btn-start-back').addEventListener('click', () => backToMenu());
 el('btn-start').addEventListener('click', () => startArena());
 el('btn-resume').addEventListener('click', resumeGame);
 el('btn-restart-pause').addEventListener('click', restartGame);
@@ -55,7 +62,6 @@ el('btn-restart-win').addEventListener('click', restartGame);
 el('btn-shop-continue').addEventListener('click', continueFromShop);
 el('btn-endless').addEventListener('click', startEndless);
 // campaign screens
-el('btn-campaign').addEventListener('click', () => openLevels());
 el('btn-campaign-back').addEventListener('click', () => backToMenu());
 el('btn-campaign-new').addEventListener('click', () => newCampaign());
 el('btn-armory').addEventListener('click', () => openArmory(null));
@@ -98,6 +104,8 @@ document.addEventListener('keydown', e => {
     if (!twDone) skipTypewriter(); else startBriefedMission();
   } else if (game.state === 'debrief' && enter) {
     debriefContinue();
+  } else if (game.state === 'stats' && (e.code === 'Escape' || enter)) {
+    backToMenu();
   }
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });

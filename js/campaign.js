@@ -524,7 +524,60 @@ function openLevels() {
 
 function backToMenu() {
   game.state = 'menu';
-  showScreen('start');
+  renderMenuMeta();
+  showScreen('menu');
+}
+
+/* ---- MENU-1: main-menu helpers ---- */
+
+/* one-line progress summary under the menu buttons */
+function renderMenuMeta() {
+  const d = saveLoad();
+  const done = MISSIONS.filter(m => isMissionDone(m.id)).length;
+  const medals = Object.values(d.missions)
+    .reduce((n, m) => n + ((m.medals && m.medals.length) || 0), 0);
+  const medalMax = MISSIONS.reduce((n, m) => n + Object.keys(m.medals || {}).length, 0);
+  const parts = [`Kampania: ${done}/${MISSIONS.length}`];
+  if (medals) parts.push(`medale ${medals}/${medalMax}`);
+  if (game.best) parts.push(`rekord areny: ${game.best}`);
+  el('menu-progress').textContent = parts.join(' · ');
+}
+
+/* the armory needs the campaign loadout (credits, upgrades) restored before
+   it opens — entering straight from the menu skips openLevels() */
+function openArmoryFromMenu() {
+  game.mode = 'campaign';
+  applyRunFromSave();
+  openArmory(null);
+}
+
+function openStats() {
+  game.state = 'stats';
+  renderStats();
+  showScreen('stats');
+}
+
+function renderStats() {
+  const d = saveLoad();
+  const done = MISSIONS.filter(m => isMissionDone(m.id)).length;
+  const medals = Object.values(d.missions)
+    .reduce((n, m) => n + ((m.medals && m.medals.length) || 0), 0);
+  const medalMax = MISSIONS.reduce((n, m) => n + Object.keys(m.medals || {}).length, 0);
+  const s = d.stats || { kills: 0, shots: 0, hits: 0 };
+  const acc = s.shots ? Math.round((s.hits / s.shots) * 100) : 0;
+  const row = (k, v) => `<div class="stats-row"><span>${k}</span><b>${v}</b></div>`;
+  el('stats-list').innerHTML =
+    '<div class="stats-section">Kampania</div>' +
+    row('Ukończone symulacje', `${done}/${MISSIONS.length}`) +
+    row('Medale', `${medals}/${medalMax}`) +
+    row('Poziom trudności', (DIFFICULTIES[d.difficulty] || DIFFICULTIES.normal).name) +
+    row('Kampania ukończona', d.finished ? 'TAK' : 'nie') +
+    '<div class="stats-section">Służba (łącznie)</div>' +
+    row('Zneutralizowane drony', s.kills) +
+    row('Oddane strzały', s.shots) +
+    row('Celność', `${acc}%`) +
+    '<div class="stats-section">Arena bez końca</div>' +
+    row('Rekord', game.best || '—');
 }
 
 function openBriefing(id) {

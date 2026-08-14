@@ -51,6 +51,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
   `textures.js` (`TexGen`: proceduralne tekstury z canvasa; `makeLogTexture` — panele
   z polskim tekstem; wymaga `renderer`, więc MUSI być po `renderer.js`) →
+  `menubg.js` (MENU-1: panorama Los Santos za menu — własna scena/kamera,
+  `MenuBg.build/update`, `menuBgActive()`; buduje się dopiero w `main.js`) →
   `world.js` (cykl życia areny, generator parametryczny ze stylami open/pillars/
   corridors, pierścień wewnętrzny dla mniejszych aren, flood-fill `validateArena`,
   motywy `applyTheme`, panele holo/logów) →
@@ -189,6 +191,35 @@ więc formy męskie w kwestiach DO gracza są OK.
   (`resetLevelState` + `clearGrenades`), sklep `nade` dokupuje 2 (limit
   `GRENADE_MAX` 4; consumable → w Zbrojowni kampanii niewidoczny — misja
   zawsze startuje z 2). Licznik na HUD (`#hud-grenade`, `updateGrenadeHud`).
+- **Menu główne + panorama** (MENU-1, `js/menubg.js`): ekran `screen-menu`
+  (Kampania / Arena bez końca / Zbrojownia / Ustawienia / Statystyki) to
+  nadrzędna warstwa nawigacji; stary `screen-start` został jako ekran wejścia
+  do areny (skróty klawiszowe + seed, stan nadal `'menu'`), `backToMenu()`
+  wraca do menu. Układ w stylu Cyberpunka (decyzja użytkownika): kolumna
+  menu PO LEWEJ na półprzezroczystym gradientowym panelu
+  (`.screen--panorama::before`), pozycje tekstowe — pierwsza w tealowej
+  ramce, reszta czerwona, hover przebarwia na teal; linia postępu na dole
+  jak stempel wersji. Tło to osobna scena Three.js (`MenuBg.scene/camera`,
+  własna mgła i niebo): 3 pasma wieżowców z boxów z oknami
+  `TexGen.makeCityWindows` (UV przez `applyBoxUV(geo, 24)`, seed stały —
+  miasto identyczne co boot), neony (kolor `multiplyScalar(2.8)` — inaczej
+  ACES zjada je do pasteli i bloom ich nie łapie), drony SENTINEL ze strobo,
+  reflektory, dryf kamery. Tonacja NIEBIESKO-CZERWONA (kolory policyjne):
+  niebo ma dwie łuny (karmazyn nad centrum + niebieska z boku), smog
+  addytywny naprzemiennie czerwony/niebieski. Dół kadru NIE może być czarny:
+  doświetlone niskie bloki pierwszego planu (ciemny dach przez grupy
+  materiałów boxa), najbliższy rząd pod kamerą, uliczne pasy światła
+  czerwone/niebieskie i niski pas mgły. Renderuje WSPÓLNY composer:
+  `tick` przełącza `renderPass.scene/camera` wg `menuBgActive()` (stany
+  nawigacji: menu/levels/stats/brief, ustawienia poza pauzą, zbrojownia
+  kampanii; ekrany po rozgrywce — pauza/over/won/debrief/mfail — celowo
+  zostają na zamrożonym świecie gry). Ekran menu jest przezroczysty
+  (`.screen--panorama`), więc `tick` toggluje `body.menu-bg`, a CSS chowa
+  HUD/celownik/winietę (`!important` — bije reguły per-id). Statystyki:
+  `openStats()`/`renderStats()` w campaign.js (z zapisu + `game.best`);
+  zbrojownia z menu przez `openArmoryFromMenu()` (najpierw
+  `applyRunFromSave()`). Diagnostyka: `__test.menuBg`; testy
+  `tests/menu_test.py`.
 - **Ustawienia** (`js/settings.js`, PROP-1/PROP-6): obiekt `SETTINGS` (sens,
   volMaster, volMusic, bloom, shadows, strobe, fullscreen), zapis
   `status1_settings` w try/catch, stosowanie na żywo przez `applySettings()`
@@ -395,7 +426,7 @@ więc formy męskie w kwestiach DO gracza są OK.
     ammo, fov, credits, headshots, endless, errors[], mode, difficulty,
     mission {id, active, time, kills, objectives[]}, seed, arenaHash,
     arenaReachable, pointerLock/wantLock, crouch/eyeH, slide, grenades,
-    settings, pressure, radioHold);
+    settings, pressure, radioHold, menuBg);
     audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`;
   - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
     (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);
@@ -500,6 +531,9 @@ i tryb dla daltonistów), **wślizg** (PROP-2), **granaty** (PROP-4) oraz
 **tarcza skrótów przeglądarki** (BUG-3: Ctrl+W przy wślizgu zamykał kartę —
 preventDefault + fullscreen z Keyboard Lock + beforeunload).
 Szczegóły w Konwencjach technicznych; testy w `tests/phase7_test.py`.
+Tego samego dnia: **menu główne z animowaną panoramą Los Santos** (MENU-1:
+`js/menubg.js`, układ cyberpunkowej lewej kolumny, ekran statystyk,
+panorama niebiesko-czerwona; testy w `tests/menu_test.py`).
 
 Pomysły na dalszą rozbudowę:
 

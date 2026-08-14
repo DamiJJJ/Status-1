@@ -467,6 +467,33 @@ const TexGen = (() => {
     return t;
   }
 
+  /* ---------- city windows (MENU-1 panorama) ----------
+     Lit-window grid for the skyline towers behind the main menu. One tile =
+     10×16 windows; with applyBoxUV(geo, 24) a window comes out ~2.4 × 1.5 m.
+     Deterministic per seed, so every boot shows the same city. */
+  function makeCityWindows(seed = 9001) {
+    const S = 128;
+    const c = makeCanvas(S), g = c.getContext('2d');
+    const rand = rng(seed);
+    // facade base: near-black concrete with a hint of indigo
+    g.fillStyle = '#070a1e';
+    g.fillRect(0, 0, S, S);
+    const cols = 10, rows = 16, cw = S / cols, ch = S / rows;
+    for (let y = 0; y < rows; y++) {
+      const floorLit = rand() < 0.8; // whole dark floors happen at night
+      for (let x = 0; x < cols; x++) {
+        if (!floorLit || rand() < 0.58) continue;
+        const r = rand();
+        // mostly warm interiors, some cool office glow, rare neon tint
+        g.fillStyle = r < 0.5 ? '#ffd9a0' : r < 0.8 ? '#cfe4ff' : r < 0.93 ? '#7ff2df' : '#ffb066';
+        g.globalAlpha = 0.45 + rand() * 0.55;
+        g.fillRect(x * cw + 2, y * ch + 1.5, cw - 4, ch - 3);
+      }
+    }
+    g.globalAlpha = 1;
+    return toTexture(c, { srgb: true });
+  }
+
   /* World-scale box UVs: `scale` = meters per texture tile, so a 72 m wall
      and a 2 m pillar share one material without stretching. (ou, ov)
      de-syncs the pattern between blocks. Call before first render. */
@@ -484,5 +511,5 @@ const TexGen = (() => {
     return geom;
   }
 
-  return { makeFloorSet, makeWallSet, makeCrateSet, makeHologramTexture, makeLogTexture, applyBoxUV };
+  return { makeFloorSet, makeWallSet, makeCrateSet, makeHologramTexture, makeLogTexture, makeCityWindows, applyBoxUV };
 })();
