@@ -4,8 +4,10 @@
 Checks (http://localhost:8137):
   1. boot: the main menu is the first screen, panorama active and animating
   2. navigation: arena entry / stats / campaign / settings / armory and back
-  3. gameplay renders the game world again (?test=play -> menuBg off)
-  4. file:// smoke test: menu boots without errors
+  3. menu theme: the assets/ mp3 loops behind the navigation layer
+  4. gameplay renders the game world again (?test=play -> menuBg off) and the
+     menu theme hands over to the procedural score
+  5. file:// smoke test: menu boots without errors, theme still plays
 """
 import sys, time, pathlib
 from playwright.sync_api import sync_playwright
@@ -97,33 +99,64 @@ with sync_playwright() as pw:
     page.click("#btn-shop-continue")
     check("nav: armory continue lands on mission select",
           page.evaluate("game.state === 'levels'"), page.evaluate("game.state"))
+
+    # --- 3: menu theme (the one audio file, outside the WebAudio graph) ---
+    audio = ("(() => { const a = el('menu-music'); return a ? {v: a.volume,"
+             " p: a.paused, t: a.currentTime, loop: a.loop} : null })()")
+    check("theme: audio element present and looping",
+          page.evaluate("(() => { const a = el('menu-music');"
+                        " return !!a && a.loop === true })()"), "")
+    ok = wait_for(page, "window.__test.menuMusic === true", 20)
+    check("theme: plays on the navigation layer", ok, str(page.evaluate(audio)))
+    t0 = page.evaluate("el('menu-music').currentTime")
+    time.sleep(1.0)
+    check("theme: keeps running across screens",
+          page.evaluate("el('menu-music').currentTime") > t0, "")
+    page.evaluate("SETTINGS.volMusic = 0.2; applySettings()")
+    v_low = page.evaluate("el('menu-music').volume")
+    page.evaluate("SETTINGS.volMusic = 1; applySettings()")
+    v_full = page.evaluate("el('menu-music').volume")
+    check("theme: music slider drives the file volume too",
+          v_full > v_low > 0, f"{v_low} -> {v_full}")
     check("nav: no errors", not page.evaluate("window.__test.errors"),
           str(page.evaluate("window.__test.errors"))[:300])
     page.close()
 
-    # --- 3: gameplay switches the render back to the game world ---
+    # --- 4: gameplay switches the render back to the game world ---
     page = browser.new_page()
     page.goto(f"{BASE}/?test=play")
     ok = wait_for(page, "window.__test.state === 'playing'")
     check("play: reaches playing", ok, page.evaluate("window.__test.state"))
     check("play: panorama off during gameplay",
           page.evaluate("window.__test.menuBg === false"), "")
+    ok = wait_for(page, "el('menu-music').paused === true", 10)
+    check("play: menu theme faded out and paused", ok, str(page.evaluate(audio)))
     page.evaluate("pauseGame()")
     check("play: pause keeps the game world (not the panorama)",
           page.evaluate("window.__test.menuBg === false"), "")
+    steps0 = page.evaluate("window.__test.musicSteps || 0")
     page.evaluate("quitToMenu()")
     ok = wait_for(page, "game.state === 'menu' && window.__test.menuBg === true", 10)
     check("play: quit to menu re-enters the panorama", ok, "")
+    ok = wait_for(page, "window.__test.menuMusic === true", 20)
+    check("play: menu theme resumes after the run", ok, str(page.evaluate(audio)))
+    time.sleep(1.0)
+    check("play: procedural sequencer survives the crossfade",
+          page.evaluate("window.__test.musicSteps") > steps0, "")
     check("play: no errors", not page.evaluate("window.__test.errors"),
           str(page.evaluate("window.__test.errors"))[:300])
     page.close()
 
-    # --- 4: file:// smoke ---
+    # --- 5: file:// smoke ---
     page = browser.new_page()
     page.goto((GAME_DIR / "index.html").as_uri())
     ok = wait_for(page, "window.__test && window.__test.state === 'menu'"
                         " && window.__test.menuBg === true", 30)
     check("file://: menu + panorama boot", ok, "")
+    ok = wait_for(page, "window.__test.menuMusic === true", 25)
+    check("file://: menu theme plays from disk", ok,
+          str(page.evaluate("(() => { const a = el('menu-music');"
+                            " return {t: a.currentTime, err: a.error && a.error.code} })()")))
     check("file://: no errors", not page.evaluate("window.__test.errors"),
           str(page.evaluate("window.__test.errors"))[:300])
     page.close()

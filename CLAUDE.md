@@ -47,7 +47,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   identyczny hash po dowolnej liczbie przebudów).
 - **Kolejność `<script>` w `index.html` MA znaczenie.** Pliki w kolejności ładowania:
   `config.js` (konfig/paleta/parametry URL/diagnostyka `__test`) → `audio.js` (`AudioSys`:
-  szyna WebAudio, SFX, muzyka proceduralna, stingery celów, robo-głosy `voice(who)`) →
+  szyna WebAudio, SFX, muzyka proceduralna, motyw menu z pliku, stingery celów,
+  robo-głosy `voice(who)`) →
   `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
   `textures.js` (`TexGen`: proceduralne tekstury z canvasa; `makeLogTexture` — panele
   z polskim tekstem; wymaga `renderer`, więc MUSI być po `renderer.js`) →
@@ -93,13 +94,18 @@ więc formy męskie w kwestiach DO gracza są OK.
     z wynikiem**, żeby dało się przegenerować zasób po zmianie palety/rozdzielczości.
 
   **Zabronione: gotowe modele/tekstury/dźwięki z zewnątrz** (stock, paczki assetów,
-  biblioteki tekstur) — licencje i spójność stylu. **Audio zostaje w 100% syntetyczne
-  (WebAudio)** — bez plików dźwiękowych, nawet własnych i nawet generowanych AI.
-  Rozważane i **odrzucone**: muzyka z SUNO. Powód nie jest tylko licencyjny — przy
-  `file://` wygenerowany plik da się odtworzyć wyłącznie przez `<audio>`, bo
-  `fetch` + `decodeAudioData` jest blokowane przez CORS, a `MediaElementSource` z dysku
-  taintuje graf. Muzyka wypadłaby więc **poza graf WebAudio**: koniec z sidechainem,
-  ściszaniem pod SFX i reakcją na gęstość walki (patrz `moodBlend` w Konwencjach).
+  biblioteki tekstur) — licencje i spójność stylu. **Dźwięk ROZGRYWKI zostaje w 100%
+  syntetyczny (WebAudio)** — żadnych plików, nawet własnych i nawet generowanych AI.
+  Powód nie jest tylko licencyjny — przy `file://` gotowy plik da się odtworzyć
+  wyłącznie przez `<audio>`, bo `fetch` + `decodeAudioData` jest blokowane przez CORS,
+  a `MediaElementSource` z dysku taintuje graf. Taka ścieżka wypada **poza graf
+  WebAudio**: koniec z sidechainem, ściszaniem pod SFX i reakcją na gęstość walki
+  (patrz `moodBlend` w Konwencjach).
+  **Jedyny wyjątek (decyzja użytkownika, 2026-08-14): motyw menu**
+  `assets/Rain Over Neon Spires.mp3` — gra w pętli na warstwie nawigacji, właśnie
+  przez `<audio id="menu-music">` poza grafem. Tam ta cena nic nie kosztuje: w menu
+  nie ma walki, pod którą trzeba by się ściszać. Nie rozszerzaj tego wyjątku na
+  dźwięki i muzykę w misjach — one zostają proceduralne.
 - ⚠️ **Tekstury do sceny 3D NIE mogą być plikami PNG w `assets/`.** Przy `file://` Chrome
   uznaje obrazy z dysku za cross-origin i `texImage2D` rzuca wyjątkiem („The image element
   contains cross-origin data") — scena psułaby się po dwukliku, choć na serwerze działa.
@@ -274,6 +280,18 @@ więc formy męskie w kwestiach DO gracza są OK.
     obwiednie używają `exponentialRamp*`, więc **głośność nigdy nie może być 0** —
     skaluj przez `cb`/`calm` tylko pod strażą `> 0.05`. Błąd w kroku nie zabija pętli,
     ale ląduje w `__test.musicError`.
+  - **Motyw menu** (jedyny plik dźwiękowy, patrz Architektura → Zasoby):
+    `AudioSys.menuMusic(on)` woła `main.js` przy zmianie `menuBgActive()` — muzyka
+    jedzie z panoramą, także przez wybór misji, statystyki i zbrojownię. Element
+    `<audio id="menu-music" loop>` żyje POZA grafem, więc głośność liczy się ręcznie
+    (`MENU_GAIN × volMaster × volMusic × menuFade`) i `setVolumes` musi go dotknąć
+    osobno. `menuFade` (1,6 s w / 0,45 s out, liczony w `update`) robi **crossfade
+    z sekwencerem**: `applyMusicGain()` to JEDYNY właściciel `musicGain.gain` i zbija
+    je do zera pod motywem menu — nigdy nie ustawiaj tego gainu wprost. Autoplay jest
+    odrzucany do pierwszego gestu, więc `menuMusicEl()` wiesza retry na
+    `pointerdown`/`keydown` (faza capture — przed handlerami przycisków). Wyjście
+    z menu **nie przewija** utworu (powrót z misji łapie go w tym samym miejscu).
+    Diagnostyka: `__test.menuMusic`.
   - Stingery UI (`buy`/`pickup`/`heal`/`wave`/`win`) są strojone do **a-moll** — żeby
     nie gryzły się z podkładem, nowe też tam trzymaj.
 - Efekty (cząsteczki/tracery/decale/flash) używają **puli obiektów** — przy nowych
@@ -427,7 +445,7 @@ więc formy męskie w kwestiach DO gracza są OK.
     mission {id, active, time, kills, objectives[]}, seed, arenaHash,
     arenaReachable, pointerLock/wantLock, crouch/eyeH, slide, grenades,
     settings, pressure, radioHold, menuBg);
-    audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`;
+    audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`, `menuMusic`;
   - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
     (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);
     `&wave=N` (arena od fali N); **`?test=mission&m=<id>&diff=easy|normal|hard`**

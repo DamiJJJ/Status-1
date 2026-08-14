@@ -35,6 +35,12 @@
 
 <canvas id="game-canvas"></canvas>
 
+<!-- Motyw menu: JEDYNY plik dźwiękowy w projekcie, celowo poza grafem WebAudio
+     (przy file:// decodeAudioData blokuje CORS, a MediaElementSource taintuje
+     graf). Sterowanie w AudioSys.menuMusic(); dźwięk rozgrywki zostaje w 100%
+     syntetyczny. -->
+<audio id="menu-music" loop preload="auto" src="assets/Rain%20Over%20Neon%20Spires.mp3"></audio>
+
 <!-- ======================= nakładki ======================= -->
 <div id="vignette" class="overlay"></div>
 <div id="damage-flash" class="overlay"></div>

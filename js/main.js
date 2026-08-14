@@ -81,6 +81,7 @@ function tick(now) {
     // the transparent menu screen would let the gameplay HUD bleed through
     menuBgWas = onMenuBg;
     document.body.classList.toggle('menu-bg', onMenuBg);
+    AudioSys.menuMusic(onMenuBg); // the menu theme rides with the panorama
   }
   __test.menuBg = onMenuBg;
 

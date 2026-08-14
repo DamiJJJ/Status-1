@@ -211,6 +211,7 @@ const AudioSys = (() => {
   let stepSide = 1;
 
   function update(dt) {
+    updateMenuMusic(dt); // <audio> menu theme lives outside the graph — needs no ctx
     if (!ctx) return;
     const playing = game.state === 'playing';
     // low-HP heartbeat: quiet "lub-dub", faster the closer to death
@@ -379,11 +380,17 @@ const AudioSys = (() => {
     }
   }
 
+  /* Single owner of the sequencer level: the procedural score is ducked all the
+     way out under the menu theme (menuFade) so the two never play at once. */
+  function applyMusicGain() {
+    if (musicGain) musicGain.gain.value = MUSIC_GAIN * userMusic * (1 - menuFade);
+  }
+
   function startMusic() {
     if (musicTimer || !ctx) return;
     musicGain = ctx.createGain();
-    musicGain.gain.value = MUSIC_GAIN * userMusic;
     musicGain.connect(master);
+    applyMusicGain();
     musicDuck = ctx.createGain(); // sidechained sub-bus (bass/pads/bells)
     musicDuck.connect(musicGain);
     musicNext = ctx.currentTime + 0.1;
@@ -391,9 +398,57 @@ const AudioSys = (() => {
     __test.musicRunning = true;
   }
 
+  /* ---- menu theme: the single audio FILE in an otherwise synthetic mix ----
+     Deliberate exception to the "everything is synthesized" rule, and just as
+     deliberately kept OUTSIDE the WebAudio graph: under file:// a local media
+     file cannot be decoded (fetch + decodeAudioData is blocked by CORS) and a
+     MediaElementSource would taint the graph, so it plays through a plain
+     <audio> element with its own volume. Nothing is lost — the navigation
+     screens have no combat to sidechain or duck against. The procedural score
+     is faded out underneath (applyMusicGain), so the two never stack. */
+  const MENU_GAIN = 0.4; // the file is mastered far louder than the synth mix
+  const MENU_FADE_IN = 1.6, MENU_FADE_OUT = 0.45; // seconds
+  let menuEl = null, menuWant = false, menuFade = 0;
+
+  function menuMusicEl() {
+    if (menuEl) return menuEl;
+    menuEl = document.getElementById('menu-music');
+    if (!menuEl) return null;
+    menuEl.volume = 0;
+    // autoplay stays refused until the page has seen a gesture — retry on the
+    // first one (capture phase, so it fires before the menu button handlers)
+    const retry = () => { if (menuWant && menuEl.paused) menuEl.play().catch(() => {}); };
+    document.addEventListener('pointerdown', retry, true);
+    document.addEventListener('keydown', retry, true);
+    return menuEl;
+  }
+
+  /* Navigation layer on/off — main.js flips it with the panorama. Idempotent.
+     The track is NOT rewound on the way out: coming back from a mission picks
+     the theme up where it left off. */
+  function menuMusic(on) {
+    menuWant = !!on;
+    const a = menuMusicEl();
+    if (a && menuWant && a.paused) a.play().catch(() => { /* no gesture yet */ });
+  }
+
+  function updateMenuMusic(dt) {
+    const target = menuWant ? 1 : 0;
+    if (menuFade !== target) {
+      const step = dt / (menuWant ? MENU_FADE_IN : MENU_FADE_OUT);
+      menuFade = target > menuFade ? Math.min(1, menuFade + step) : Math.max(0, menuFade - step);
+      applyMusicGain(); // crossfade: the sequencer comes back up as this drops
+    }
+    __test.menuMusic = !!menuEl && !menuEl.paused && menuFade > 0;
+    if (!menuEl) return;
+    menuEl.volume = Math.max(0, Math.min(1, MENU_GAIN * userMaster * userMusic * menuFade));
+    if (!menuWant && menuFade === 0 && !menuEl.paused) menuEl.pause();
+  }
+
   return {
     init,
     startMusic,
+    menuMusic,
     update,
     resetFx,
 
@@ -402,7 +457,9 @@ const AudioSys = (() => {
     setVolumes(m, mus) {
       userMaster = m; userMusic = mus;
       if (master) master.gain.value = MASTER_GAIN * userMaster;
-      if (musicGain) musicGain.gain.value = MUSIC_GAIN * userMusic;
+      applyMusicGain();
+      // the menu theme is outside the graph, so it takes both multipliers by hand
+      if (menuEl) menuEl.volume = Math.max(0, Math.min(1, MENU_GAIN * userMaster * userMusic * menuFade));
     },
 
     /* --- weapons --- */
