@@ -99,6 +99,11 @@
     <span id="ammo-mag">12</span>
     <span id="ammo-reserve">/ 72</span>
   </div>
+  <div id="hud-grenade" title="Granaty (G)">
+    <span class="icon" data-icon="grenade"></span>
+    <span id="grenade-count">×2</span>
+    <b>G</b>
+  </div>
   <div id="weapon-slots">
     <div class="wslot active" id="wslot-1" title="Pistolet"><b>1</b><span class="icon" data-icon="pistol"></span></div>
     <div class="wslot" id="wslot-2" title="Strzelba"><b>2</b><span class="icon" data-icon="shotgun"></span></div>
@@ -134,11 +139,13 @@
       <div class="key"><kbd>1</kbd>–<kbd>4</kbd> / <kbd>scroll</kbd></div><div class="desc">zmiana broni</div>
       <div class="key"><kbd>Shift</kbd></div><div class="desc">bieg</div>
       <div class="key"><kbd>Spacja</kbd></div><div class="desc">skok</div>
-      <div class="key"><kbd>Ctrl</kbd> / <kbd>C</kbd></div><div class="desc">kucanie</div>
+      <div class="key"><kbd>Ctrl</kbd> / <kbd>C</kbd></div><div class="desc">kucanie (w biegu: wślizg)</div>
+      <div class="key"><kbd>G</kbd></div><div class="desc">granat</div>
       <div class="key"><kbd>Esc</kbd></div><div class="desc">pauza</div>
     </div>
     <button class="btn" id="btn-campaign">Kampania</button>
     <button class="btn secondary" id="btn-start">Arena bez końca</button>
+    <button class="btn secondary" id="btn-settings-start">Ustawienia</button>
     <div class="screen-hint">Amunicję dropią jednostki PATROL i SZTURM, apteczki — TARAN.<br>Nowe bronie i ulepszenia kupisz za kredyty.</div>
     <div class="screen-hint" id="arena-seed-hint"></div>
   </div>
@@ -205,7 +212,52 @@
     <div class="end-stats">Wynik: <b id="pause-score">0</b> &middot; Fala <b id="pause-wave">1</b></div>
     <button class="btn" id="btn-resume">Wznów</button>
     <button class="btn secondary" id="btn-restart-pause">Restart</button>
+    <button class="btn secondary" id="btn-settings-pause">Ustawienia</button>
     <button class="btn secondary" id="btn-quit-pause">Wyjdź do menu</button>
+  </div>
+</div>
+
+<!-- settings (PROP-1) + accessibility (PROP-6): opens over the start screen
+     or the pause; every change applies live and saves to localStorage -->
+<div id="screen-settings" class="screen">
+  <div class="screen-box shop-box">
+    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-small" draggable="false">
+    <h2>Ustawienia</h2>
+    <div id="settings-list">
+      <div class="set-row">
+        <label for="set-sens">Czułość myszy</label>
+        <input type="range" id="set-sens" min="30" max="200" step="5" value="100">
+        <span class="set-val" id="set-sens-val">100%</span>
+      </div>
+      <div class="set-row">
+        <label for="set-vol">Głośność ogólna</label>
+        <input type="range" id="set-vol" min="0" max="100" step="5" value="100">
+        <span class="set-val" id="set-vol-val">100%</span>
+      </div>
+      <div class="set-row">
+        <label for="set-music">Głośność muzyki</label>
+        <input type="range" id="set-music" min="0" max="100" step="5" value="100">
+        <span class="set-val" id="set-music-val">100%</span>
+      </div>
+      <div class="set-row set-row--toggle">
+        <label for="set-bloom">Poświata (bloom)</label>
+        <input type="checkbox" id="set-bloom" checked>
+      </div>
+      <div class="set-row set-row--toggle">
+        <label for="set-shadows">Cienie</label>
+        <input type="checkbox" id="set-shadows" checked>
+      </div>
+      <div class="set-row set-row--toggle">
+        <label for="set-strobe">Strobo dronów <span class="set-note">wyłącz przy wrażliwości na migotanie</span></label>
+        <input type="checkbox" id="set-strobe" checked>
+      </div>
+      <div class="set-row set-row--toggle">
+        <label for="set-fullscreen">Pełny ekran w grze <span class="set-note">blokuje skróty przeglądarki (Ctrl+W itd.)</span></label>
+        <input type="checkbox" id="set-fullscreen" checked>
+      </div>
+    </div>
+    <button class="btn" id="btn-settings-back">Wróć</button>
+    <div class="screen-hint">Ustawienia zapisują się automatycznie.</div>
   </div>
 </div>
 
@@ -293,6 +345,7 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/collisions.js"></script>
 <script defer src="js/player.js"></script>
 <script defer src="js/weapons.js"></script>
+<script defer src="js/grenades.js"></script>
 <script defer src="js/enemies.js"></script>
 <script defer src="js/icons.js"></script>
 <script defer src="js/pickups.js"></script>
@@ -302,6 +355,7 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/campaign.js"></script>
 <script defer src="js/hud.js"></script>
 <script defer src="js/state.js"></script>
+<script defer src="js/settings.js"></script>
 <script defer src="js/input.js"></script>
 <script defer src="js/testmode.js"></script>
 <script defer src="js/main.js"></script>

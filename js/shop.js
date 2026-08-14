@@ -13,6 +13,7 @@ const SHOP_ITEMS = [
   { id: 'w_sniper',  name: 'Snajperka',   desc: 'Broń [4] — ogromne obrażenia, zoom na PPM',  basePrice: 140, maxLevel: 1, level: 0, icon: 'sniper',  cat: 'weapon' },
   { id: 'heal',   name: 'Pełne leczenie',        desc: 'Przywraca zdrowie do maksimum',           basePrice: 30, maxLevel: Infinity, level: 0, icon: 'heal',   cat: 'consumable' },
   { id: 'ammo',   name: 'Pełna amunicja',        desc: 'Uzupełnia zapas wszystkich broni',        basePrice: 40, maxLevel: Infinity, level: 0, icon: 'ammo',   cat: 'consumable' },
+  { id: 'nade',   name: 'Granaty ×2',            desc: 'Dwa granaty [G] — obrażenia obszarowe (maks. 4)', basePrice: 35, maxLevel: Infinity, level: 0, icon: 'grenade', cat: 'consumable' },
   { id: 'maxhp',  name: 'Pancerz',               desc: '+25 maksymalnego HP (doliczane od razu)', basePrice: 60, maxLevel: 2, level: 0, icon: 'shield', cat: 'upgrade' },
   { id: 'mag',    name: 'Powiększone magazynki', desc: '+50% pojemności magazynków i zapasu',     basePrice: 80, maxLevel: 2, level: 0, icon: 'mag',    cat: 'upgrade' },
   { id: 'reload', name: 'Szybkie przeładowanie', desc: '−15% czasu przeładowania',                basePrice: 70, maxLevel: 2, level: 0, icon: 'reload', cat: 'upgrade' },
@@ -53,6 +54,7 @@ function buyShopItem(id) {
   const item = SHOP_ITEMS.find(i => i.id === id);
   if (!item || item.level >= item.maxLevel) return;
   if (item.id === 'heal' && player.hp >= player.maxHp) return;
+  if (item.id === 'nade' && game.grenades >= GRENADE_MAX) return;
   const price = shopPrice(item);
   if (game.credits < price) return;
   game.credits -= price;
@@ -69,6 +71,9 @@ function buyShopItem(id) {
   } else if (item.id === 'ammo') {
     for (const w of WEAPONS) w.reserve = w.maxReserve;
     updateWeaponHud();
+  } else if (item.id === 'nade') {
+    game.grenades = Math.min(GRENADE_MAX, game.grenades + 2);
+    updateGrenadeHud();
   }
   AudioSys.buy();
   updateCreditsHud();
@@ -88,7 +93,8 @@ function renderShop() {
     const lvl = item.maxLevel !== Infinity
       ? `<span class="si-lvl">${item.level}/${item.maxLevel}</span>` : '';
     const disabled = maxed || game.credits < price ||
-      (item.id === 'heal' && player.hp >= player.maxHp);
+      (item.id === 'heal' && player.hp >= player.maxHp) ||
+      (item.id === 'nade' && game.grenades >= GRENADE_MAX);
     return `<div class="shop-item">
       <div class="si-icon si-icon--${item.cat}">${UI_ICONS[item.icon]}</div>
       <div class="si-info">

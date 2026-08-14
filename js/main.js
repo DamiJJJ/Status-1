@@ -18,6 +18,7 @@ function tick(now) {
   if (game.state === 'playing') {
     updatePlayer(dt);
     updateWeapons(dt);
+    updateGrenades(dt);
     updateEnemies(dt);
     updatePickups(dt);
     waveSystem.update(dt);
@@ -54,6 +55,8 @@ function tick(now) {
   __test.wantLock = wantLock;
   __test.crouch = player.crouching;
   __test.eyeH = Math.round(player.eyeH * 100) / 100;
+  __test.slide = player.sliding;
+  __test.grenades = game.grenades;
   __test.pressure = waveSystem.pressure;
   __test.radioHold = radioHoldT > 0;
   __test.mission = (game.mode === 'campaign' && mission.def) ? {

@@ -59,7 +59,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   `enemyRef`) → `effects.js` → `collisions.js` (okrąg-vs-AABB; parametr `minTop` —
   latające jednostki omijają collidery niższe od pułapu) → `player.js` →
   `weapons.js` (WEAPONS/viewmodele/ADS/strzelanie; gałąź `propRef`; blokada
-  `game.noCombat`) → `enemies.js` (ENEMY_TYPES/modele/AI; liberie policyjne + strobo,
+  `game.noCombat`) → `grenades.js` (granaty na G: pula pocisków, łuk, odbicia,
+  AoE; licznik `game.grenades`) → `enemies.js` (ENEMY_TYPES/modele/AI; liberie policyjne + strobo,
   UAV, tarcza bossa, jednostki pasywne parady) → `icons.js` (`UI_ICONS`; pętla
   `[data-icon]` działa RAZ przy ładowaniu — dynamiczny markup wstawia
   `UI_ICONS[key]` sam) → `pickups.js` (`placeArenaPickups` z danych `arena.pickups`) →
@@ -70,7 +71,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   (OBJECTIVE_TYPES, obiekt `mission`, medale, radio, zapis localStorage, ekrany
   kampanii, znaczniki celów z off-screen chevronami) → `hud.js` → `state.js`
   (obiekt `game`; **`resetRunState`** = progresja, **`resetLevelState`** = świat/ciało;
-  `resetGameState` = obie, tylko arena) → `input.js` → `testmode.js` → `main.js`
+  `resetGameState` = obie, tylko arena) → `settings.js` (obiekt `SETTINGS`,
+  ekran ustawień, zapis `status1_settings`) → `input.js` → `testmode.js` → `main.js`
   (bootstrap + pętla `tick`). Nowy plik wpinaj zgodnie z zależnościami wykonywanymi
   przy ładowaniu; odwołania z wnętrza funkcji mogą wskazywać „w przód".
 - Każdy plik `js/` zaczyna się od `'use strict';` (kod był modułem ES, czyli strict —
@@ -144,12 +146,60 @@ więc formy męskie w kwestiach DO gracza są OK.
   `__test.pointerLock` / `__test.wantLock`. Z pauzy wychodzi się przez `quitToMenu()`
   (kampania: `mission.abort()` z rollbackiem kredytów jak przy porażce → wybór misji;
   arena: zapis rekordu → ekran startowy).
+- **Tarcza skrótów przeglądarki** (input.js): Ctrl to kucanie/wślizg przy
+  trzymanym WSAD, więc bez osłony gra generuje Ctrl+W (zamknięcie karty!),
+  Ctrl+T/D/1..4. Trzy warstwy: (1) `preventDefault` dla `GAME_KEYS` i każdej
+  kombinacji z Ctrl w stanach `SHIELD_STATES` — MUSI działać PRZED
+  early-outem `e.repeat` (trzymane W pod Ctrl przychodzi jako repeat); wheel
+  w grze też jest `preventDefault` (listener z `{passive:false}` — pasywnego
+  nie da się anulować); (2) **Keyboard Lock** (Chrome) — działa TYLKO
+  w fullscreenie, dlatego `lockPointer()` wchodzi w pełny ekran w tym samym
+  geście (opcja `SETTINGS.fullscreen`, domyślnie ON; w TEST pomijane —
+  headless nie ma gestu); `Escape` celowo NIE jest lockowany, musi dalej
+  wychodzić z pointer locka (pauza); (3) `beforeunload` w trakcie biegu
+  (playing/paused/shop/ustawienia-z-pauzy) zamienia niezablokowywalne
+  okienkowe Ctrl+W/F5 w natywne pytanie „opuścić stronę?" — poza biegiem
+  nieuzbrojone, w TEST wyłączone (testy nawigują w trakcie gry). Nowy klawisz
+  gry dopisuj do `GAME_KEYS` (i tym samym do listy Keyboard Lock).
 - **Kucanie** (Ctrl/C, trzymane): `player.crouching` + `player.eyeH` (płynny lerp
   `PLAYER_EYE`↔`CROUCH_EYE`; podłoga to `pos.y <= eyeH` — stojąc na ziemi oko podąża
   za lerpem wprost, bez grawitacji, żeby zejście w kucki nie brzmiało jak upadek).
   Kucanie wyłącza sprint, spowalnia ruch ×0.55 i zbija rozrzut z biodra ×0.65.
   **Boty celują w `player.pos.y`** (nie w stałą `PLAYER_EYE`) — kucnięcie za niską
   osłoną realnie zrywa im LOS i punkt celowania. Reset stanu w `resetLevelState`.
+- **Wślizg** (PROP-2): kucnięcie przy prędkości > `WALK_SPEED × 1.05` startuje
+  wślizg (`player.sliding`, `SLIDE_DUR` 0,55 s). Kierunek jest UTRWALANY na
+  wejściu (`_slideDir`), prędkość `max(1.1×bieżąca, 1.05×sprint)` wygasa
+  w trakcie; wślizg nadpisuje sterowanie wprost (`vel.x/z`), zwykłe
+  przyspieszanie jest pomijane. Koniec: timer / puszczenie klawisza / utrata
+  ziemi → cooldown `slideCd` 0,8 s (bez łańcuszenia — od prędkości jest
+  bunnyhop; skok W TRAKCIE wślizgu zachowuje pęd). Kamera: stały przechył
+  `slideTilt` dodawany do rolla w `updateCameraSway` (kroki wyciszone —
+  wślizg to jeden ciągły szur `AudioSys.slide()`); FOV +7. Reset pól
+  w `resetLevelState` (w tym `slideTilt`).
+- **Granaty** (`js/grenades.js`, klawisz G): pula `grenadePool` (jak efekty —
+  zero meshy w locie), grupa w `scene`, NIE w `worldGroup` (nie mogą łapać
+  strzałów/LOS botów). Łuk: grawitacja ×0.82, odbicia od podłogi z tłumieniem
+  i od ścian przez `resolveCollisions(pos, r, minTop = y)` — granat przelatuje
+  NAD niskimi osłonami jak WAŻKA, a odbita oś odwraca prędkość. Zapalnik
+  1,7 s → AoE 4,5 m (95 w centrum, liniowy spadek; dystans 3D — WAŻKA na
+  pułapie ledwo obrywa od podłogi), 50% obrażeń własnych (uczy dystansu jak
+  generator), rani też destrukcyjne propy (BRAMY/generatory). Zapas
+  `game.grenades`: `GRENADE_START` 2 na każdy start poziomu
+  (`resetLevelState` + `clearGrenades`), sklep `nade` dokupuje 2 (limit
+  `GRENADE_MAX` 4; consumable → w Zbrojowni kampanii niewidoczny — misja
+  zawsze startuje z 2). Licznik na HUD (`#hud-grenade`, `updateGrenadeHud`).
+- **Ustawienia** (`js/settings.js`, PROP-1/PROP-6): obiekt `SETTINGS` (sens,
+  volMaster, volMusic, bloom, shadows, strobe, fullscreen), zapis
+  `status1_settings` w try/catch, stosowanie na żywo przez `applySettings()`
+  (bloomPass.enabled, sun.castShadow, `AudioSys.setVolumes` — mnożniki na
+  bazowych gainach; fullscreen WCHODZI w `lockPointer()`, bo wymaga gestu —
+  `applySettings` tylko wychodzi z pełnego ekranu po wyłączeniu opcji).
+  Czułość i strobo czytane w punkcie użycia (mousemove w player.js,
+  `updateEnemies` w enemies.js — strobo OFF = oba paski świecą stale ~1.3).
+  Ekran `screen-settings` otwierany ze startu i pauzy (`openSettings(from)`
+  pamięta powrót); stan gry `'settings'`. Nowa opcja = pole w `SETTINGS`,
+  wiersz w markupie, sync w `syncSettingsUi()` i gałąź w `applySettings()`.
 - Model bota: przód to lokalne **+Z** (yaw = `atan2(dx, dz)`); meshe głowy mają
   `userData.isHead` (headshot ×2), wszystkie meshe `userData.enemyRef`.
 - Typy botów (`ENEMY_TYPES`): pole `weapon` ('pistol' | 'auto' | 'shotgun') steruje
@@ -344,7 +394,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   - `window.__test` — stan aktualizowany co klatkę (state, hp, score, wave, enemies,
     ammo, fov, credits, headshots, endless, errors[], mode, difficulty,
     mission {id, active, time, kills, objectives[]}, seed, arenaHash,
-    arenaReachable, pointerLock/wantLock, crouch/eyeH, pressure, radioHold);
+    arenaReachable, pointerLock/wantLock, crouch/eyeH, slide, grenades,
+    settings, pressure, radioHold);
     audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`;
   - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
     (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);
@@ -442,22 +493,28 @@ w tutorialu** (MISJA-5), **pressure przy celach hack/survive/gates** (MISJA-1),
 **WAŻKA jako częsty przeciwnik od S-01 i w arenie** (BOT-2). Szczegóły
 w Konwencjach i sekcji Kampania.
 
+Zrobione w partii 2026-08-14: **ustawienia** (PROP-1: czułość myszy,
+głośności, bloom/cienie, ekran ze startu i pauzy, zapis `status1_settings`),
+**wyłącznik strobo dronów** (PROP-6 częściowo — zostało remapowanie klawiszy
+i tryb dla daltonistów), **wślizg** (PROP-2), **granaty** (PROP-4) oraz
+**tarcza skrótów przeglądarki** (BUG-3: Ctrl+W przy wślizgu zamykał kartę —
+preventDefault + fullscreen z Keyboard Lock + beforeunload).
+Szczegóły w Konwencjach technicznych; testy w `tests/phase7_test.py`.
+
 Pomysły na dalszą rozbudowę:
 
-1. **Granaty** (klawisz G) — pociski z fizyką łuku (grawitacja jak w cząsteczkach),
-   eksplozja obszarowa + odrzut. (Generator AoE z props.js to gotowy wzorzec obrażeń.)
-2. **Ustawienia w pauzie** — czułość myszy, głośność master/muzyki, przełącznik
-   bloom/cieni (dla słabszych maszyn), zapisywane w localStorage. Audio ma już
-   osobne węzły do podpięcia suwaków: `master.gain` (całość) i `musicGain.gain`
-   (sam podkład) — trzeba je tylko wystawić z closure `AudioSys`.
+1. ~~**Granaty**~~ — ✅ ZROBIONE (2026-08-14): `js/grenades.js`, klawisz G,
+   sklep `nade`, licznik na HUD — patrz Konwencje techniczne.
+2. ~~**Ustawienia w pauzie**~~ — ✅ ZROBIONE (2026-08-14): `js/settings.js`,
+   ekran `screen-settings` — patrz Konwencje techniczne.
 3. **Nagroda za komplet medali (30/33)** — bonusowa linia w outro / skórka broni;
    zapis ma już liczniki.
 4. **Ekran wyników misji ze szczegółami** — wykres HP w czasie, mapa trasy.
 5. **Sterowanie dotykowe** — wirtualne gałki dla telefonów (gra jest lekka).
 6. **Minimapa / kompas** — kierunki botów na obwódce ekranu lub mały radar
    (znaczniki celów z off-screen chevronami już istnieją — to ich rozszerzenie).
-7. **Dostępność** — remapowanie klawiszy, tryb dla daltonistów, redukcja migotania
-   (strobo dronów powinno mieć wyłącznik!).
+7. **Dostępność** — remapowanie klawiszy, tryb dla daltonistów. Wyłącznik
+   strobo dronów ✅ jest w ustawieniach (2026-08-14).
 8. **Multiplayer co-op (WebRTC)** — największy skok złożoności; wymaga sygnalizacji,
    więc łamie zasadę „zero backendu" — rozważyć dopiero po wyczerpaniu single-player.
 9. **Pickupy na przełomie fal (arena)** — świeża dostawa w przerwie między falami

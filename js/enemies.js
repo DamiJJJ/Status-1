@@ -335,11 +335,17 @@ function enemyHasLos(enemy, dist) {
 }
 
 function updateEnemies(dt) {
-  // synced strobes: every drone flashes red/blue together (police vibe)
+  // synced strobes: every drone flashes red/blue together (police vibe);
+  // the accessibility setting (PROP-6) swaps the flashing for a steady glow
   strobeT += dt;
-  const sOn = Math.floor(strobeT * 5) % 2 === 0;
-  matStrobeR.emissiveIntensity = sOn ? 2.6 : 0.35;
-  matStrobeB.emissiveIntensity = sOn ? 0.35 : 2.6;
+  if (SETTINGS.strobe) {
+    const sOn = Math.floor(strobeT * 5) % 2 === 0;
+    matStrobeR.emissiveIntensity = sOn ? 2.6 : 0.35;
+    matStrobeB.emissiveIntensity = sOn ? 0.35 : 2.6;
+  } else {
+    matStrobeR.emissiveIntensity = 1.3;
+    matStrobeB.emissiveIntensity = 1.3;
+  }
 
   let despawned = false;
   for (const e of enemies) {

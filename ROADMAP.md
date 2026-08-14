@@ -12,6 +12,7 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 |---|---|---|---|
 | BUG-1 | ✅ Zepsuty pointer lock po „Ponów" (mysz nie znika, nie da się grać) | S/M | teraz |
 | BUG-2 | ✅ Brak wyjścia do menu / przerwania misji w trakcie gry | S | teraz |
+| BUG-3 | ✅ Skróty przeglądarki w grze (Ctrl+W przy wślizgu zamykał kartę) | S | teraz |
 | RUCH-1 | ✅ Kucanie | M | 1 |
 | RUCH-2 | Wchodzenie na niskie przeszkody | L | 1 |
 | MISJA-1 | ✅ Endless-spawn przy celach typu hack/strefy | M | 1 |
@@ -20,8 +21,8 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 | PROG-1 | Drzewko umiejętności zamiast kredytów; bronie odblokowywane fabularnie | L | 1 |
 | TRUD-1 | Globalne podniesienie poziomu trudności | M | 1 |
 | BOT-2 | ✅ WAŻKA jako częsty przeciwnik od początku | M | 1 |
-| PROP-1 | Ustawienia w pauzie | M | 1 |
-| PROP-6 | Dostępność (wyłącznik strobo, remap klawiszy) | S | 1 |
+| PROP-1 | ✅ Ustawienia w pauzie | M | 1 |
+| PROP-6 | Dostępność (✅ wyłącznik strobo; remap klawiszy — otwarte) | S | 1 |
 | BOT-1 | Redesign botów wg emblematu z logo | L | 2 |
 | BRON-1 | Remodeling broni na realne odpowiedniki | L | 2 |
 | MENU-1 | Menu główne z animowaną panoramą Los Santos | L | 2 |
@@ -35,8 +36,8 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 | PROP-9 | Audio otoczenia: materiał podłoża, pogłos per scena | M | 3 |
 | TECH-1 | Sterowanie dotykowe (mobile) | L | 4 |
 | TECH-2 | Multiplayer co-op w trybie endless | XL | 4 |
-| PROP-2 | Wślizg (slide) | S | — |
-| PROP-4 | Granaty | M | — |
+| PROP-2 | ✅ Wślizg (slide) | S | — |
+| PROP-4 | ✅ Granaty | M | — |
 | PROP-5 | Radar / kompas | M | — |
 | PROP-7 | Ekran wyników misji ze szczegółami | M | — |
 | PROP-8 | Nagroda za komplet medali | S | — |
@@ -86,6 +87,18 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
   (zapis rekordu przed wyjściem).
 - Wiąże się z MENU-1 (docelowo wraca się do nowego menu głównego), ale nie
   ma sensu czekać — opcja w pauzie potrzebna od zaraz.
+
+### BUG-3 · Skróty przeglądarki w grze — S — ✅ ZROBIONE (2026-08-14)
+
+> Kucanie/wślizg na Ctrl przy trzymanym W generowały Ctrl+W (zamknięcie
+> karty!), a Ctrl+T/D dokładały karty i zakładki. Tarcza w trzech warstwach
+> (input.js): `preventDefault` klawiszy gry i każdej kombinacji z Ctrl
+> (przed early-outem `e.repeat` — trzymane W przychodzi jako repeat) + wheel
+> z `{passive:false}`; **pełny ekran z Keyboard Lock** przy wejściu do gry
+> (opcja „Pełny ekran w grze" w ustawieniach, domyślnie ON — tylko
+> w fullscreenie Chrome oddaje stronie Ctrl+W/T); `beforeunload` w trakcie
+> biegu zamienia okienkowe Ctrl+W/F5 w pytanie „opuścić stronę?".
+> Objaw zgłoszony przy pierwszym graniu wślizgiem (PROP-2).
 
 ---
 
@@ -425,18 +438,34 @@ przy punktach i sklepie między falami (rekord ma sens tylko z ekonomią w biegu
 
 ## Propozycje dodatkowe (Claude)
 
-### PROP-1 · Ustawienia w pauzie — M · **zrobić wcześnie**
+### PROP-1 · Ustawienia w pauzie — M — ✅ ZROBIONE (2026-08-14)
+
+> Ekran `screen-settings` (`js/settings.js`), otwierany ze startu i z pauzy:
+> czułość myszy (30–200%), głośność ogólna/muzyki (`AudioSys.setVolumes`),
+> przełączniki bloom/cieni i strobo dronów (PROP-6). Zapis w localStorage
+> (`status1_settings`), stosowane na żywo; diagnostyka `__test.settings`.
 
 Czułość myszy, głośność master/muzyki (`master.gain` i `musicGain.gain` już
 czekają w `AudioSys`), przełącznik bloom/cieni, zapis w localStorage.
 Tanie, a odblokowuje TECH-1 (wydajność) i PROP-6 (dostępność).
 
-### PROP-2 · Wślizg (slide) — S (po RUCH-1)
+### PROP-2 · Wślizg (slide) — S (po RUCH-1) — ✅ ZROBIONE (2026-08-14)
+
+> Kucnięcie przy prędkości sprintu = wślizg ~0,55 s: kierunek utrwalony na
+> wejściu, prędkość ~1,1× i wygasa; skok w trakcie zachowuje pęd (synergia
+> z bunnyhopem), potem 0,8 s cooldownu. Przechył kamery, poszerzony FOV,
+> dźwięk szurnięcia; diagnostyka `__test.slide`.
 
 Kucnięcie w sprincie = krótki wślizg z zachowaniem pędu (synergia
 z bunnyhopem — sekcje `gates` zrobią się przyjemniejsze).
 
-### PROP-4 · Granaty — M
+### PROP-4 · Granaty — M — ✅ ZROBIONE (2026-08-14)
+
+> Klawisz G (`js/grenades.js`): pula pocisków, łuk z grawitacją, odbicia od
+> podłogi i ścian (przelatuje NAD niskimi osłonami — `minTop`), zapalnik
+> 1,7 s, AoE 4,5 m (95→edge, spada liniowo), 50% obrażeń własnych, rani
+> propy. Zapas: 2 na start poziomu, sklep „Granaty ×2" (limit 4), licznik
+> na HUD; diagnostyka `__test.grenades`.
 
 Klawisz G, łuk z grawitacją (fizyka jak cząsteczki), obrażenia obszarowe
 z odrzutem — wzorzec AoE już jest w generatorach (props.js). Pozycja
@@ -448,7 +477,11 @@ Kierunki botów na obwódce ekranu albo mały radar; off-screen chevrony celów
 już istnieją — to ich rozszerzenie o kontakty wroga. Ważniejsze po SCENA-1
 (w mieście łatwiej zgubić orientację).
 
-### PROP-6 · Dostępność — S
+### PROP-6 · Dostępność — S — ✅ CZĘŚCIOWO (2026-08-14)
+
+> Wyłącznik strobo dronów jest w ekranie ustawień (PROP-1): zamiast migania
+> oba paski świecą stałym, średnim blaskiem. Zostało: remapowanie klawiszy
+> i tryb dla daltonistów.
 
 Wyłącznik strobo dronów (migotanie!), remapowanie klawiszy, opcjonalnie tryb
 dla daltonistów (liberie mają różnić się też jasnością). Część ustawień

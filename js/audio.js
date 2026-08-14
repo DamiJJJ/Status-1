@@ -10,6 +10,9 @@ const AudioSys = (() => {
   let ctx = null, master = null, noiseBuf = null;
   let sfxBus = null, duckFilter = null, compressor = null;
   let reverb = null, reverbGain = null;
+  // user volume multipliers (settings screen); base gains stay the mix reference
+  let userMaster = 1, userMusic = 1;
+  const MASTER_GAIN = 0.32, MUSIC_GAIN = 0.55;
 
   const BREATH_SFX = true; // subtle sprint breathing; flip to false to disable
 
@@ -51,7 +54,7 @@ const AudioSys = (() => {
       duckFilter.Q.value = 0.5;
       duckFilter.connect(compressor);
       master = ctx.createGain();
-      master.gain.value = 0.32;
+      master.gain.value = MASTER_GAIN * userMaster;
       master.connect(duckFilter);
       sfxBus = ctx.createGain();
       sfxBus.connect(master);
@@ -379,7 +382,7 @@ const AudioSys = (() => {
   function startMusic() {
     if (musicTimer || !ctx) return;
     musicGain = ctx.createGain();
-    musicGain.gain.value = 0.55;
+    musicGain.gain.value = MUSIC_GAIN * userMusic;
     musicGain.connect(master);
     musicDuck = ctx.createGain(); // sidechained sub-bus (bass/pads/bells)
     musicDuck.connect(musicGain);
@@ -393,6 +396,14 @@ const AudioSys = (() => {
     startMusic,
     update,
     resetFx,
+
+    /* settings screen: 0..1 multipliers over the base mix gains; safe to call
+       before init (values are stored and applied when the nodes exist) */
+    setVolumes(m, mus) {
+      userMaster = m; userMusic = mus;
+      if (master) master.gain.value = MASTER_GAIN * userMaster;
+      if (musicGain) musicGain.gain.value = MUSIC_GAIN * userMusic;
+    },
 
     /* --- weapons --- */
     shot(id) {
@@ -507,6 +518,21 @@ const AudioSys = (() => {
     bhop(boost = 1) {
       const f = 480 + (boost - 1) * 1900;
       tone({ type: 'square', f0: f, f1: f * 1.3, dur: 0.05, vol: 0.05, filter: 2600 });
+    },
+    // slide: one sustained floor scrape + a low body rumble
+    slide() {
+      burst({ dur: 0.45, vol: 0.15, freq: 470, q: 0.7, type: 'bandpass', jitter: 0.12, send: 0.25 });
+      tone({ type: 'sine', f0: 92, f1: 58, dur: 0.34, vol: 0.07, jitter: 0.1 });
+    },
+
+    /* --- grenades --- */
+    throw_() { // short cloth whoosh, pitch falls as the arm extends
+      burst({ dur: 0.16, vol: 0.1, freq: 1150, q: 0.7, type: 'bandpass', jitter: 0.15 });
+      tone({ type: 'sine', f0: 320, f1: 180, dur: 0.09, vol: 0.05, jitter: 0.1 });
+    },
+    nadeBounce(pos) {
+      tone({ type: 'square', f0: 640, f1: 380, dur: 0.045, vol: 0.1, jitter: 0.2, pos, send: 0.3 });
+      burst({ dur: 0.03, vol: 0.06, freq: 1900, type: 'highpass', jitter: 0.2, pos });
     },
 
     /* --- UI / game flow (tuned to A minor to sit inside the music) --- */

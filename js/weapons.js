@@ -367,7 +367,8 @@ function updateWeapons(dt) {
   let targetFov;
   if (aiming && w.zoom) targetFov = ZOOM_FOV;
   else if (aiming) targetFov = 60;
-  else targetFov = BASE_FOV + (player.sprinting ? 6 : 0) + (player.hopBoost - 1) * 10;
+  else targetFov = BASE_FOV + (player.sprinting ? 6 : 0) + (player.sliding ? 7 : 0)
+    + (player.hopBoost - 1) * 10;
   if (Math.abs(camera.fov - targetFov) > 0.1) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 14);
     camera.updateProjectionMatrix();

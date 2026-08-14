@@ -6,6 +6,26 @@
 
 /* ==================== WEJŚCIE ==================== */
 
+/* --- browser-shortcut shield ---
+   The game binds Ctrl (crouch/slide) next to held WSAD, so the browser sees
+   Ctrl+W (close tab!), Ctrl+T/N (new tab/window), Ctrl+D, Ctrl+1..4 mid-fight.
+   Three layers:
+   (1) preventDefault below: game keys + every Ctrl-combination while a run is
+       on screen — kills the preventable shortcuts (bookmark, save, tab 1..4);
+   (2) Keyboard Lock (Chrome, ACTIVE ONLY IN FULLSCREEN): with these codes
+       locked the browser delivers even Ctrl+W/T/N to the page, where layer 1
+       eats them — fullscreen entry lives in lockPointer() (SETTINGS.fullscreen);
+   (3) beforeunload prompt (bottom of this file): windowed Ctrl+W cannot be
+       prevented, but an active run turns it into a "leave site?" question.
+   Escape stays UNLOCKED on purpose — it must keep exiting pointer lock. */
+const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyG', 'KeyR',
+  'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',
+  'Digit1', 'Digit2', 'Digit3', 'Digit4']);
+const SHIELD_STATES = new Set(['playing', 'paused', 'shop', 'settings']);
+if (navigator.keyboard && navigator.keyboard.lock) {
+  navigator.keyboard.lock([...GAME_KEYS, 'KeyT', 'KeyN']).catch(() => { /* unsupported */ });
+}
+
 controls.addEventListener('lock', () => {
   if (wantLock) { wantLock = false; beginPlaying(); }
 });
@@ -53,11 +73,17 @@ for (const b of document.querySelectorAll('#diff-seg .seg-btn')) {
 }
 
 document.addEventListener('keydown', e => {
+  // shield layer 1 — MUST run before the e.repeat early-out: the held W that
+  // turns into Ctrl+W arrives as a repeat event
+  if (SHIELD_STATES.has(game.state) && (GAME_KEYS.has(e.code) || e.ctrlKey)) {
+    e.preventDefault();
+  }
   if (e.repeat) return;
   keys[e.code] = true;
   const enter = e.code === 'Enter' || e.code === 'NumpadEnter';
   if (game.state === 'playing') {
     if (e.code === 'KeyR') startReload();
+    if (e.code === 'KeyG') throwGrenade();
     if (e.code === 'Digit1') switchWeapon(0);
     if (e.code === 'Digit2') switchWeapon(1);
     if (e.code === 'Digit3') switchWeapon(2);
@@ -86,8 +112,11 @@ document.addEventListener('mouseup', e => {
   if (e.button === 2) setAiming(false);
 });
 document.addEventListener('contextmenu', e => e.preventDefault());
+// passive:false — the default passive document listener cannot preventDefault,
+// and Ctrl+wheel while playing would zoom the whole page
 document.addEventListener('wheel', e => {
   if (game.state !== 'playing') return;
+  e.preventDefault();
   const dir = e.deltaY > 0 ? 1 : -1;
   // scroll pomija bronie, których gracz jeszcze nie kupił
   let i = currentWeapon;
@@ -96,4 +125,19 @@ document.addEventListener('wheel', e => {
     if (WEAPONS[i].owned) break;
   }
   switchWeapon(i);
+}, { passive: false });
+
+/* shield layer 3: an unpreventable close/reload (windowed Ctrl+W, F5, Ctrl+F4)
+   during an active run raises the native "leave site?" prompt instead of
+   silently killing the game. Menus stay unarmed (normal navigation must not
+   nag); TEST skips it — automation navigates pages mid-run all the time. */
+window.addEventListener('beforeunload', e => {
+  if (TEST) return;
+  const midRun = game.state === 'playing' || game.state === 'paused'
+    || game.state === 'shop'
+    || (game.state === 'settings' && settingsReturn === 'pause');
+  if (midRun) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
 });

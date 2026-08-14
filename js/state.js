@@ -15,6 +15,7 @@ const game = {
   credits: 0,
   endless: false,  // arena mode past the final wave
   noCombat: false, // campaign epilogue: weapons stowed, crosshair hidden
+  grenades: GRENADE_START, // grenade count (key G; refilled per level, shop tops up)
   dmgMul: 1,       // damage multiplier (shop)
   reloadMul: 1,    // reload-time multiplier (shop)
   // arena best score; reads pre-rename keys as fallback (migration)
@@ -34,6 +35,7 @@ const screens = {
   debrief: el('screen-debrief'),
   mfail: el('screen-mfail'),
   lock: el('screen-lock'),
+  settings: el('screen-settings'),
 };
 
 function showScreen(name) {
@@ -182,9 +184,13 @@ function resetLevelState() {
   player.pos.set(arena.playerSpawn.x, PLAYER_EYE, arena.playerSpawn.z);
   player.sprinting = false;
   player.crouching = false;
+  player.sliding = false;
+  player.slideT = 0;
+  player.slideCd = 0;
   player.eyeH = PLAYER_EYE;
   swayPitchPrev = 0;
   swayAmp = 0;
+  slideTilt = 0;
   camera.rotation.set(0, arena.playerSpawn.yaw || 0, 0);
   camera.fov = BASE_FOV;
   camera.updateProjectionMatrix();
@@ -207,6 +213,11 @@ function resetLevelState() {
   adsBlend = 0;
   setAiming(false);
   hideReloadHud();
+
+  // grenades: every level starts with the base supply (the shop tops it up)
+  game.grenades = GRENADE_START;
+  clearGrenades();
+  updateGrenadeHud();
 
   waveSystem.reset();
   placeArenaPickups();

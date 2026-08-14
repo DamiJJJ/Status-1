@@ -50,6 +50,12 @@ const UI_ICONS = {
     <path d="M9.9 10.6q0-3.2 2.1-4.4 2.1 1.2 2.1 4.4v8.9H9.9z"/>
     <path d="M16.8 10.6q0-3.2 2.1-4.4 2.1 1.2 2.1 4.4v8.9h-4.2z"/>
   </svg>`,
+  grenade: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 8.2a6.4 6.4 0 0 1 6.4 6.4A6.4 6.4 0 0 1 12 21a6.4 6.4 0 0 1-6.4-6.4A6.4 6.4 0 0 1 12 8.2z"/>
+    <rect x="10" y="5.6" width="4" height="3"/>
+    <rect x="9" y="3" width="6" height="2.2" rx="1"/>
+    <path d="M15 3.8h4.2v2h-2.6l-1.6 1.4z" fill-rule="evenodd"/>
+  </svg>`,
   shield: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path fill-rule="evenodd" d="M12 2.6l7.6 2.7v6c0 4.9-3.1 8.1-7.6 9.8-4.5-1.7-7.6-4.9-7.6-9.8v-6z
       M10.7 7.8h2.6v2.9H16v2.6h-2.7v2.9h-2.6v-2.9H8v-2.6h2.7z"/>

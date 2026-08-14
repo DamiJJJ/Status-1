@@ -37,15 +37,27 @@ document.addEventListener('mousemove', (e) => {
   if (spike) return;
   dx = Math.max(-LOOK_MAX_DELTA, Math.min(LOOK_MAX_DELTA, dx));
   dy = Math.max(-LOOK_MAX_DELTA, Math.min(LOOK_MAX_DELTA, dy));
-  camera.rotation.y -= dx * LOOK_SENS * lookScale;
+  // SETTINGS.sens: user sensitivity from the settings screen (js/settings.js,
+  // loaded later — the handler only fires under pointer lock, long after boot)
+  const sens = LOOK_SENS * lookScale * SETTINGS.sens;
+  camera.rotation.y -= dx * sens;
   camera.rotation.x = Math.max(-Math.PI / 2,
-    Math.min(Math.PI / 2, camera.rotation.x - dy * LOOK_SENS * lookScale));
+    Math.min(Math.PI / 2, camera.rotation.x - dy * sens));
 });
 
 /* Pointer lock z surowym ruchem (unadjustedMovement) — omija windowsowe
    "zwiększanie precyzji wskaźnika" (akcelerację), drugie źródło dziwnych
    skoków celownika. Brak wsparcia w przeglądarce → zwykły lock. */
 function lockPointer() {
+  // fullscreen first, same click gesture: only under fullscreen can the
+  // Keyboard Lock (input.js) hand us Ctrl+W & friends instead of the browser
+  // running the shortcut; optional via SETTINGS.fullscreen, skipped in TEST
+  // (headless has no gesture and the refusal would pollute __test.errors)
+  if (!TEST && SETTINGS.fullscreen && !document.fullscreenElement
+      && document.documentElement.requestFullscreen) {
+    const fp = document.documentElement.requestFullscreen();
+    if (fp && fp.catch) fp.catch(() => { /* refused — the windowed shield still holds */ });
+  }
   const el = document.body;
   try {
     const p = el.requestPointerLock({ unadjustedMovement: true });
@@ -72,7 +84,16 @@ const player = {
   eyeH: PLAYER_EYE, // bieżąca wysokość oka (płynny lerp PLAYER_EYE ↔ CROUCH_EYE)
   hopBoost: 1,      // bunnyhop: mnożnik prędkości za łańcuch skoków
   sinceLand: 10,    // czas od ostatniego lądowania
+  sliding: false,   // wślizg (PROP-2): kucnięcie przy prędkości sprintu
+  slideT: 0,        // pozostały czas wślizgu
+  slideCd: 0,       // cooldown przed kolejnym wślizgiem
+  slideSpeed: 0,    // prędkość wejściowa wślizgu (wygasa w trakcie)
 };
+
+/* slide: direction is committed at entry; steering during a knee slide would
+   feel like ice skates. Jumping out keeps the horizontal momentum (bhop synergy). */
+const SLIDE_DUR = 0.55;
+const _slideDir = new THREE.Vector3();
 
 const keys = {};
 let firing = false;
@@ -155,7 +176,27 @@ function updatePlayer(dt) {
   if (hasInput) _wish.normalize();
   // crouch (hold Ctrl/C): slower, lower eye, tighter hip fire; bots aim at
   // player.pos.y, so ducking behind low cover genuinely hides the player
+  const wasCrouching = player.crouching;
   player.crouching = !!(keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC']);
+  // slide (PROP-2): crouching at sprint-level speed converts the momentum
+  // into a short slide; ends on timer, key release or leaving the ground
+  const horSpeed = Math.hypot(player.vel.x, player.vel.z);
+  if (player.crouching && !wasCrouching && player.onGround && !player.sliding
+      && player.slideCd <= 0 && horSpeed > WALK_SPEED * 1.05) {
+    player.sliding = true;
+    player.slideT = SLIDE_DUR;
+    player.slideSpeed = Math.max(horSpeed * 1.1, SPRINT_SPEED * 1.05);
+    _slideDir.set(player.vel.x / horSpeed, 0, player.vel.z / horSpeed);
+    AudioSys.slide();
+  }
+  if (player.sliding) {
+    player.slideT -= dt;
+    if (player.slideT <= 0 || !player.crouching || !player.onGround) {
+      player.sliding = false;
+      player.slideCd = 0.8; // no slide-chaining — bunnyhop is the speed tech here
+    }
+  }
+  player.slideCd = Math.max(0, player.slideCd - dt);
   const targetEye = player.crouching ? CROUCH_EYE : PLAYER_EYE;
   player.eyeH += (targetEye - player.eyeH) * Math.min(1, dt * 10);
   // celowanie i kucanie wyłączają sprint i spowalniają ruch
@@ -165,9 +206,17 @@ function updatePlayer(dt) {
   if (aiming || player.crouching) speed *= 0.55;
 
   // wygładzanie przyspieszenia (w powietrzu mniejsza kontrola, ale pęd zostaje)
-  const accel = player.onGround ? 14 : 5;
-  player.vel.x += (_wish.x * speed - player.vel.x) * Math.min(1, accel * dt);
-  player.vel.z += (_wish.z * speed - player.vel.z) * Math.min(1, accel * dt);
+  if (player.sliding) {
+    // slide overrides steering: committed direction, speed decays over the ride
+    const k = player.slideT / SLIDE_DUR; // 1 → 0
+    const sp = player.slideSpeed * (0.45 + 0.55 * k);
+    player.vel.x = _slideDir.x * sp;
+    player.vel.z = _slideDir.z * sp;
+  } else {
+    const accel = player.onGround ? 14 : 5;
+    player.vel.x += (_wish.x * speed - player.vel.x) * Math.min(1, accel * dt);
+    player.vel.z += (_wish.z * speed - player.vel.z) * Math.min(1, accel * dt);
+  }
   player.moving = hasInput;
 
   // grawitacja / skok; trzymanie spacji auto-skacze przy lądowaniu (autohop)
@@ -218,6 +267,7 @@ let swayPhase = 0;
 let swayAmp = 0;
 let swayPitchPrev = 0;
 let swayStepIdx = 0;
+let slideTilt = 0; // camera roll lean while sliding (eases in/out)
 
 function updateCameraSway(dt) {
   const movingGround = player.moving && player.onGround;
@@ -231,10 +281,13 @@ function updateCameraSway(dt) {
   const stepIdx = Math.floor((swayPhase - Math.PI / 2) / Math.PI);
   if (stepIdx !== swayStepIdx) {
     swayStepIdx = stepIdx;
-    if (movingGround && game.state === 'playing') AudioSys.footstep(player.sprinting);
+    // a slide is one continuous scrape, not steps
+    if (movingGround && !player.sliding && game.state === 'playing') AudioSys.footstep(player.sprinting);
   }
-  // roll: nadpisujemy w całości (gracz nie ma własnego przechyłu)
-  camera.rotation.z = Math.sin(swayPhase) * swayAmp;
+  // roll: nadpisujemy w całości (gracz nie ma własnego przechyłu);
+  // wślizg dokłada stały przechył (lean into the slide)
+  slideTilt += ((player.sliding ? 0.055 : 0) - slideTilt) * Math.min(1, dt * 10);
+  camera.rotation.z = Math.sin(swayPhase) * swayAmp + slideTilt;
   // pionowy bob na pitchu: nakładany różnicowo, żeby nie walczyć z myszą
   const pitchBob = Math.abs(Math.cos(swayPhase)) * swayAmp * 0.55;
   camera.rotation.x += pitchBob - swayPitchPrev;

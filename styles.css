@@ -194,6 +194,22 @@ html, body {
 
 /* prawy dolny: broń i amunicja */
 #hud-weapon { right: 18px; bottom: 18px; text-align: right; }
+#hud-grenade {
+  display: flex; align-items: center; gap: 6px;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  font-size: 14px; font-weight: 700;
+  color: var(--orange);
+}
+#hud-grenade .icon { width: 16px; height: 16px; }
+#hud-grenade b {
+  font-size: 10px; font-weight: 600; letter-spacing: 1px;
+  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+#hud-grenade.empty { color: var(--text-dim); opacity: 0.55; }
 #weapon-name {
   font-size: 13px; letter-spacing: 3px;
   color: var(--orange); text-transform: uppercase; font-weight: 600;
@@ -626,6 +642,77 @@ html, body {
 #radio-box[data-who="baker"] .radio-who { color: var(--teal); text-transform: lowercase; }
 #radio-box[data-who="sys"] { border-left-color: var(--orange); }
 #radio-box[data-who="sys"] .radio-who { color: var(--orange); }
+
+/* ---------- ustawienia (PROP-1 / PROP-6) ---------- */
+#settings-list {
+  display: flex; flex-direction: column; gap: 12px;
+  margin-bottom: 26px;
+  text-align: left;
+}
+.set-row {
+  display: flex; align-items: center; gap: 14px;
+  font-size: 14px;
+}
+.set-row label { flex: 1; color: var(--text); }
+.set-row .set-note {
+  display: block;
+  font-size: 11px; color: var(--text-dim);
+}
+.set-row .set-val {
+  width: 46px; text-align: right;
+  font-size: 13px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--teal);
+}
+.set-row input[type="range"] {
+  pointer-events: auto;
+  flex: none; width: 190px;
+  appearance: none; -webkit-appearance: none;
+  height: 4px; border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+  cursor: pointer;
+}
+.set-row input[type="range"]::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 8px rgba(0, 235, 199, 0.6);
+  border: none;
+}
+.set-row input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 8px rgba(0, 235, 199, 0.6);
+  border: none;
+}
+/* checkbox styled as a switch */
+.set-row--toggle input[type="checkbox"] {
+  pointer-events: auto;
+  appearance: none; -webkit-appearance: none;
+  flex: none;
+  width: 42px; height: 22px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.set-row--toggle input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  left: 3px; top: 3px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: left 0.15s, background 0.15s;
+}
+.set-row--toggle input[type="checkbox"]:checked { background: rgba(0, 235, 199, 0.35); }
+.set-row--toggle input[type="checkbox"]:checked::after {
+  left: 23px;
+  background: var(--teal);
+  box-shadow: 0 0 7px rgba(0, 235, 199, 0.7);
+}
 
 /* log testowy (tylko przy ?test=...) */
 #testlog {
