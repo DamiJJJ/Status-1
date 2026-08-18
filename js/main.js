@@ -74,9 +74,11 @@ function tick(now) {
   // MENU-1: navigation screens render the animated city panorama instead of
   // the game world — retarget the shared render pass (bloom stays in place)
   const onMenuBg = menuBgActive();
-  if (onMenuBg) MenuBg.update(dt);
-  renderPass.scene = onMenuBg ? MenuBg.scene : scene;
-  renderPass.camera = onMenuBg ? MenuBg.camera : camera;
+  const onBestiary = game.state === 'bestiary';   // navigation layer, own scene
+  if (onBestiary) Bestiary.update(dt);
+  else if (onMenuBg) MenuBg.update(dt);
+  renderPass.scene = onBestiary ? Bestiary.scene : (onMenuBg ? MenuBg.scene : scene);
+  renderPass.camera = onBestiary ? Bestiary.camera : (onMenuBg ? MenuBg.camera : camera);
   if (onMenuBg !== menuBgWas) {
     // the transparent menu screen would let the gameplay HUD bleed through
     menuBgWas = onMenuBg;
@@ -84,6 +86,7 @@ function tick(now) {
     AudioSys.menuMusic(onMenuBg); // the menu theme rides with the panorama
   }
   __test.menuBg = onMenuBg;
+  __test.bestiary = onBestiary ? BESTIARY[Bestiary.index()].type : null;
 
   composer.render();
 }

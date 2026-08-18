@@ -3,7 +3,7 @@
 
 Checks (http://localhost:8137):
   1. boot: the main menu is the first screen, panorama active and animating
-  2. navigation: arena entry / stats / campaign / settings / armory and back
+  2. navigation: arena entry / stats / bestiary / settings and back
   3. menu theme: the assets/ mp3 loops behind the navigation layer
   4. gameplay renders the game world again (?test=play -> menuBg off) and the
      menu theme hands over to the procedural score
@@ -44,7 +44,7 @@ with sync_playwright() as pw:
           page.evaluate("screens.menu.classList.contains('visible')"), "")
     check("boot: panorama active", page.evaluate("window.__test.menuBg === true"), "")
     check("boot: menu progress line rendered",
-          page.evaluate("el('menu-progress').textContent.includes('Kampania:')"),
+          len(page.evaluate("el('menu-progress').textContent")) > 5,
           page.evaluate("el('menu-progress').textContent"))
     cam0 = page.evaluate("MenuBg.camera.position.x")
     time.sleep(1.0)
@@ -66,20 +66,20 @@ with sync_playwright() as pw:
     page.click("#btn-menu-stats")
     check("nav: stats screen renders rows",
           page.evaluate("game.state === 'stats'"
-                        " && el('stats-list').children.length >= 8"
+                        " && el('stats-list').children.length >= 5"
                         " && window.__test.menuBg === true"), "")
     page.keyboard.press("Escape")
     check("nav: Esc leaves stats",
           page.evaluate("game.state === 'menu'"
                         " && screens.menu.classList.contains('visible')"), "")
 
-    page.click("#btn-menu-campaign")
-    check("nav: campaign select keeps the panorama",
-          page.evaluate("game.state === 'levels'"
-                        " && screens.campaign.classList.contains('visible')"
+    page.click("#btn-menu-bestiary")
+    check("nav: bestiary keeps the menu layer",
+          page.evaluate("game.state === 'bestiary'"
+                        " && screens.bestiary.classList.contains('visible')"
                         " && window.__test.menuBg === true"), "")
-    page.click("#btn-campaign-back")
-    check("nav: back to menu from campaign",
+    page.click("#btn-bestiary-back")
+    check("nav: back to menu from bestiary",
           page.evaluate("screens.menu.classList.contains('visible')"), "")
 
     page.click("#btn-menu-settings")
@@ -90,15 +90,6 @@ with sync_playwright() as pw:
     check("nav: settings back to menu",
           page.evaluate("game.state === 'menu'"
                         " && screens.menu.classList.contains('visible')"), "")
-
-    page.click("#btn-menu-armory")
-    check("nav: armory opens from the menu",
-          page.evaluate("game.state === 'shop'"
-                        " && el('shop-title').textContent === 'Zbrojownia'"
-                        " && window.__test.menuBg === true"), "")
-    page.click("#btn-shop-continue")
-    check("nav: armory continue lands on mission select",
-          page.evaluate("game.state === 'levels'"), page.evaluate("game.state"))
 
     # --- 3: menu theme (the one audio file, outside the WebAudio graph) ---
     audio = ("(() => { const a = el('menu-music'); return a ? {v: a.volume,"

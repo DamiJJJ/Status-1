@@ -1,5 +1,16 @@
 # STATUS 1 (dawniej NEON ARENA) — notatki dla Claude Code
 
+> ⚠️ **STAN NA 2026-08-18: kampania i trzy typy botów są WYCIĘTE z gry.**
+> Leżą w `_kosz/` (patrz `_kosz/README.md`) i nic ich nie ładuje. Grą jest
+> teraz sama **Arena bez końca**, a jedynym przeciwnikiem **PATROL**.
+> W `js/` została zaślepka `campaign_off.js` z globalami, które reszta kodu
+> woła bezwarunkowo (`difficulty()`, `missionEvent`, `radioHoldT`,
+> `backToMenu`, statystyki). Gałęzie `if (game.mode === 'campaign')` zostały
+> nietknięte i są martwe — `game.mode` jest zawsze `'arena'`.
+> **Sekcje niżej opisujące kampanię, misje, medale, radio i pozostałe typy
+> botów dotyczą kodu w `_kosz/`** — czytaj je jako dokumentację tego, co
+> wraca, nie tego, co działa.
+
 Przeglądarkowy FPS (Three.js). Gra jest **w 100% po stronie klienta** — bez backendu,
 bez bundlera, bez node_modules. **Rdzeniem gry jest KAMPANIA** (11 symulacji: tutorial
 S-00 → S-01…S-09 → grywalny epilog bez walki); dawny tryb fal został jako
@@ -52,6 +63,9 @@ więc formy męskie w kwestiach DO gracza są OK.
   `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
   `textures.js` (`TexGen`: proceduralne tekstury z canvasa; `makeLogTexture` — panele
   z polskim tekstem; wymaga `renderer`, więc MUSI być po `renderer.js`) →
+  `models.js` (GENEROWANY przez `tools/gen_models.py`: `MODEL_DATA`, spakowana
+  geometria zewnętrznych modeli) → `modelkit.js` (`buildModel`/`socketLocal`:
+  dekoder + budowa instancji z cache'owaną geometrią) →
   `menubg.js` (MENU-1: panorama Los Santos za menu — własna scena/kamera,
   `MenuBg.build/update`, `menuBgActive()`; buduje się dopiero w `main.js`) →
   `world.js` (cykl życia areny, generator parametryczny ze stylami open/pillars/
@@ -70,9 +84,10 @@ więc formy męskie w kwestiach DO gracza są OK.
   `shop.js` (`applyAllShopEffects` — IDEMPOTENTNE efekty sklepu, warunek zapisu;
   tryb Zbrojowni) → `waves.js` (JEDEN reżyser dla obu trybów; polityka wstrzykiwana
   przez `reset(policy)`: script/loop/maxAlive/onCleared/paused) →
-  `missions.js` (czyste dane: MISSIONS/DIFFICULTIES/teksty) → `campaign.js`
-  (OBJECTIVE_TYPES, obiekt `mission`, medale, radio, zapis localStorage, ekrany
-  kampanii, znaczniki celów z off-screen chevronami) → `hud.js` → `state.js`
+  `campaign_off.js` (zaślepka po wyciętej kampanii: `DIFFICULTIES`/`difficulty()`,
+  puste `missionEvent`/`missionShot`/`missionHpTrack` liczące statystyki służby,
+  `radioHoldT`/`updateRadio`, `backToMenu`, `openStats`/`renderStats`,
+  `renderMenuMeta`; oryginały w `_kosz/kampania/`) → `hud.js` → `state.js`
   (obiekt `game`; **`resetRunState`** = progresja, **`resetLevelState`** = świat/ciało;
   `resetGameState` = obie, tylko arena) → `settings.js` (obiekt `SETTINGS`,
   ekran ustawień, zapis `status1_settings`) → `input.js` → `testmode.js` → `main.js`
@@ -93,8 +108,15 @@ więc formy męskie w kwestiach DO gracza są OK.
     panele, mapy normalnych i roughness; SVG → PNG). Skrypt generujący **commitujemy razem
     z wynikiem**, żeby dało się przegenerować zasób po zmianie palety/rozdzielczości.
 
-  **Zabronione: gotowe modele/tekstury/dźwięki z zewnątrz** (stock, paczki assetów,
-  biblioteki tekstur) — licencje i spójność stylu. **Dźwięk ROZGRYWKI zostaje w 100%
+  - **geometria z zewnętrznych modeli CC0/CC-BY** (decyzja użytkownika, 2026-08-18):
+    źródłowe `.glb` leżą w `assets_src/`, a `tools/gen_models.py` wypieka z nich
+    SAMĄ GEOMETRIĘ do `js/models.js` (kwantyzacja + base64). Materiały, kolory
+    i światło zostają nasze — patrz Konwencje → „Modele zewnętrzne". Autorów
+    trzeba wymienić w README (CC-BY), a plik źródłowy commitować razem z wynikiem.
+
+  **Zabronione: gotowe TEKSTURY i dźwięki z zewnątrz** (stock, paczki assetów,
+  biblioteki tekstur) — licencje i spójność stylu. Modele z zewnątrz wolno brać
+  wyłącznie na warunkach wyżej (CC0/CC-BY, sama geometria). **Dźwięk ROZGRYWKI zostaje w 100%
   syntetyczny (WebAudio)** — żadnych plików, nawet własnych i nawet generowanych AI.
   Powód nie jest tylko licencyjny — przy `file://` gotowy plik da się odtworzyć
   wyłącznie przez `<audio>`, bo `fetch` + `decodeAudioData` jest blokowane przez CORS,
@@ -169,6 +191,22 @@ więc formy męskie w kwestiach DO gracza są OK.
   okienkowe Ctrl+W/F5 w natywne pytanie „opuścić stronę?" — poza biegiem
   nieuzbrojone, w TEST wyłączone (testy nawigują w trakcie gry). Nowy klawisz
   gry dopisuj do `GAME_KEYS` (i tym samym do listy Keyboard Lock).
+- **Modele zewnętrzne** (`tools/gen_models.py` → `js/models.js` → `js/modelkit.js`):
+  pipeline istnieje, bo przy `file://` `GLTFLoader` nie zadziała (`fetch` jest
+  blokowany), więc `.glb` NIE MOŻE leżeć obok `index.html`. Skrypt czyta glTF
+  offline, wypieka transformacje węzłów, dzieli mesh na CZĘŚCI (skinning: po
+  dominującym jointcie, statyczne: po nazwie węzła), liczy piwoty z bind pose'u
+  (`inverseBindMatrices`) i pakuje pozycje do int16 + normalne do int8 w base64.
+  Runtime (`buildModel(name, matFor)`) buduje instancję: każda część siedzi we
+  własnej `Group` ustawionej NA PIWOCIE, więc `parts.legL.rotation.x` macha nogą
+  jak dotąd. **Geometrie są cache'owane i współdzielone** (`_modelGeoCache`) —
+  boty spawnują się dziesiątkami, świeży `BufferGeometry` na sztukę to przeciek.
+  `matFor(srcMaterialName)` mapuje materiał ŹRÓDŁOWY na nasz — dzięki temu jeden
+  mesh nosi dowolną liberię. `sockets` (np. `handR`) to punkty montażowe z bind
+  pose'u; `socketLocal(model, socket, part)` przelicza je do układu części, żeby
+  doczepiona broń jechała z ręką. Nowy model = wpis w `MODELS` w skrypcie
+  (mapowanie jointów/węzłów, `rot`, `height`/`length`), `--probe` do sprawdzenia
+  orientacji i granic, potem przegenerowanie pliku i kredyt w README.
 - **Kucanie** (Ctrl/C, trzymane): `player.crouching` + `player.eyeH` (płynny lerp
   `PLAYER_EYE`↔`CROUCH_EYE`; podłoga to `pos.y <= eyeH` — stojąc na ziemi oko podąża
   za lerpem wprost, bez grawitacji, żeby zejście w kucki nie brzmiało jak upadek).
@@ -226,6 +264,19 @@ więc formy męskie w kwestiach DO gracza są OK.
   zbrojownia z menu przez `openArmoryFromMenu()` (najpierw
   `applyRunFromSave()`). Diagnostyka: `__test.menuBg`; testy
   `tests/menu_test.py`.
+- **Bestiariusz** (`js/bestiary.js`, 2026-08-18): ekran `screen-bestiary`
+  (stan `'bestiary'`) z menu głównego. Dane w tablicy `BESTIARY` (kod, rola,
+  uzbrojenie, opis, zrzut) + liczby czytane z `ENEMY_TYPES`, żeby karta nie
+  rozjechała się z balansem. Model to zwykłe `buildEnemyModel(type)` w OSOBNEJ
+  scenie (`Bestiary.scene/camera`, własne światła i podest) renderowanej przez
+  ten sam composer - `main.js` przełącza `renderPass` jak przy panoramie, a
+  `menuBgActive()` zwraca `true` dla stanu `'bestiary'` (chowa HUD, gra motyw
+  menu). **Modele są cache'owane per typ i tylko przełączane widocznością** -
+  `buildEnemyModel` alokuje geometrie, więc przebudowa przy każdym kliknięciu
+  by przeciekała. `updateEnemies` w menu nie chodzi, więc strobo dronów
+  animuje `Bestiary.update`. Kamera per wpis (`entry.cam`) - WAŻKA jest za
+  mała, żeby czytać się z tej samej odległości co podwozie. Diagnostyka:
+  `__test.bestiary` (nazwa typu albo null); testy `tests/bestiary_test.py`.
 - **Ustawienia** (`js/settings.js`, PROP-1/PROP-6): obiekt `SETTINGS` (sens,
   volMaster, volMusic, bloom, shadows, strobe, fullscreen), zapis
   `status1_settings` w try/catch, stosowanie na żywo przez `applySettings()`
@@ -307,18 +358,53 @@ więc formy męskie w kwestiach DO gracza są OK.
   broni** (zamek/szyna/lufa), nie lewitujące — słupki muszą stać na bryle; na wąskiej
   szynie SMG stoi najpierw poprzeczka-podstawka, dopiero na niej słupki. Nowa broń
   musi dostać komplet: muszkę, szczerbinkę i adsPos.
+  Przy broni z wypieczonego modelu (Glock) przyrządy są JUŻ w geometrii i to
+  ich używamy — **nie doklejaj słupków ani kropek** (decyzja użytkownika
+  2026-08-18; doklejane bryły albo lewitowały, albo zasłaniały cel). Odlana
+  muszka i szczerbinka rzadko są w poziomie (tu 4,2 mm różnicy na 245 mm bazy),
+  więc zamiast dokładek **przechyl cały model** o tę różnicę
+  (`m.root.rotation.x`) — oba szczyty lądują wtedy na jednej wysokości i z niej
+  bierzesz `adsPos`. Lufa celuje wtedy ~1° nad oś kamery, co jest niewidoczne
+  i nieszkodliwe (pociski lecą promieniem kamery, nie lufą). Geometrię odlanych
+  przyrządów mierz probem po `js/models.js` (najwyższe wierzchołki części
+  `slide`, kubełkowane po Z, POTEM po X — same kubełki po Z skłamią, bo uśrednią
+  wąską muszkę z całą szerokością zamka). Wyrównanie sprawdzaj liczbowo:
+  `vm.localToWorld(punkt).project(camera)` musi dać środek ekranu, bo na
+  ciemnym zrzucie ciemnych przyrządów nie da się tego ocenić okiem.
   Snajperka (`zoom: true`) zamiast ADS pokazuje lunetę i chowa viewmodel.
   Balans: `spread` w WEAPONS to rozrzut Z BIODRA (celowo duży); ADS mnoży przez
   `adsMul` (domyślnie 0.3). ADS blokuje sprint i spowalnia ruch ×0.55.
   FOV: luneta 24° / ADS 60° / sprint+bhop poszerzają.
 - Bunnyhop: `player.hopBoost` (do 1.35) rośnie za skok w oknie 0.25 s po lądowaniu
   (`player.sinceLand`), wygasa po dłuższym pobycie na ziemi; sprint nie wymaga ziemi.
-- Rozróżnianie botów: odcień liberii + kształt głowy + kolor oka — PATROL (scout)
-  jasnoniebieski/piramida (Cone, 4 seg.), SZTURM (assault) granat/box, TARAN (heavy)
-  czarno-granatowy/sfera (głowa jaśniejszym granatem, NIE czernią), WAŻKA (uav)
-  quadkopter. Nowy typ = nowy odcień I nowy kształt. Głowa = kolor ciała × 0.55
-  (wyjątek heavy); „oko" ma kształt zgodny z głową. Nogi mają pivot w biodrze
-  i machają wg `walkFactor`; wszystkie jednostki noszą biały pas służby i strobo.
+- Rozróżnianie botów (BOT-1, 2026-08-18): **w grze został sam PATROL** (reszta
+  w `_kosz/przeciwnicy/`). Typy naziemne dzielą JEDNO podwozie SENTINEL
+  (model `sentinel` z `MODEL_DATA`), więc **reguła „kształt głowy = typ" już
+  nie obowiązuje**. Typ czytamy z: odcienia liberii (`t.body`), koloru
+  akcentu (`t.accent` na materiale `Material.003` = świecące elementy), ROZMIARU
+  sylwetki (scout ×0.93, assault ×1, heavy ×1.14), grubości naramienników i dekoru
+  głowy (scout: antena, assault: daszek, heavy: obręcz — wszystko z `isHead`).
+  Podwozie ma 2,15 m (`height` w `tools/gen_models.py`), sylwetka ×1.05 / ×1 /
+  ×1.15 — bot MUSI górować nad graczem (`PLAYER_EYE` 1,7), inaczej czyta się
+  jak zabawka. Liberia PATROLU to granat LAPD (`0x30528c`); świecące panele
+  modelu (`Material.003`) idą na `matTrim` o niskiej emisji (0.5) — przy 2.2
+  bloom zamienia je w białe plamy. Akcent PATROLU jest CZERWONY (`0xff0033`,
+  decyzja użytkownika 2026-08-18); pod ACES czerwień ucieka w łososiowy, więc
+  bierz nasycone `0xff00xx`, nie „ładne" `0xff3b52`. **Do modelu NIE doklejamy dekoru**
+  (decyzja użytkownika 2026-08-18): żadnych kogutów, naramienników, pasa służby
+  ani anteny — model ma własną i doklejane bryły odcinały się od sylwetki.
+  Strobo (`matStrobeR/B`) i biały pas nosi już tylko WAŻKA.
+  **Postawa strzelecka:** `poseArm(part, socket, x, y, z)` obraca sztywne ramię
+  kwaternionem `setFromUnitVectors` (kierunek bind-pose'owej dłoni → kierunek
+  celu), zamiast zgadywać kąty Eulera. Pozujemy TYLKO prawe ramię (cel
+  -0.13, 1.47, 0.62 — wyprostowane wprost, na wysokości barku); lewe zostaje
+  w bind pose przy nodze (decyzja użytkownika 2026-08-18: broń w jednej ręce).
+  Cel MUSI być na wysokości barku (~1.5) — niżej ramiona opadają i z przodu
+  czyta się to jak skrzyżowane ręce. Broń
+  wisi w gnieździe `handR` na `parts.armR` i dostaje ODWROTNOŚĆ kwaternionu
+  ramienia, dzięki czemu lufa zostaje równoległa do podwozia. Pistolet bota to
+  ten sam wypieczony Glock co u gracza (`buildModel('glock')`, obrót Y o π —
+  model celuje w -Z, bot w +Z). Nogi to `parts.legL/R` (pivot w biodrze).
 - Anti-stuck botów: gdy faktyczny ruch < 30% nominalnego przez 0.35 s → objazd boczny
   (`avoidT`/`avoidDir`) na ~1 s. Faktyczną prędkość mierzy się PO resolveCollisions.
 - Generator aren: `generateArena(ARENA_SEED)` (mulberry32, seed z `?seed=N` albo
@@ -433,12 +519,14 @@ więc formy męskie w kwestiach DO gracza są OK.
   `--use-angle=swiftshader --enable-unsafe-swiftshader` (WebGL w headless).
   Do testów audio dodaj `--autoplay-policy=no-user-gesture-required` — bez tego
   `AudioContext` startuje zawieszony i nic się nie planuje.
-- **Gotowe zestawy testów leżą w `tests/`** (opis w `tests/README.md`):
-  phase0–phase5d pokrywają cykl życia świata, generator, kampanię, propy,
-  medale i pełne przejście; `status1_test.py` to smoke rebrandingu;
-  `shots*.py` robią zrzuty ekranu do oceny wizualnej. Po większych zmianach
-  odpal przynajmniej `phase0_test.py` (regresja świata/areny)
-  i `phase5d_test.py` (pełne przejście kampanii).
+- **Gotowe zestawy testów leżą w `tests/`** (opis w `tests/README.md`).
+  Po wycięciu kampanii zostały: `phase0` (cykl życia świata, determinizm areny,
+  sklep, pełny bieg `?test=win`), `phase1` (generator aren), `phase7` (ustawienia,
+  wślizg, granaty, tarcza skrótów), `menu_test` (menu + panorama + motyw),
+  `bestiary_test` (bestiariusz) oraz `shots2.py`/`shots_models.py` (zrzuty do
+  oceny wizualnej). Testy kampanii (`phase2`–`phase6`, `phase5d`, `status1_test`,
+  `shots.py`) pojechały razem z nią do `_kosz/kampania/tests/`.
+  Po większych zmianach odpal przynajmniej `phase0_test.py` i `menu_test.py`.
 - Hooki diagnostyczne w grze (nie usuwać):
   - `window.__test` — stan aktualizowany co klatkę (state, hp, score, wave, enemies,
     ammo, fov, credits, headshots, endless, errors[], mode, difficulty,
@@ -448,10 +536,9 @@ więc formy męskie w kwestiach DO gracza są OK.
     audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`, `menuMusic`;
   - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
     (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);
-    `&wave=N` (arena od fali N); **`?test=mission&m=<id>&diff=easy|normal|hard`**
-    (autostart misji kampanii ze świeżym biegiem); debug generatora (arena):
+    `&wave=N` (arena od fali N); debug generatora (arena):
     `?style=open|pillars|corridors&half=N&density=X`; `?seed=N` jak dawniej;
-  - `window.__addCredits(n)`, `window.__buyItem(id)`, `window.__startMission(id)`,
+  - `window.__addCredits(n)`, `window.__buyItem(id)`,
     `window.__teleport(x, z)` (niezbędne do testów stref), `window.__rebuildArena(seed)`
     (regresja teardownu: 2× ten sam seed ⇒ identyczny `arenaHash`), `window.__killAll()`.
 - ⚠️ `dt` jest clampowany do `[0, 0.05]` — pod SwiftShaderem czas gry płynie wolniej

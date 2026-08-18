@@ -11,37 +11,16 @@ scene.add(enemiesGroup);
 const enemies = [];
 
 /* Police drone liveries (fiction: training units of the SENTINEL program).
-   Type readability = livery shade + head shape + eye color; every unit also
-   carries a red/blue strobe bar. Fiction names: PATROL / SZTURM / TARAN / WAŻKA. */
+   SZTURM / TARAN / WAŻKA were pulled out on 2026-08-18 (user call) and wait in
+   _kosz/przeciwnicy/przeciwnicy.js together with their models, wave shares and
+   bestiary cards. PATROL is the whole roster for now. */
 const ENEMY_TYPES = {
-  // PATROL (scout): pistol, keeps distance; drops ammo — light blue, pyramid head
+  // PATROL (scout): pistol, keeps distance; drops ammo - LAPD navy livery
   scout: {
     weapon: 'pistol',
     hp: 55, speed: 4.6, damage: 6, fireCooldown: 1.4, range: 30, preferred: 12,
     accuracy: 0.42, points: 100, credits: 10, radius: 0.55, scale: 1,
-    body: 0x5b9de8, accent: 0x9fe8ff,
-  },
-  // SZTURM (assault): burst auto rifle, fastest; drops ammo — navy, box head
-  assault: {
-    weapon: 'auto', burstCount: 4, burstInterval: 0.13,
-    hp: 45, speed: 5.6, damage: 3, fireCooldown: 1.7, range: 26, preferred: 10,
-    accuracy: 0.45, points: 150, credits: 15, radius: 0.55, scale: 0.95,
-    body: 0x2f55c4, accent: 0xff8906,
-  },
-  // TARAN (heavy): shotgun — must close in, hits hard; drops medkits — black-navy, sphere head
-  heavy: {
-    weapon: 'shotgun',
-    hp: 220, speed: 2.9, damage: 30, fireCooldown: 2.4, range: 15, preferred: 7,
-    accuracy: 0.75, points: 300, credits: 30, radius: 0.7, scale: 1.25,
-    body: 0x1c2748, accent: 0xff5470,
-  },
-  // WAŻKA (uav): hovering quadcopter — flies OVER low cover; the basic, cheap
-  // line present from the first missions (BOT-2), so it stays weak but nagging
-  uav: {
-    weapon: 'pistol', fly: 3.0,
-    hp: 30, speed: 6.4, damage: 3, fireCooldown: 1.15, range: 24, preferred: 9,
-    accuracy: 0.45, points: 120, credits: 10, radius: 0.5, scale: 1,
-    body: 0x4f7fe0, accent: 0x9fe8ff,
+    body: 0x30528c, accent: 0xff0033,
   },
 };
 
@@ -49,7 +28,6 @@ const ENEMY_TYPES = {
    animated once per frame in updateEnemies */
 const matStrobeR = new THREE.MeshStandardMaterial({ color: 0x30060c, emissive: 0xff2244, emissiveIntensity: 2.4, roughness: 0.5 });
 const matStrobeB = new THREE.MeshStandardMaterial({ color: 0x061030, emissive: 0x2266ff, emissiveIntensity: 0.35, roughness: 0.5 });
-const matLivery = new THREE.MeshStandardMaterial({ color: 0xcfd8ee, roughness: 0.7, flatShading: true });
 let strobeT = 0;
 
 const enemyMatCache = new Map();
@@ -90,137 +68,57 @@ function buildEnemyModel(type) {
   const matBody = enemyMat(t.body);
   const matBodyDim = enemyMat(new THREE.Color(t.body).multiplyScalar(0.72).getHex());
   const matDark = enemyMat(0x1e2138);
-  const matEye  = enemyMat(0x1a0b00, t.accent, 2.2);
+  const matEye  = enemyMat(0x1a0b00, t.accent, 0.9);
 
-  /* --- WAŻKA: hovering quadcopter, built around y=0 (updateEnemies keeps
-     the group at t.fly meters). Eye = head (precision reward). --- */
-  if (t.fly) {
-    enemyBox(g, matBody, 0.55, 0.2, 0.55, 0, 0, 0);                       // hull
-    enemyBox(g, matLivery, 0.57, 0.05, 0.3, 0, 0.02, 0);                  // white service stripe
-    const rotors = [];
-    for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      enemyBox(g, matDark, 0.4, 0.05, 0.08, ax * 0.38, 0.05, az * 0.38,
-        { ry: Math.atan2(az, ax) });                                      // arm
-      const rot = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.03, 10), matDark);
-      rot.position.set(ax * 0.52, 0.12, az * 0.52);
-      g.add(rot);
-      rotors.push(rot);
-    }
-    enemyBox(g, matStrobeR, 0.1, 0.06, 0.1, -0.1, 0.16, 0);               // strobe bar
-    enemyBox(g, matStrobeB, 0.1, 0.06, 0.1, 0.1, 0.16, 0);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), matEye);
-    eye.position.set(0, -0.05, 0.3);
-    eye.userData.isHead = true;
-    g.add(eye);
-    enemyCyl(g, matDark, 0.025, 0.26, 0, -0.16, 0.14);                    // gun under the hull
-    const gunTip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.08), matEye);
-    gunTip.position.set(0, -0.16, 0.32);
-    g.add(gunTip);
-    g.scale.setScalar(t.scale);
-    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
-    return { group: g, gunTip, legL: null, legR: null, rotors };
-  }
+  /* --- SENTINEL chassis: one shared humanoid mesh for every ground type
+     (CC-BY geometry baked by tools/gen_models.py, materials ours). Types read
+     apart by livery colour, silhouette size, shoulder bulk and head decor -
+     the old "one head shape per type" rule is gone. --- */
+  const model = buildModel('sentinel', src => {
+    if (src === 'Material.003') return matEye;   // glowing trim reads as the eye
+    if (src === 'Material.002') return matBodyDim;  // secondary plates
+    return matBody;                                 // main armour
+  });
+  const body = model.root;
+  g.add(body);
+  const { head, armR, legL, legR } = model.parts;
+  // every mesh of the head group counts as a headshot (decor included)
+  head.traverse(o => { if (o.isMesh) o.userData.isHead = true; });
 
-  // torso: chest + pelvis (chest top stays at 1.575 — heads sink into it)
-  enemyBox(g, matBody, 0.85, 0.72, 0.55, 0, 1.215, 0);
-  enemyBox(g, matBodyDim, 0.62, 0.36, 0.44, 0, 0.7, 0);
-  // chest plate with a small glowing core in the accent color
-  // (dimmer than the eye so it doesn't dominate the silhouette under bloom)
-  enemyBox(g, matDark, 0.5, 0.44, 0.06, 0, 1.24, 0.29);
-  enemyBox(g, enemyMat(0x1a0b00, t.accent, 1.2), 0.1, 0.13, 0.04, 0, 1.27, 0.33);
-  // shoulder pads (heavy wears bulkier ones) + static arms;
-  // the right forearm lines up with the gun barrel
-  const padW = type === 'heavy' ? 0.34 : 0.24;
-  const padH = type === 'heavy' ? 0.26 : 0.18;
-  enemyBox(g, matBodyDim, padW, padH, 0.44, -(0.4 + padW / 2), 1.5, 0);
-  enemyBox(g, matBodyDim, padW, padH, 0.44, 0.4 + padW / 2, 1.5, 0);
-  // police livery: white service band + synced red/blue strobes on the pads
-  enemyBox(g, matLivery, 0.87, 0.1, 0.57, 0, 0.98, 0);
-  enemyBox(g, matStrobeR, 0.14, 0.07, 0.3, -(0.4 + padW / 2), 1.5 + padH / 2 + 0.035, 0);
-  enemyBox(g, matStrobeB, 0.14, 0.07, 0.3, 0.4 + padW / 2, 1.5 + padH / 2 + 0.035, 0);
-  enemyBox(g, matDark, 0.16, 0.4, 0.2, -0.5, 1.2, 0);
-  enemyBox(g, matDark, 0.16, 0.4, 0.2, 0.5, 1.2, 0);
-  enemyBox(g, matDark, 0.13, 0.13, 0.45, 0.42, 1.25, 0.1);
-  // głowa: jaśniejsza (przyciemniony kolor ciała), kształt identyfikuje typ:
-  // zwiadowca trójkąt (piramida), ciężki koło (kula), szturmowiec kwadrat (box)
-  // głowa lekko zagłębiona w korpus (top tułowia = 1.575), żeby nie lewitowała
-  // heavy's body is near-black — a scaled-down shade would read as void
-  const matHead = enemyMat(type === 'heavy'
-    ? 0x33427a : new THREE.Color(t.body).multiplyScalar(0.55).getHex());
-  let headGeo, eyeGeo, headY, eyeY, eyeZ;
-  if (type === 'scout') {
-    headGeo = new THREE.ConeGeometry(0.34, 0.52, 4); // piramida = trójkątna sylwetka
-    // oko-trójkąt: płaski pryzmat 3-kątny skierowany przodem do +Z
-    eyeGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.05, 3);
-    eyeGeo.rotateX(Math.PI / 2);
-    headY = 1.79; eyeY = 1.67; eyeZ = 0.2; // podstawa piramidy wpuszczona w tułów
-  } else if (type === 'heavy') {
-    headGeo = new THREE.SphereGeometry(0.3, 12, 9);
-    eyeGeo = new THREE.SphereGeometry(0.1, 10, 8); // okrągłe oko
-    headY = 1.85; eyeY = 1.85; eyeZ = 0.27;
-  } else {
-    headGeo = new THREE.BoxGeometry(0.5, 0.45, 0.5);
-    eyeGeo = new THREE.BoxGeometry(0.34, 0.1, 0.05); // prostokątny wizjer
-    headY = 1.78; eyeY = 1.81; eyeZ = 0.26; // spód sześcianu wpuszczony w tułów
-  }
-  const head = new THREE.Mesh(headGeo, matHead);
-  head.position.y = headY;
-  if (type === 'scout') head.rotation.y = Math.PI / 4; // płaska ściana piramidy do przodu
-  head.userData.isHead = true;
-  g.add(head);
-  // świecące „oko" — przód modelu to lokalne +Z (obrót yaw = atan2(dx, dz))
-  const eye = new THREE.Mesh(eyeGeo, matEye);
-  eye.position.set(0, eyeY, eyeZ);
-  eye.userData.isHead = true;
-  g.add(eye);
-  // head decor per type (part of the head silhouette → counts as a headshot)
-  if (type === 'scout') {
-    // antenna with a glowing tip, embedded in the pyramid's slope
-    enemyBox(g, matDark, 0.03, 0.36, 0.03, 0.1, 1.95, -0.06, { head: true });
-    enemyBox(g, matEye, 0.05, 0.05, 0.05, 0.1, 2.16, -0.06, { head: true });
-  } else if (type === 'heavy') {
-    // helmet band ringing the dome
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.315, 0.315, 0.1, 12), matDark);
-    band.position.set(0, 1.9, 0);
-    band.userData.isHead = true;
-    g.add(band);
-  } else {
-    // visor brim hanging over the eye slit
-    enemyBox(g, matDark, 0.56, 0.06, 0.22, 0, 1.93, 0.2, { head: true });
-  }
-  // nogi z przegubem w biodrze (geometria przesunięta w dół → obrót macha nogą)
-  const legGeo = new THREE.BoxGeometry(0.26, 0.55, 0.3);
-  legGeo.translate(0, -0.275, 0);
-  const legL = new THREE.Mesh(legGeo, matDark);
-  legL.position.set(-0.22, 0.55, 0);
-  g.add(legL);
-  const legR = legL.clone();
-  legR.position.x = 0.22;
-  g.add(legR);
-  // bot gun: receiver + cylindrical barrel, shape depends on the type's weapon
-  let tipZ;
-  if (t.weapon === 'shotgun') {
-    enemyBox(g, matDark, 0.18, 0.2, 0.5, 0.42, 1.25, 0.3);
-    enemyCyl(g, matDark, 0.05, 0.4, 0.42, 1.29, 0.55);           // barrel
-    enemyCyl(g, matDark, 0.035, 0.42, 0.42, 1.21, 0.54);         // tube magazine
-    enemyBox(g, matBodyDim, 0.11, 0.09, 0.16, 0.42, 1.2, 0.48);  // pump
-    tipZ = 0.78;
-  } else if (t.weapon === 'auto') {
-    enemyBox(g, matDark, 0.12, 0.16, 0.55, 0.42, 1.25, 0.3);
-    enemyCyl(g, matDark, 0.03, 0.42, 0.42, 1.28, 0.68);          // barrel
-    enemyBox(g, matDark, 0.06, 0.2, 0.1, 0.42, 1.12, 0.32, { rx: 0.2 }); // magazine
-    enemyBox(g, matDark, 0.05, 0.05, 0.2, 0.42, 1.35, 0.15);     // top sight rail
-    tipZ = 0.9;
-  } else {
-    enemyBox(g, matDark, 0.14, 0.16, 0.45, 0.42, 1.25, 0.32);
-    enemyCyl(g, matDark, 0.03, 0.32, 0.42, 1.28, 0.6);           // barrel
-    tipZ = 0.78;
-  }
-  const gunTip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.1), matEye);
-  gunTip.position.set(0.42, 1.25, tipZ);
-  g.add(gunTip);
+  /* One-handed firing stance. The arm is one rigid part, so instead of guessing
+     Euler angles we swing it by the rotation that carries its bind-pose hand
+     onto a target point straight ahead - exact, and it keeps working if the
+     source model ever changes. The left arm stays in its bind pose. */
+  const poseArm = (part, socket, tx, ty, tz) => {
+    const from = model.sockets[socket].clone().sub(part.position).normalize();
+    const to = new THREE.Vector3(tx, ty, tz).sub(part.position).normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(from, to);
+    part.quaternion.copy(q);
+    return q;
+  };
+  const qR = poseArm(armR, 'handR', -0.13, 1.47, 0.62);
 
-  g.scale.setScalar(t.scale);
+  /* the gun rides in the right hand, but the barrel has to stay level: undo the
+     arm swing on the mount so everything inside is aligned with the chassis */
+  const gun = new THREE.Group();
+  gun.name = 'botGun';   // handle for debug/screenshot tooling
+  gun.position.copy(socketLocal(model, 'gripR', 'armR'));
+  gun.quaternion.copy(qR.clone().invert());
+  armR.add(gun);
+  /* PATROL carries no weapon model for now (user call, 2026-08-18): the baked
+     Glock never sat convincingly in the fist. The hand keeps the firing pose
+     and the tracer anchor, so re-adding a model is a four-line change:
+       const pistol = buildModel('glock', () => matDark);
+       pistol.root.rotation.y = Math.PI;  // model muzzle is -Z, bot faces +Z
+       pistol.root.scale.setScalar(0.85);
+       gun.add(pistol.root);
+     Guns for the units in _kosz sit in that folder too. */
+  const gunTip = new THREE.Object3D();     // tracer origin only, nothing to draw
+  gunTip.position.set(0, 0.05, 0.14);
+  gun.add(gunTip);
+
+  // the chassis is 2.15 m tall; PATROL wears it a touch bigger
+  g.scale.setScalar(t.scale * 1.05);
   g.traverse(o => {
     if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; }
   });

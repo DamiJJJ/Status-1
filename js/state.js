@@ -27,15 +27,12 @@ const game = {
 const screens = {
   menu: el('screen-menu'),
   stats: el('screen-stats'),
+  bestiary: el('screen-bestiary'),
   start: el('screen-start'),
   pause: el('screen-pause'),
   over: el('screen-over'),
   win: el('screen-win'),
   shop: el('screen-shop'),
-  campaign: el('screen-campaign'),
-  brief: el('screen-brief'),
-  debrief: el('screen-debrief'),
-  mfail: el('screen-mfail'),
   lock: el('screen-lock'),
   settings: el('screen-settings'),
 };

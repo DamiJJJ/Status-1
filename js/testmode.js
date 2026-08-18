@@ -32,13 +32,7 @@ function testAutoAim() {
   firing = _aimRay.intersectObjects(worldGroup.children, false).length === 0;
 }
 
-if (TEST === 'mission') {
-  // campaign autostart: fresh run, no pointer lock, optional difficulty
-  setTimeout(() => {
-    if (TEST_DIFF && DIFFICULTIES[TEST_DIFF]) game.difficulty = TEST_DIFF;
-    window.__startMission(TEST_MISSION || MISSIONS[0].id);
-  }, 300);
-} else if (TEST) {
+if (TEST) {
   // arena autostart without pointer lock
   setTimeout(() => startArena(), 300);
   if (TEST === 'over') {
@@ -55,10 +49,3 @@ window.__rebuildArena = seed => {
 };
 window.__killAll = () => { while (enemies.length) killEnemy(enemies[0]); };
 window.__teleport = (x, z) => { player.pos.set(x, PLAYER_EYE, z); };
-window.__startMission = id => {
-  try {
-    localStorage.removeItem(SAVE_KEY);
-    localStorage.removeItem('czynnasluzba_save'); // legacy migration fallback
-  } catch (e) { /* ignore */ }
-  startMission(id, { freshRun: true });
-};

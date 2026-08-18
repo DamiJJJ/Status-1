@@ -61,26 +61,28 @@ function vmCyl(parent, r, len, x, y, z, mat = vmMatDark, seg = 10) {
 function buildViewmodel(id) {
   const g = new THREE.Group();
   switch (id) {
-    case 'pistol':
-      vmBox(g, 0.07, 0.1, 0.3,  0, 0.02, -0.05);            // slide
-      vmBox(g, 0.074, 0.035, 0.1, 0, 0.05, 0.05, vmMatMid); // rear serrations
-      vmBox(g, 0.064, 0.05, 0.26, 0, -0.05, -0.06, vmMatMid); // frame / dust cover
-      vmBox(g, 0.06, 0.14, 0.09, 0, -0.09, 0.05, vmMatMid); // grip
-      vmBox(g, 0.065, 0.02, 0.095, 0, -0.165, 0.05);        // mag baseplate
-      vmCyl(g, 0.017, 0.12, 0, 0.03, -0.24);                // barrel
-      vmBox(g, 0.012, 0.012, 0.1, 0, -0.1, -0.02);          // trigger guard bottom
-      vmBox(g, 0.012, 0.05, 0.012, 0, -0.078, -0.065);      // trigger guard front
-      // slim three-dot sights: thin dark posts, aiming done by small glowing
-      // dots (all three at one height) so the picture doesn't cover the target
-      vmBox(g, 0.011, 0.024, 0.012, 0, 0.082, -0.185);       // front post
-      vmBox(g, 0.008, 0.008, 0.008, 0, 0.086, -0.192, vmMatTeal); // front dot
-      vmBox(g, 0.011, 0.02, 0.012, -0.024, 0.08, 0.06);      // rear post L
-      vmBox(g, 0.011, 0.02, 0.012,  0.024, 0.08, 0.06);      // rear post R
-      vmBox(g, 0.0065, 0.0065, 0.005, -0.024, 0.086, 0.0665, vmMatTealDim); // rear dot L
-      vmBox(g, 0.0065, 0.0065, 0.005,  0.024, 0.086, 0.0665, vmMatTealDim); // rear dot R
-      g.userData.muzzleLocal = new THREE.Vector3(0, 0.03, -0.3);
-      g.userData.adsPos = new THREE.Vector3(0, -0.086, -0.42); // dot row on the camera axis
+    case 'pistol': {
+      // service Glock: baked CC-BY geometry (tools/gen_models.py), our metal.
+      // The model is centred on its bounding box, so it is dropped a touch to
+      // put the sight line where the block-built pistol used to have it.
+      const m = buildModel('glock', src => (
+        src.startsWith('Bullet') ? vmMatOrange
+          : (src === 'Body' || src === 'Handle') ? vmMatMid : vmMatDark));
+      m.root.position.set(0, -0.026, -0.08);
+      g.add(m.root);
+      g.userData.slide = m.parts.slide;   // cycles on every shot
+      /* Sights are the model's own: a front blade (top y 0.1001 in model space)
+         and a rear tab (0.1043). They are 4.2 mm out of level over a 245 mm
+         sight radius, so instead of gluing anything on, the whole pistol is
+         pitched up by that slope (0.98°) - both moulded tops then land on one
+         height, which is where the ADS line is taken from. The barrel ends up
+         1° above the camera axis, which is invisible and harmless: bullets
+         follow the camera ray, not the muzzle. */
+      m.root.rotation.x = 0.0171;
+      g.userData.muzzleLocal = new THREE.Vector3(0, 0.037, -0.25);
+      g.userData.adsPos = new THREE.Vector3(0, -0.0764, -0.42); // moulded sights on the camera axis
       break;
+    }
     case 'shotgun':
       vmBox(g, 0.09, 0.11, 0.55, 0, 0, -0.15, vmMatMid);    // receiver
       vmCyl(g, 0.026, 0.52, 0, 0.06, -0.2);                 // barrel

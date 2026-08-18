@@ -139,14 +139,25 @@
     </h1>
     <div class="game-subtitle">Symulacja szkoleniowa dronów LSPD &middot; przeglądarkowy FPS</div>
     <div class="menu-buttons">
-      <button class="btn" id="btn-menu-campaign">Kampania</button>
-      <button class="btn secondary" id="btn-menu-arena">Arena bez końca</button>
-      <button class="btn secondary" id="btn-menu-armory">Zbrojownia</button>
+      <button class="btn" id="btn-menu-arena">Arena bez końca</button>
       <button class="btn secondary" id="btn-menu-settings">Ustawienia</button>
+      <button class="btn secondary" id="btn-menu-bestiary">Bestiariusz</button>
       <button class="btn secondary" id="btn-menu-stats">Statystyki</button>
     </div>
     <div class="screen-hint" id="menu-progress"></div>
   </div>
+</div>
+
+<!-- BESTIARIUSZ: unit viewer; the screen is transparent, js/bestiary.js
+     renders the drone behind it through the shared composer -->
+<div id="screen-bestiary" class="screen screen--panorama screen--bestiary">
+  <div class="menu-box bestiary-box">
+    <h2 class="bestiary-title">Bestiariusz</h2>
+    <div class="game-subtitle">Linia SENTINEL &middot; program STATUS 1</div>
+    <div class="menu-buttons" id="bestiary-list"></div>
+    <button class="btn secondary bestiary-back" id="btn-bestiary-back">Wróć</button>
+  </div>
+  <div class="bestiary-info" id="bestiary-info"></div>
 </div>
 
 <div id="screen-stats" class="screen">
@@ -186,59 +197,9 @@
   </div>
 </div>
 
-<div id="screen-campaign" class="screen">
-  <div class="screen-box shop-box campaign-box">
-    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-small" draggable="false">
-    <h2>Kampania</h2>
-    <div class="campaign-meta" id="campaign-meta"></div>
-    <div class="seg" id="diff-seg">
-      <button class="seg-btn" data-diff="easy">Łatwy</button>
-      <button class="seg-btn active" data-diff="normal">Normalny</button>
-      <button class="seg-btn" data-diff="hard">Trudny</button>
-    </div>
-    <div id="mission-list"></div>
-    <div class="campaign-actions">
-      <button class="btn secondary" id="btn-armory">Zbrojownia</button>
-      <button class="btn secondary" id="btn-campaign-back">Menu</button>
-    </div>
-    <div class="screen-hint"><button class="linklike" id="btn-campaign-new">zacznij kampanię od nowa</button></div>
-  </div>
-</div>
 
-<div id="screen-brief" class="screen">
-  <div class="screen-box brief-box">
-    <div class="brief-title" id="brief-title"></div>
-    <div id="brief-body"></div>
-    <div class="brief-meta" id="brief-meta"></div>
-    <button class="btn" id="btn-brief-start">Wejście do symulacji</button>
-    <div class="screen-hint">klik — pomiń animację &middot; <b>Enter</b> — start</div>
-  </div>
-</div>
 
-<div id="screen-debrief" class="screen">
-  <div class="screen-box">
-    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-win" draggable="false">
-    <h2 class="win">Symulacja zaliczona</h2>
-    <div class="debrief-sub" id="debrief-title"></div>
-    <div class="end-stats" id="debrief-stats"></div>
-    <div class="medal-strip" id="debrief-medals"></div>
-    <button class="btn" id="btn-debrief-continue">Dalej</button>
-    <button class="btn secondary" id="btn-debrief-replay">Powtórz</button>
-    <div class="screen-hint">…albo wciśnij <b>Enter</b></div>
-  </div>
-</div>
 
-<div id="screen-mfail" class="screen">
-  <div class="screen-box">
-    <img src="assets/logo-mark.png" alt="" class="screen-mark mark-lose" draggable="false">
-    <h2 class="lose">Symulacja przerwana</h2>
-    <div class="end-stats" id="mfail-stats"></div>
-    <button class="btn" id="btn-mission-retry">Restart misji</button>
-    <button class="btn secondary" id="btn-mfail-armory">Zbrojownia</button>
-    <button class="btn secondary" id="btn-mfail-levels">Wybór misji</button>
-    <div class="screen-hint">…albo wciśnij <b>R</b></div>
-  </div>
-</div>
 
 <div id="screen-pause" class="screen">
   <div class="screen-box">
@@ -293,6 +254,9 @@
     </div>
     <button class="btn" id="btn-settings-back">Wróć</button>
     <div class="screen-hint">Ustawienia zapisują się automatycznie.</div>
+    <!-- CC-BY attribution for the baked model geometry (see README) -->
+    <div class="screen-hint credits">Modele (geometria): „Ross" - joney_lol [CC-BY],
+      „Glock" - J-Toastie [CC-BY], via Poly Pizza.</div>
   </div>
 </div>
 
@@ -374,6 +338,8 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/audio.js"></script>
 <script defer src="js/renderer.js"></script>
 <script defer src="js/textures.js"></script>
+<script defer src="js/models.js"></script>
+<script defer src="js/modelkit.js"></script>
 <script defer src="js/menubg.js"></script>
 <script defer src="js/world.js"></script>
 <script defer src="js/props.js"></script>
@@ -383,12 +349,12 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/weapons.js"></script>
 <script defer src="js/grenades.js"></script>
 <script defer src="js/enemies.js"></script>
+<script defer src="js/bestiary.js"></script>
 <script defer src="js/icons.js"></script>
 <script defer src="js/pickups.js"></script>
 <script defer src="js/shop.js"></script>
 <script defer src="js/waves.js"></script>
-<script defer src="js/missions.js"></script>
-<script defer src="js/campaign.js"></script>
+<script defer src="js/campaign_off.js"></script>
 <script defer src="js/hud.js"></script>
 <script defer src="js/state.js"></script>
 <script defer src="js/settings.js"></script>

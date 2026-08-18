@@ -11,21 +11,21 @@
 
 /* ==================== FALE ==================== */
 
-/* BOT-2: WAŻKA is a basic, cheap unit — present from wave 1 (fiction: flying
-   drones are the cheapest SENTINEL line), not a late-game rarity */
+/* PATROL is the only unit left in the game (2026-08-18) - the old mixed waves
+   live in _kosz/przeciwnicy/przeciwnicy.js. Difficulty now comes from headcount
+   plus the per-wave hp/accuracy ramp in startNextWave. */
 const WAVE_DEFS = [
-  { scout: 3, uav: 2 },
-  { scout: 4, assault: 2, uav: 2 },
-  { scout: 4, assault: 2, heavy: 2, uav: 2 },
-  { scout: 4, assault: 3, heavy: 2, uav: 2 },
-  { scout: 5, assault: 4, heavy: 3, uav: 3 },
+  { scout: 5 },
+  { scout: 8 },
+  { scout: 10 },
+  { scout: 12 },
+  { scout: 15 },
 ];
 
 /* endless-mode waves: ever-growing scale */
 function getWaveDef(wave) {
   if (wave <= WAVE_DEFS.length) return WAVE_DEFS[wave - 1];
-  return { scout: 4 + Math.ceil(wave / 2), assault: wave - 2, heavy: wave - 4,
-           uav: Math.ceil(wave / 2) };
+  return { scout: 12 + wave * 2 };
 }
 
 const waveSystem = {

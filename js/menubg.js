@@ -340,6 +340,7 @@ const MenuBg = (() => {
 function menuBgActive() {
   const s = game.state;
   if (s === 'menu' || s === 'levels' || s === 'stats' || s === 'brief') return true;
+  if (s === 'bestiary') return true;   // own scene, but same navigation layer
   if (s === 'settings') return settingsReturn !== 'pause';
   if (s === 'shop') return game.mode === 'campaign'; // armory = navigation, arena shop = mid-run
   return false;
