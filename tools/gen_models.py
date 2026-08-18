@@ -208,10 +208,18 @@ class Part:
 
 def extract(g, binc, cfg, pose=None):
     """Split a glTF into named parts. Skinned models split by dominant joint,
-    static ones by node name."""
+    static ones by node name.
+
+    Skinned vertices are normally taken raw (bind pose == mesh space, which is
+    what the sentinel rig ships). Rigs whose inverse-bind matrices do NOT
+    cancel against the node graph (e.g. the Mossberg: armature scale + Z-up
+    rotation live in jointWorld*IBM) set cfg['bindWorld'] and get each vertex
+    pushed through its dominant joint's jointWorld*IBM instead - that is the
+    transform a skinning renderer would apply at bind pose."""
     wm = world_matrices(g)
     matname = [m.get('name', 'mat%d' % i) for i, m in enumerate(g.get('materials', []))]
     parts = {}
+    bind_world = cfg.get('bindWorld', False)
 
     def part(name):
         if name not in parts:
@@ -228,9 +236,15 @@ def extract(g, binc, cfg, pose=None):
         M = wm[ni]
         NM = m_transpose(m_inv(M))
         jnames = []
+        bindmats = bind_nms = None
         if skinned:
             skin = g['skins'][node['skin']]
             jnames = [g['nodes'][j].get('name', '') for j in skin['joints']]
+            if bind_world:
+                ibm = accessor(g, binc, skin['inverseBindMatrices'])
+                bindmats = [m_mul(wm[j], list(ibm[k]))
+                            for k, j in enumerate(skin['joints'])]
+                bind_nms = [m_transpose(m_inv(m)) for m in bindmats]
         for prim in g['meshes'][node['mesh']]['primitives']:
             att = prim['attributes']
             pos = accessor(g, binc, att['POSITION'])
@@ -251,6 +265,9 @@ def extract(g, binc, cfg, pose=None):
                             bw, best = we[k][c], jo[k][c]
                     name = jnames[best]
                     vpart.append(joint_part.get(name, cfg['fallback']))
+                    if bindmats:
+                        P[k] = xf_point(bindmats[best], pos[k])
+                        N[k] = xf_dir(bind_nms[best], nor[k])
                     pm = pose.get(name) if pose else None
                     if pm:
                         P[k] = xf_point(pm, pos[k])
@@ -367,11 +384,16 @@ def joint_centroids(g, binc, cfg, groups, pose=None):
 
 
 def joint_pivots(g, binc, cfg, table=None, first_only=True):
-    """Bind-pose world position of joints, keyed by the mapped name."""
+    """Bind-pose world position of joints, keyed by the mapped name.
+
+    inv(IBM) gives the joint origin in the same space the raw vertices live
+    in; under cfg['bindWorld'] the vertices are instead moved into node-graph
+    world space, so the pivot must come from the node graph too."""
     if 'skins' not in g or not cfg.get('joints'):
         return {}
     skin = g['skins'][0]
     ibm = accessor(g, binc, skin['inverseBindMatrices'])
+    wm = world_matrices(g) if cfg.get('bindWorld') else None
     lookup = table if table is not None else cfg['joints']
     piv, seen = {}, set()
     for k, j in enumerate(skin['joints']):
@@ -379,7 +401,7 @@ def joint_pivots(g, binc, cfg, table=None, first_only=True):
         pname = lookup.get(name)
         if pname is None or (first_only and pname in seen):
             continue
-        w = m_inv(list(ibm[k]))
+        w = wm[j] if wm else m_inv(list(ibm[k]))
         piv[pname] = (w[12], w[13], w[14])
         seen.add(pname)
     return piv
@@ -509,6 +531,50 @@ MODELS = {
         'length': 0.30,           # barrel axis runs along local -Z
         'center': True,
         'order': ['body', 'slide'],
+    },
+    # SMG (weapon slot 2); Quaternius guns pack, muzzle at +X
+    'smg': {
+        'file': 'Submachine Gun by Quaternius - nsP3JukU73.glb',
+        'credit': 'Submachine Gun by Quaternius [CC0] via Poly Pizza',
+        'fallback': 'body',
+        'nodes': {},
+        'rot': [('y', 90)],
+        'length': 1.00,
+        'center': True,
+        'order': ['body'],
+    },
+    # pump shotgun (weapon slot 3); Quaternius guns pack, muzzle at +X
+    'shotgun': {
+        'file': 'Shotgun by Quaternius - DcNE0HVdW8.glb',
+        'credit': 'Shotgun by Quaternius [CC0] via Poly Pizza',
+        'fallback': 'body',
+        'nodes': {},
+        'rot': [('y', 90)],
+        'length': 1.45,
+        'center': True,
+        'order': ['body'],
+    },
+    # automatic rifle (weapon slot 4); static low-poly, muzzle at +X
+    'rifle': {
+        'file': 'Assault Rifle by Quaternius - Bgvuu4CUMV.glb',
+        'credit': 'Assault Rifle by Quaternius [CC0] via Poly Pizza',
+        'fallback': 'body',
+        'nodes': {},
+        'rot': [('y', 90)],
+        'length': 1.05,
+        'center': True,
+        'order': ['body'],
+    },
+    # sniper rifle (weapon slot 5); static low-poly, muzzle at +X
+    'sniper': {
+        'file': 'Sniper Rifle by Quaternius - ASOMZIErq3.glb',
+        'credit': 'Sniper Rifle by Quaternius [CC0] via Poly Pizza',
+        'fallback': 'body',
+        'nodes': {},
+        'rot': [('y', 90)],
+        'length': 1.58,
+        'center': True,
+        'order': ['body'],
     },
 }
 

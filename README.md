@@ -135,13 +135,17 @@ light on their feet. You know that stride.
 
 ## Third-party assets
 
-The drone chassis and the service pistol are built on external CC-BY models.
-Only their geometry is used: it is baked offline by `tools/gen_models.py` into
-`js/models.js` (quantized, base64), and all materials, colors and lighting are
-the game's own procedural ones.
+The drone chassis and the player weapons are built on external CC-BY/CC0
+models. Only their geometry is used: it is baked offline by
+`tools/gen_models.py` into `js/models.js` (quantized, base64), and all
+materials, colors and lighting are the game's own procedural ones.
 
 - Ross by joney_lol [CC-BY] via Poly Pizza
 - Glock by J-Toastie [CC-BY] via Poly Pizza
+- Submachine Gun by Quaternius [CC0] via Poly Pizza
+- Shotgun by Quaternius [CC0] via Poly Pizza
+- Assault Rifle by Quaternius [CC0] via Poly Pizza
+- Sniper Rifle by Quaternius [CC0] via Poly Pizza
 
 The source `.glb` files live in `assets_src/`; regenerate with
 `python3 tools/gen_models.py`. Everything else (textures, sounds, music,

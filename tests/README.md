@@ -42,7 +42,8 @@ bez serwera. Uruchamianie: `python tests/phase0_test.py` itd.
 | `menu_test.py` | MENU-1: menu główne z panoramą (boot do `screen-menu`, dryf kamery, zapełniona scena), pełna pętla nawigacji (arena/statystyki/bestiariusz/ustawienia i powroty), panorama wyłączona w rozgrywce i przy pauzie, powrót po `quitToMenu`, motyw menu z `assets/` (pętla, suwak muzyki, wyciszenie na czas misji, powrót bez przewijania, `file://`) |
 | ~~`status1_test.py`~~ (kosz) | Smoke po rebrandingu: tytuł/wordmark STATUS 1, treść odprawy (Davidson/R36), migracja starych kluczy zapisu, karta finału, `file://` |
 | `bestiary_test.py` | BESTIARIUSZ: wejście z menu, lista jednostek, własna scena podglądu, powrót Esc, `file://` |
-| ~~`shots.py`~~ (kosz), `shots2.py`, `shots_models.py` | Nie-testy: zrzuty ekranów i modeli do `tests/_shots/` — do ręcznej oceny wizualnej |
+| `devmap_test.py` | STRZELNICA (dev, `js/devmap.js`): wejście z pełnym odblokowaniem, wyciszony reżyser fal, klawisze B/T/Y/K/J/P, higiena (kille/strzały z dev nie liczą się do statystyk służby, wyjście nie dotyka rekordu areny) |
+| ~~`shots.py`~~ (kosz), `shots2.py`, `shots_models.py`, `shots_weapons.py` | Nie-testy: zrzuty ekranów i modeli do `tests/_shots/` - do ręcznej oceny wizualnej; `shots_weapons.py` dodatkowo liczy projekcję przyrządów ADS na oś kamery (na zrzutach ciemnych przyrządów nie widać) |
 
 ## Pułapki
 

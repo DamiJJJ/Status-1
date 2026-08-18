@@ -10,11 +10,13 @@
 const WEAPONS = [
   { id: 'pistol',  name: 'Pistolet',  slot: 1, damage: 26,  rpm: 320, auto: false, pellets: 1, spread: 0.03,
     magSize: 12, startReserve: 72,  maxReserve: 120, reloadTime: 0.95, kick: 0.012, vmKick: 0.06, zoom: false },
-  { id: 'shotgun', name: 'Strzelba',  slot: 2, damage: 11,  rpm: 80,  auto: false, pellets: 8, spread: 0.07,
+  { id: 'smg',     name: 'SMG',       slot: 2, damage: 11,  rpm: 780, auto: true, pellets: 1, spread: 0.045,
+    magSize: 30, startReserve: 150, maxReserve: 240, reloadTime: 1.4,  kick: 0.006, vmKick: 0.035, zoom: false },
+  { id: 'shotgun', name: 'Strzelba',  slot: 3, damage: 11,  rpm: 80,  auto: false, pellets: 8, spread: 0.07,
     adsMul: 0.6, magSize: 6, startReserve: 30, maxReserve: 48, reloadTime: 2.0, kick: 0.035, vmKick: 0.14, zoom: false },
-  { id: 'smg',     name: 'Karabin SMG', slot: 3, damage: 12, rpm: 720, auto: true, pellets: 1, spread: 0.05,
-    magSize: 30, startReserve: 150, maxReserve: 240, reloadTime: 1.5,  kick: 0.007, vmKick: 0.04, zoom: false },
-  { id: 'sniper',  name: 'Snajperka', slot: 4, damage: 130, rpm: 45,  auto: false, pellets: 1, spread: 0.08,
+  { id: 'rifle',   name: 'Karabin',   slot: 4, damage: 15,  rpm: 640, auto: true, pellets: 1, spread: 0.05,
+    magSize: 30, startReserve: 120, maxReserve: 210, reloadTime: 1.6,  kick: 0.009, vmKick: 0.05, zoom: false },
+  { id: 'sniper',  name: 'Snajperka', slot: 5, damage: 130, rpm: 45,  auto: false, pellets: 1, spread: 0.08,
     spreadZoom: 0.0015, magSize: 5, startReserve: 20, maxReserve: 35, reloadTime: 2.2, kick: 0.05, vmKick: 0.2, zoom: true },
 ];
 
@@ -33,13 +35,31 @@ let reloading = false;
 let reloadTimer = 0;
 let reloadDuration = 1; // faktyczny czas bieżącego przeładowania (z ulepszeniem)
 
-/* --- viewmodele (proceduralne pistolety z klocków) --- */
+/* --- viewmodele (wypieczone modele z tools/gen_models.py, materiały nasze) --- */
 const vmMatDark = new THREE.MeshStandardMaterial({ color: 0x2e3155, roughness: 0.6, metalness: 0.3, flatShading: true });
 const vmMatMid  = new THREE.MeshStandardMaterial({ color: 0x4a4f80, roughness: 0.65, metalness: 0.2, flatShading: true });
-const vmMatTeal = new THREE.MeshStandardMaterial({ color: 0x073a33, emissive: PALETTE.teal, emissiveIntensity: 1.2, roughness: 0.5 });
 const vmMatOrange = new THREE.MeshStandardMaterial({ color: 0x33210a, emissive: PALETTE.orange, emissiveIntensity: 1.1, roughness: 0.5 });
-/* dim teal for rear-sight dots — front sight has to stay the brightest point */
-const vmMatTealDim = new THREE.MeshStandardMaterial({ color: 0x06322c, emissive: PALETTE.teal, emissiveIntensity: 0.55, roughness: 0.5 });
+/* The long guns wear the PISTOL's palette (user call 2026-08-18: "kolory
+   w stylu glocka") - vmMatDark bodies with vmMatMid metal, no wood tones and
+   no near-black, so all five weapons look like one issued family. */
+/* sniper scope lenses: a quiet amber sheen - at full emissive the eyepiece
+   reads as a glowing disc at this scale */
+const vmMatLens = new THREE.MeshStandardMaterial({ color: 0x4a2d08, emissive: PALETTE.orange, emissiveIntensity: 0.35, roughness: 0.3 });
+const vmMatHidden = new THREE.MeshBasicMaterial({ visible: false });
+/* the aim point: a tiny green emitter on the front sight (user call
+   2026-08-18) - moulded sights are dark-on-dark and vanish at ADS range */
+const vmMatDot = new THREE.MeshStandardMaterial({ color: 0x03200c, emissive: 0x00ff44, emissiveIntensity: 2.6, roughness: 0.4 });
+
+/* Material map for the Quaternius guns pack (SMG / shotgun / rifle / sniper):
+   they share one material vocabulary, so one resolver serves all four. */
+function quatMat(src) {
+  switch (src) {
+    case 'Metal': case 'Grey': case 'MainLight': return vmMatMid;
+    case 'Glass': return vmMatLens;
+    // Wood/DarkWood/Green land here on purpose - no brown anywhere
+    default: return vmMatDark;   // Black, DarkMetal, Main, MainDark, Wood…
+  }
+}
 
 function vmBox(parent, w, h, d, x, y, z, mat = vmMatDark) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -78,73 +98,79 @@ function buildViewmodel(id) {
          height, which is where the ADS line is taken from. The barrel ends up
          1° above the camera axis, which is invisible and harmless: bullets
          follow the camera ray, not the muzzle. */
-      m.root.rotation.x = 0.0171;
+      m.root.rotation.x = 0.0176;
+      /* the blade also carries the green aim dot the long guns use - scaled
+         down (0.0028) so its angular size matches theirs at the closer pistol
+         ADS distance; the pitch leaves the rear tab 1.5 mm below the line */
+      vmBox(m.root, 0.0028, 0.0028, 0.002, 0, 0.1015, -0.133, vmMatDot);
       g.userData.muzzleLocal = new THREE.Vector3(0, 0.037, -0.25);
-      g.userData.adsPos = new THREE.Vector3(0, -0.0764, -0.42); // moulded sights on the camera axis
+      g.userData.adsPos = new THREE.Vector3(0, -0.0778, -0.42); // blade dot on the camera axis
       break;
     }
-    case 'shotgun':
-      vmBox(g, 0.09, 0.11, 0.55, 0, 0, -0.15, vmMatMid);    // receiver
-      vmCyl(g, 0.026, 0.52, 0, 0.06, -0.2);                 // barrel
-      vmCyl(g, 0.032, 0.03, 0, 0.06, -0.45);                // muzzle ring
-      vmCyl(g, 0.019, 0.44, 0, -0.01, -0.25);               // tube magazine
-      vmBox(g, 0.1, 0.05, 0.14,  0, -0.045, -0.28, vmMatOrange); // pump
-      vmBox(g, 0.07, 0.12, 0.12, 0, -0.1, 0.12);            // grip
-      vmBox(g, 0.06, 0.1, 0.12,  0, -0.135, 0.22, vmMatMid); // stock butt
-      vmCyl(g, 0.013, 0.05, -0.056, 0.02, -0.08, vmMatOrange, 8); // spare shells
-      vmCyl(g, 0.013, 0.05, -0.056, 0.02, -0.13, vmMatOrange, 8); // (left side of
-      vmCyl(g, 0.013, 0.05, -0.056, 0.02, -0.18, vmMatOrange, 8); //  the receiver)
-      // small glowing bead + dim mid-bead on the barrel, low rear ears frame it
-      vmBox(g, 0.014, 0.014, 0.012, 0, 0.092, -0.44, vmMatTeal);     // muzzle bead
-      vmBox(g, 0.009, 0.009, 0.009, 0, 0.088, -0.26, vmMatTealDim);  // mid bead
-      vmBox(g, 0.011, 0.024, 0.012, -0.02, 0.067, 0.02);  // rear ear L
-      vmBox(g, 0.011, 0.024, 0.012,  0.02, 0.067, 0.02);  // rear ear R
-      vmBox(g, 0.0065, 0.0065, 0.005, -0.02, 0.075, 0.027, vmMatTealDim); // rear dot L
-      vmBox(g, 0.0065, 0.0065, 0.005,  0.02, 0.075, 0.027, vmMatTealDim); // rear dot R
-      g.userData.muzzleLocal = new THREE.Vector3(0, 0.06, -0.48);
-      g.userData.adsPos = new THREE.Vector3(0, -0.092, -0.44); // bead on the camera axis
+    /* Long guns are ANCHORED BY THEIR REAR, not by the bbox centre: root.z =
+       0.41 - half-length puts every stock at world z -0.14 at the hip pose,
+       so growing a gun makes its receiver bigger on screen instead of pushing
+       the whole model away. ADS keeps the same clearance via adsPos.z -0.54
+       (rear = adsPos.z + 0.41 = -0.13). They also all sit 0.03 LOWER than the
+       pistol (user call) - adsPos.y pays that back, so only the hip pose
+       moves. SMG and sniper are pulled a further 0.10 toward the camera. */
+    case 'smg': {
+      // Quaternius SMG (CC0): this one carries a closed top rail - two bridges
+      // (front z -0.4158, rear z +0.0764) that SPAN the centreline at y 0.1904.
+      // Their vertices all sit off-axis, so a near-axis probe misses them and
+      // any lower sight line ends up looking straight into a bridge. The dot
+      // therefore rides on TOP of the front bridge and the +0.0041 rad pitch
+      // drops the rear one 4 mm below the sight line.
+      const m = buildModel('smg', src => quatMat(src));
+      vmBox(m.root, 0.004, 0.004, 0.003, 0, 0.1924, -0.4158, vmMatDot); // rail dot
+      /* pulled 0.10 closer than the shared rear anchor (user call: it sat too
+         far away); adsPos.z pays that back so the aiming pose is unchanged.
+         The stock tip ends up ~0.04 m from the camera, but at the hip offset
+         it is far outside the frustum, so it never shows. */
+      m.root.position.set(0, -0.03, 0.01);
+      m.root.rotation.x = 0.0041;
+      g.add(m.root);
+      g.userData.muzzleLocal = new THREE.Vector3(0, 0.108, -0.49);
+      g.userData.adsPos = new THREE.Vector3(0, -0.1641, -0.64); // rail dot on the camera axis
       break;
-    case 'smg':
-      vmBox(g, 0.08, 0.12, 0.42, 0, 0, -0.1, vmMatMid);     // receiver
-      vmBox(g, 0.068, 0.09, 0.16, 0, 0.005, -0.36, vmMatMid); // handguard
-      vmCyl(g, 0.016, 0.14, 0, 0.02, -0.44);                // barrel
-      vmCyl(g, 0.025, 0.08, 0, 0.02, -0.475);               // suppressor
-      vmBox(g, 0.05, 0.16, 0.08, 0, -0.13, 0.02);           // magazine
-      vmBox(g, 0.055, 0.02, 0.09, 0, -0.215, 0.02);         // mag baseplate
-      vmBox(g, 0.06, 0.12, 0.08, 0, -0.1, 0.14);            // grip
-      vmBox(g, 0.035, 0.07, 0.05, 0, -0.075, -0.32, vmMatMid); // foregrip
-      vmBox(g, 0.05, 0.09, 0.05, 0, 0, 0.135);              // rear cap
-      vmBox(g, 0.012, 0.02, 0.06, -0.046, 0.03, -0.02);     // charging handle (left)
-      vmBox(g, 0.02, 0.04, 0.16, 0, 0.09, -0.1);            // top rail
-      // slim three-dot sights; the rear posts stand on a crossbar base that
-      // sits on the rail (posts alone would float beside the narrow rail)
-      vmBox(g, 0.056, 0.012, 0.022, 0, 0.116, -0.035);       // rear sight base
-      vmBox(g, 0.011, 0.02, 0.012, -0.0225, 0.132, -0.035);  // rear post L
-      vmBox(g, 0.011, 0.02, 0.012,  0.0225, 0.132, -0.035);  // rear post R
-      vmBox(g, 0.0065, 0.0065, 0.005, -0.0225, 0.138, -0.028, vmMatTealDim); // rear dot L
-      vmBox(g, 0.0065, 0.0065, 0.005,  0.0225, 0.138, -0.028, vmMatTealDim); // rear dot R
-      vmBox(g, 0.011, 0.028, 0.012, 0, 0.124, -0.165);       // front post
-      vmBox(g, 0.008, 0.008, 0.008, 0, 0.138, -0.171, vmMatTeal); // front dot
-      g.userData.muzzleLocal = new THREE.Vector3(0, 0.02, -0.52);
-      g.userData.adsPos = new THREE.Vector3(0, -0.138, -0.42); // dot row on the camera axis
+    }
+    case 'shotgun': {
+      // Quaternius shotgun (CC0): front post top 0.1132 @ z -0.606, rear post
+      // 0.1190 @ z +0.304 (sight radius 0.91). Green emitter on the front
+      // post; the +0.0086 rad pitch drops the rear 4 mm below the sight line.
+      const m = buildModel('shotgun', src => quatMat(src));
+      vmBox(m.root, 0.004, 0.004, 0.003, 0, 0.1152, -0.606, vmMatDot); // post dot
+      m.root.position.set(0, -0.03, -0.315);
+      m.root.rotation.x = 0.0086;
+      g.add(m.root);
+      g.userData.muzzleLocal = new THREE.Vector3(0, 0.075, -1.04);
+      g.userData.adsPos = new THREE.Vector3(0, -0.0904, -0.54); // post dot on the camera axis
       break;
-    case 'sniper':
-      vmBox(g, 0.07, 0.1, 0.65,  0, 0, -0.2, vmMatMid);     // body
-      vmCyl(g, 0.016, 0.48, 0, 0.02, -0.63);                // long barrel
-      vmCyl(g, 0.026, 0.07, 0, 0.02, -0.84);                // muzzle brake
-      vmCyl(g, 0.036, 0.2, 0, 0.1, -0.11, vmMatDark, 12);   // scope tube
-      vmCyl(g, 0.045, 0.05, 0, 0.1, -0.19, vmMatDark, 12);  // objective bell
-      vmCyl(g, 0.03, 0.014, 0, 0.1, -0.218, vmMatOrange, 12); // lens
-      vmCyl(g, 0.042, 0.04, 0, 0.1, -0.005, vmMatDark, 12); // eyepiece
-      vmBox(g, 0.024, 0.06, 0.03, 0, 0.05, -0.06);          // scope mount rear
-      vmBox(g, 0.024, 0.06, 0.03, 0, 0.05, -0.16);          // scope mount front
-      vmBox(g, 0.05, 0.018, 0.018, 0.05, 0.03, 0);          // bolt (right side)
-      vmBox(g, 0.022, 0.035, 0.022, 0.08, 0.015, 0);        // bolt knob
-      vmBox(g, 0.05, 0.07, 0.13, 0, -0.085, -0.16);         // magazine
-      vmBox(g, 0.06, 0.13, 0.1,  0, -0.11, 0.08);           // grip
-      vmBox(g, 0.055, 0.045, 0.14, 0, 0.055, 0.06);         // cheek riser
-      g.userData.muzzleLocal = new THREE.Vector3(0, 0.02, -0.88);
+    }
+    case 'rifle': {
+      // Quaternius assault rifle (CC0): the moulded front post reads as a
+      // black sliver at ~1 m, so a green emitter dot rides its tip (post top
+      // 0.1809 @ z -0.3186). The muzzle pitches DOWN 0.0478 rad so the rear
+      // ridge top (0.1570 @ z +0.1389) sits 4 mm BELOW the sight line
+      // (y 0.1677) - level with it, the nearer ridge would occlude the dot.
+      const m = buildModel('rifle', src => quatMat(src));
+      vmBox(m.root, 0.004, 0.004, 0.003, 0, 0.1829, -0.3186, vmMatDot); // post dot
+      m.root.position.set(0, -0.03, -0.115);
+      m.root.rotation.x = -0.0478;
+      g.add(m.root);
+      g.userData.muzzleLocal = new THREE.Vector3(0, 0.087, -0.64);
+      g.userData.adsPos = new THREE.Vector3(0, -0.1377, -0.54); // post dot on the camera axis
       break;
+    }
+    case 'sniper': {
+      // Quaternius sniper rifle (CC0); PPM = scope overlay, so no adsPos -
+      // the viewmodel hides while zoomed
+      const m = buildModel('sniper', src => quatMat(src));
+      m.root.position.set(0, -0.03, -0.28); // closer than the shared anchor, and lower
+      g.add(m.root);
+      g.userData.muzzleLocal = new THREE.Vector3(0, 0.016, -1.07);
+      break;
+    }
   }
   g.traverse(o => { o.castShadow = false; o.receiveShadow = false; });
   return g;

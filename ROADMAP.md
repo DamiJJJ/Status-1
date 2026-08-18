@@ -31,7 +31,9 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 | PROP-1 | ✅ Ustawienia w pauzie | M | 1 |
 | PROP-6 | Dostępność (✅ wyłącznik strobo; remap klawiszy - otwarte) | S | 1 |
 | BOT-1 | ✅ Redesign botów (podwozie SENTINEL z modelu CC-BY) | L | 2 |
-| BRON-1 | 🔄 Rework broni na modele 3D (pistolet gotowy) | L | 2 |
+| BRON-1 | ✅ Rework broni na modele 3D (5 broni z wypieczonych modeli, SMG jako nowa) | L | 2 |
+| BRON-2 | Ręce gracza na viewmodelu | S/M | 2 |
+| BRON-3 | Animacja inspekcji broni (klawisz F, jak w CS) | S | 2 |
 | BOT-3 | Rework przeciwników: modele, animacje, bronie | L | 2 |
 | MENU-1 | ✅ Menu główne z animowaną panoramą Los Santos | L | 2 |
 | MENU-2 | Synth-ambient w menu (SUNO) | M + decyzja | 2 |
@@ -238,27 +240,46 @@ model, ruszają się dwoma piwotami nóg i trzymają tego samego Glocka.
 
 ## Bronie
 
-### BRON-1 · Rework broni na modele 3D - L - 🔄 W TOKU (2026-08-18)
+### BRON-1 · Rework broni na modele 3D - L - ✅ ZROBIONE (2026-08-18)
 
-> Pistolet gotowy: Glock z modelu CC-BY („Glock by J-Toastie via Poly Pizza"),
-> sama geometria przez `tools/gen_models.py`, materiały nasze, muszka three-dot
-> i `adsPos` dorobione proceduralnie na zamku. Zostały: strzelba, karabin,
-> snajperka i SMG.
->
-> **Decyzja (2026-08-18): reszta idzie tą samą drogą co Glock** - wypieczone
-> modele CC0/CC-BY, nie proceduralne bryły. Powodem jest wynik na pistolecie:
-> odlana muszka i szczerbinka czytają się lepiej niż doklejane słupki,
-> a przechył całego modelu załatwia wyrównanie przyrządów.
+> Wszystkie pięć broni jedzie na wypieczonych modelach (`tools/gen_models.py`
+> → `js/models.js`, materiały nasze): Glock (pistolet - jedyny spoza paczki,
+> decyzja użytkownika) plus **cztery bronie z JEDNEJ paczki Quaterniusa
+> (CC0)**: SMG jako nowa 5. broń w slocie [2] (id `smg`), strzelba, karabin
+> i snajperka (dwa ostatnie modele wskazane przez użytkownika).
+> Pierwsze podejście szło na realistycznych modelach (MP5SD, Mossberg 590A1) -
+> wypadły, bo przy smukłych proporcjach czytały się za drobno obok
+> stylizowanych brył Quaterniusa; materiały całej rodziny idą teraz przez
+> jeden resolver `quatMat()` używający materiałów Glocka (`vmMatDark` +
+> `vmMatMid`) - bez drewna i bez osobnej czerni, żeby cała piątka wyglądała
+> na jedną rodzinę sprzętu. Modele są celowo PONAD wymiary rzeczywiste
+> (length: SMG 1.00, strzelba 1.45, karabin 1.05, snajperka 1.58) i kotwiczone
+> ZA TYŁ (kolba na stałym z, przyrost skali idzie w ekranowy rozmiar chwytu,
+> a kolby nie łykają kamery przy ADS); po oglądzie SMG i snajperka poszły
+> 0.10 bliżej kamery, a cała czwórka 0.03 niżej od pistoletu - `adsPos`
+> kompensuje oba przesunięcia, więc pozycja celowania się nie zmienia. Punkty celownicze to drobne zielone
+> emitery na przyrządach WSZYSTKICH pięciu broni (z Glockiem włącznie) -
+> odlane muszki były ciemne na ciemnym i niewidoczne;
+> widoczność kropek pilnuje raycast w `tests/shots_weapons.py` (wyłapał, że
+> kropka SMG celowała w mostek zabudowanej szyny). Pipeline dostał flagę
+> `bindWorld` (rigi, których IBM nie znosi się z grafem węzłów - użyta przy
+> nieaktualnym już Mossbergu). Wyrównanie ADS zweryfikowane liczbowo
+> (odchył ≤0.002 NDC). Dźwięki: SMG ma stłumiony strzał, karabin własny
+> (`shot('rifle')`). Sklep: `w_smg` 50 kr → `w_shotgun` 80 → `w_rifle` 110
+> → `w_sniper` 140.
+> Do rozważenia: cięższy dźwięk snajperki, animacja cyklu zamka Glocka
+> (część `slide` czeka w userData) i pompki strzelby (nowy model jest jedną
+> bryłą - pompka wymagałaby podziału w `MODELS`).
 
 Docelowe pierwowzory (sylwetka i charakter, nie kopia 1:1):
 
-| Broń w grze | Pierwowzór |
+| Broń w grze | Model |
 |---|---|
-| Pistolet | Glock 17 |
-| Strzelba | Remington 870 |
-| Karabin (auto) | AR-15 / M4 |
-| Snajperka | Barrett M82 (.50) |
-| SMG | do decyzji - propozycja: MP5SD (mamy już tłumik) |
+| Pistolet [1] | Glock by J-Toastie [CC-BY] |
+| SMG [2] | Submachine Gun by Quaternius [CC0] |
+| Strzelba [3] | Shotgun by Quaternius [CC0] |
+| Karabin (auto) [4] | Assault Rifle by Quaternius [CC0] |
+| Snajperka [5] | Sniper Rifle by Quaternius [CC0] |
 
 - Ścieżka: model CC0/CC-BY → `tools/gen_models.py` (`--probe` na orientację
   i granice) → wpis w `MODELS` → `buildModel` z naszą mapą materiałów.
@@ -276,6 +297,119 @@ Docelowe pierwowzory (sylwetka i charakter, nie kopia 1:1):
   przyrządów.
 - Przy okazji: dopasować dźwięki strzałów do nowego charakteru broni
   (Barrett powinien mieć wyraźnie cięższy strzał niż obecna snajperka).
+
+---
+
+### BRON-2 · Ręce gracza na viewmodelu - S/M
+
+Dziś broń wisi w kadrze bez rąk. Ręce dopięte jako **dzieci grupy viewmodelu**
+(`camera.add(g)` w `weapons.js`) jadą za darmo z ADS-em, odrzutem,
+przeładowaniem i sway'em - zero riggingu, zero IK. Dłoń jest sztywno
+przyklejona do chwytu, bo w FPS nie widać, że się nie zgina.
+
+- **Proceduralnie, nie z pipeline'u.** `tools/gen_models.py` daje samą
+  geometrię w bind pose, a statyczna dłoń nie owinie się wokół chwytu Glocka
+  i łoża AR tak samo - trzeba by pozować ją per broń albo wypiekać skinning.
+  Helper `vmHand(parent, x, y, z, rot)` obok `vmBox`/`vmCyl`: dłoń = spłaszczony
+  box, kciuk = mały box, przedramię = `vmCyl` w rękawie. Nowe materiały:
+  `vmMatGlove` (czarna taktyczna rękawica, wysokie `roughness`) i `vmMatSleeve`
+  (granat LSPD `0x30528c`, ten sam co liberia PATROLU).
+- **Near plane 0.08**: przedramię NIE może iść w stronę kamery - urwać je na
+  krawędzi kadru. Ta sama zasada co „nigdy nie przybliżaj broni do kamery".
+- **Muszka jest święta**: przy ADS trzy kropki (albo odlane przyrządy Glocka)
+  muszą zostać czyste. Dłoń wspierająca siedzi na łożu, poniżej linii
+  celowania. Jeśli zasłania - przesuwamy DŁOŃ, nigdy `adsPos`.
+- **Oświetlenie**: viewmodel łapie światła sceny, płaska czarna rękawica
+  zniknie w ciemnej arenie - jaśniejsze szwy albo tealowy akcent na nadgarstku.
+- Snajperka gratis (`zoom: true` chowa cały viewmodel). Weryfikacja zrzutami
+  (`tests/shots2.py`) - na ciemnym viewmodelu okiem tego nie ocenisz, jak przy
+  przyrządach Glocka.
+- **v2 (opcjonalnie)**: rozdzielenie dłoni na osobną podgrupę, żeby przy
+  przeładowaniu ręka wyciągała magazynek. Dziś animuje się cała grupa i dłonie
+  jadą z bronią - to wystarcza na start.
+- Kolejność: **po BRON-1 dla danej broni** (ręka musi trafić w chwyt gotowego
+  modelu). Pistolet da się zrobić od zaraz. Szacunek: ~1 h na pistolet,
+  ~3 h na komplet.
+
+---
+
+### BRON-3 · Animacja inspekcji broni - S
+
+Klawisz **F**: postać obraca broń w dłoni i ogląda ją z bliska, jak w Counter-
+Strike. Czysty smaczek - nie wpływa na rozgrywkę, ale to najtańszy sposób,
+żeby pokazać wypieczone modele z BRON-1 i ręce z BRON-2.
+
+- **Gdzie**: nowy stan obok `reloadTimer` w `js/weapons.js` (`inspectTimer` +
+  `inspectDuration`) i gałąź w `updateViewmodel(dt)` - ta sama mechanika, co
+  animacja przeładowania, tylko dłuższa i bez skutków w logice.
+- **Ruch**: broń wyjeżdża do środka kadru, obraca się wokół osi Y (pokazać
+  drugą stronę zamka), lekki przechył na X, powrót do `VM_BASE`. Krzywa
+  ease-in-out, ~2,5-3 s. **Nigdy nie przybliżać do kamery** (near plane 0.08)
+  - „bliżej" robimy obrotem i wjazdem do środka kadru, nie zmniejszaniem `z`.
+- **Przerywalność**: strzał, ADS, przeładowanie, zmiana broni i sprint
+  natychmiast anulują inspekcję (`inspectTimer = 0`), bez blokowania inputu.
+  Gracz nigdy nie może przez to zginąć.
+- **Blokady**: nie startuje przy `game.noCombat`, w trakcie przeładowania,
+  przy `zoom: true` z aktywną lunetą i poza stanem `playing`.
+- **Klawisz F trzeba dopisać do `GAME_KEYS`** w `js/input.js:21` - inaczej
+  wypada z tarczy skrótów i z listy Keyboard Lock (BUG-3).
+- Dźwięk: cichy szczęk metalu przez `AudioSys` (helper `tone`/`burst`,
+  z `jitter`) - bez pozycji, to dźwięk „przy uchu".
+- Per broń: docelowo osobna krzywa dla każdej (rewolwerowy obrót Glocka vs
+  pokazanie lunety Barretta), ale v1 może być jedna wspólna dla wszystkich.
+- Kolejność: **po BRON-1 i BRON-2** - inspekcja pustej bryły bez rąk nie ma
+  czego pokazywać. Szacunek: ~2 h na wspólną animację, ~1 h na wariant per broń.
+
+---
+
+### BRON-4 · Dodatki do broni - M · REKOMENDACJA: TAK, ale w wersji kosmetycznej
+
+Kolekcja „Gun Attachments" (Pichuliru, poly.pizza/l/IdFEbWDKa8): tłumik,
+chwyt przedni, latarka, laser, red dot, holo, celownik powiększający, luneta,
+luneta karabinowa. Pasuje do naszego pipeline'u wprost - to te same `.glb`,
+co bronie z BRON-1, więc idą przez `tools/gen_models.py` bez nowej mechaniki.
+
+**Dlaczego TAK:** trzy z pięciu broni mają dziś przyrządy tak ciemne, że
+musiały dostać sztuczną zieloną kropkę (`vmMatDot`). Odlany red dot albo
+holo rozwiązuje to u źródła - świecąca siatka JEST celownikiem, zamiast
+doklejanego emitera. Do tego pięć broni zaczyna wyglądać jak system sprzętu,
+a nie jak pięć osobnych brył.
+
+**Dlaczego NIE robimy z tego systemu modyfikacji:** pełne „przypnij dodatek
+w Zbrojowni" to nowy ekran UI, nowy wymiar balansu (celność/rozrzut/ADS per
+kombinacja), zapis konfiguracji w `status1_save` i przeliczanie `adsPos` dla
+KAŻDEJ pary broń+optyka. Przy jednej arenie i jednym typie bota to koszt
+bez pokrycia w rozgrywce.
+
+**Zakres v1 (kosmetyka, ~3-4 h):**
+- 2-3 modele do `MODELS` w `gen_models.py`: red dot, holo, tłumik.
+  Konwencja jak przy broniach - `--probe` na orientację, `center: True`,
+  materiały nasze przez `quatMat()` (rodzina ma zostać spójna).
+- Montaż na sztywno w `buildViewmodel()`, jeden dodatek na broń, doklejony
+  do roota viewmodelu: red dot na karabinie i SMG, holo na strzelbie,
+  tłumik zostaje przy SMG (dziś jest częścią bryły). Snajperka i Glock bez
+  zmian.
+- **Świecąca siatka zamiast `vmMatDot`**: mały emiter w środku szkła
+  celownika (ten sam zielony `0x00ff44`), ale osadzony w odlanym korpusie -
+  wtedy przestaje wyglądać jak kropka wisząca nad muszką.
+- **`adsPos` trzeba przeliczyć od zera** dla każdej broni z optyką: linia
+  celowania idzie teraz przez środek szkła, nie przez muszkę. Przechył
+  modelu (`root.rotation.x`) prawdopodobnie zjedzie do zera - odlana optyka
+  jest równoległa do lufy, a to muszka ze szczerbinką się nie zgadzały.
+  Weryfikacja liczbowa `tests/shots_weapons.py` (raycast po osi kamery musi
+  trafić w emiter siatki, odchył ≤0.002 NDC) - bez tego ani kroku.
+- Uwaga na near plane 0.08: optyka podnosi bryłę, przy ADS łatwo o wjazd
+  w kamerę - `adsPos.z` odsuwać, nigdy nie przybliżać.
+- Licencja: sprawdzić przy pobieraniu (poly.pizza nie pokazuje jej w liście);
+  bierzemy tylko CC0/CC-BY, `.glb` do `assets_src/`, autor do README.
+
+**v2 (dopiero gdyby gra urosła):** wybór optyki w Zbrojowni jako pozycja
+sklepu `att_*` per broń, z `adsPos` w danych `WEAPONS` zamiast na sztywno
+w `buildViewmodel()`. Sens ma dopiero po PROG-1 (drzewko) - inaczej to
+kolejna rzecz do kupienia za kredyty, która nic nie zmienia.
+
+Kolejność: po BRON-1 (jest), **przed BRON-2** - ręka wspierająca ma trafić
+w chwyt przedni, jeśli go dołożymy.
 
 ---
 
@@ -621,7 +755,8 @@ Po PROG-1 bez komplikacji ekonomicznych (punkty tylko za ukończenie misji).
    PROG-1 → TRUD-1, PROP-1, PROP-6. Gra robi się trudniejsza, uczciwsza
    i przyjemniejsza w ruchu bez ruszania wizualiów; trudność balansujemy
    dopiero na nowej progresji.
-2. **Faza 2 - tożsamość wizualna:** BOT-1, BRON-1, BOT-3, MENU-1, MENU-2,
+2. **Faza 2 - tożsamość wizualna:** BOT-1, BRON-1 → BRON-4 → BRON-2 → BRON-3, BOT-3, MENU-1,
+   MENU-2,
    MENU-4, PROP-12. Gra zaczyna wyglądać jak „STATUS 1", nie jak prototyp.
    **MAPA-1 przed MENU-4** - panorama z kitu wymaga gotowego pipeline'u.
 3. **Faza 3 - świat:** MAPA-1 → MAPA-2 + MAPA-3, PROP-3, potem SCENA-1,
@@ -640,6 +775,8 @@ Po PROG-1 bez komplikacji ekonomicznych (punkty tylko za ukończenie misji).
   planu SUNO)? Plan B: ambient proceduralny.
 - **BRON-1:** co z SMG (pierwowzór?) - nie było go w wytycznych. Czy dla
   każdej broni znajdzie się model CC0/CC-BY, czy część robimy proceduralnie?
+- **BRON-4:** czy dokładamy chwyt przedni (wymusza pozowanie ręki
+  wspierającej w BRON-2), czy zostajemy przy samej optyce i tłumiku?
 - **MAPA-1:** atlas z UV czy mapowanie materiałów per część? (rozstrzygnąć
   probem na pierwszym budynku, nie z góry)
 - **BOT-3:** wypiekamy klipy animacji ze źródła (skinning w `gen_models.py`),

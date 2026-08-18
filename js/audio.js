@@ -479,9 +479,17 @@ const AudioSys = (() => {
           burst({ dur: 0.5, vol: 0.14, freq: 430, jitter: 0.1, send: 1.0, delay: 0.02 });
           break;
         case 'smg':
-          burst({ dur: 0.01, vol: 0.14, freq: 3600, type: 'highpass' });
-          burst({ dur: 0.05, vol: 0.2, freq: 1800, type: 'highpass', jitter: 0.12, send: 0.2 });
-          tone({ type: 'square', f0: 260, f1: 90, dur: 0.06, vol: 0.13, jitter: 0.07 });
+          // SMG: small calibre, high rate - a light, snappy report where the
+          // bolt clack carries as much as the muzzle (the rifle is the heavy one)
+          burst({ dur: 0.012, vol: 0.15, freq: 3400, type: 'highpass' });          // bolt clack
+          burst({ dur: 0.05, vol: 0.19, freq: 1500, type: 'highpass', jitter: 0.12, send: 0.18 });
+          tone({ type: 'square', f0: 230, f1: 85, dur: 0.05, vol: 0.12, jitter: 0.08 });
+          break;
+        case 'rifle':
+          burst({ dur: 0.011, vol: 0.18, freq: 3300, type: 'highpass' });
+          burst({ dur: 0.07, vol: 0.26, freq: 1200, jitter: 0.1, send: 0.25 });
+          tone({ type: 'square', f0: 240, f1: 80, dur: 0.07, vol: 0.16, jitter: 0.06 });
+          burst({ dur: 0.14, vol: 0.07, freq: 700, jitter: 0.1, send: 0.8, delay: 0.012 }); // tail
           break;
         case 'sniper':
           burst({ dur: 0.014, vol: 0.28, freq: 2400, type: 'highpass' });
@@ -522,7 +530,7 @@ const AudioSys = (() => {
     },
     // weapon draw: cloth swish + bolt click-clack; heavier guns lower & slower
     switch_(id = 'pistol') {
-      const wgt = { pistol: 0, smg: 0.3, shotgun: 0.75, sniper: 1 }[id] || 0;
+      const wgt = { pistol: 0, smg: 0.3, shotgun: 0.75, rifle: 0.55, sniper: 1 }[id] || 0;
       const p = 1 - wgt * 0.3;
       burst({ dur: 0.07, vol: 0.09 + wgt * 0.05, freq: 900 * p, q: 1.1, type: 'bandpass', jitter: 0.1 });
       tone({ type: 'square', f0: 430 * p, f1: 320 * p, dur: 0.04, vol: 0.12, delay: 0.05 });

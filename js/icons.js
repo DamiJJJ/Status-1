@@ -30,6 +30,15 @@ const UI_ICONS = {
     <path d="M10 12h3.6l-1.6 6.8h-3.6z"/>
     <path d="M14.8 12h3l-1.3 4.4h-2.9z"/>
   </svg>`,
+  rifle: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M1.6 8.4l3.2-1v4.4l-3.2-0.8z"/>
+    <rect x="4.6" y="8" width="14.4" height="3.4" rx="0.9"/>
+    <rect x="18.8" y="8.9" width="3.6" height="1.6"/>
+    <rect x="16.2" y="5.6" width="1.6" height="2.6"/>
+    <rect x="7.4" y="5.9" width="4.6" height="2.3" rx="1.1"/>
+    <path d="M12.4 11.4h3.4l-1.6 6.4h-3.3z"/>
+    <path d="M7.2 11.4h3.2l-1 3.4h-3.1z"/>
+  </svg>`,
   sniper: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path d="M2 8.6l3.4-0.8v5l-3.4-1z"/>
     <rect x="5" y="9.4" width="15.6" height="2.4"/>

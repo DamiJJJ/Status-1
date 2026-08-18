@@ -81,7 +81,7 @@ with sync_playwright() as pw:
     hp2 = page.evaluate("({max: player.maxHp, hp: player.hp, mag: WEAPONS[0].magSize,"
                         "  owned: WEAPONS.map(w=>w.owned).join(','), res: WEAPONS[0].reserve})")
     check("reset: back to base", hp2["max"] == 100 and hp2["hp"] == 100 and hp2["mag"] == 12
-          and hp2["owned"] == "true,false,false,false" and hp2["res"] == 72, str(hp2))
+          and hp2["owned"] == "true,false,false,false,false" and hp2["res"] == 72, str(hp2))
     page.close()
 
     # --- 4: full ?test=win run ---

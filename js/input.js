@@ -20,7 +20,7 @@
    Escape stays UNLOCKED on purpose — it must keep exiting pointer lock. */
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyG', 'KeyR',
   'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',
-  'Digit1', 'Digit2', 'Digit3', 'Digit4']);
+  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']);
 const SHIELD_STATES = new Set(['playing', 'paused', 'shop', 'settings']);
 if (navigator.keyboard && navigator.keyboard.lock) {
   navigator.keyboard.lock([...GAME_KEYS, 'KeyT', 'KeyN']).catch(() => { /* unsupported */ });
@@ -78,6 +78,8 @@ document.addEventListener('keydown', e => {
     if (e.code === 'Digit2') switchWeapon(1);
     if (e.code === 'Digit3') switchWeapon(2);
     if (e.code === 'Digit4') switchWeapon(3);
+    if (e.code === 'Digit5') switchWeapon(4);
+    if (game.dev) devKey(e.code); // dev range tools (js/devmap.js)
   } else if ((game.state === 'over' || game.state === 'won') && e.code === 'KeyR') {
     restartGame();
   } else if (game.state === 'shop' && enter) {

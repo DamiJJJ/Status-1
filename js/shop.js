@@ -8,9 +8,10 @@
 
 /* icon: key into UI_ICONS (js/icons.js); cat: tint class of the shop icon */
 const SHOP_ITEMS = [
-  { id: 'w_shotgun', name: 'Strzelba',    desc: 'Broń [2] — 8 śrucin, zabójcza z bliska',     basePrice: 50,  maxLevel: 1, level: 0, icon: 'shotgun', cat: 'weapon' },
-  { id: 'w_smg',     name: 'Karabin SMG', desc: 'Broń [3] — szybki ogień automatyczny',       basePrice: 90,  maxLevel: 1, level: 0, icon: 'smg',     cat: 'weapon' },
-  { id: 'w_sniper',  name: 'Snajperka',   desc: 'Broń [4] — ogromne obrażenia, zoom na PPM',  basePrice: 140, maxLevel: 1, level: 0, icon: 'sniper',  cat: 'weapon' },
+  { id: 'w_smg',     name: 'SMG',       desc: 'Broń [2] - szybki ogień seryjny, mały odrzut', basePrice: 50,  maxLevel: 1, level: 0, icon: 'smg',     cat: 'weapon' },
+  { id: 'w_shotgun', name: 'Strzelba',  desc: 'Broń [3] - 8 śrucin, zabójcza z bliska',      basePrice: 80,  maxLevel: 1, level: 0, icon: 'shotgun', cat: 'weapon' },
+  { id: 'w_rifle',   name: 'Karabin',   desc: 'Broń [4] - mocny ogień automatyczny',         basePrice: 110, maxLevel: 1, level: 0, icon: 'rifle',   cat: 'weapon' },
+  { id: 'w_sniper',  name: 'Snajperka', desc: 'Broń [5] - ogromne obrażenia, zoom na PPM',   basePrice: 140, maxLevel: 1, level: 0, icon: 'sniper',  cat: 'weapon' },
   { id: 'heal',   name: 'Pełne leczenie',        desc: 'Przywraca zdrowie do maksimum',           basePrice: 30, maxLevel: Infinity, level: 0, icon: 'heal',   cat: 'consumable' },
   { id: 'ammo',   name: 'Pełna amunicja',        desc: 'Uzupełnia zapas wszystkich broni',        basePrice: 40, maxLevel: Infinity, level: 0, icon: 'ammo',   cat: 'consumable' },
   { id: 'nade',   name: 'Granaty ×2',            desc: 'Dwa granaty [G] — obrażenia obszarowe (maks. 4)', basePrice: 35, maxLevel: Infinity, level: 0, icon: 'grenade', cat: 'consumable' },
@@ -41,10 +42,10 @@ function applyAllShopEffects() {
     w.magSize = Math.round(w.baseMag * (1 + 0.5 * magL));
     w.maxReserve = Math.round(w.baseMaxReserve * (1 + 0.5 * magL));
   }
-  WEAPONS[0].owned = true;
-  WEAPONS[1].owned = shopLevel('w_shotgun') > 0;
-  WEAPONS[2].owned = shopLevel('w_smg') > 0;
-  WEAPONS[3].owned = shopLevel('w_sniper') > 0;
+  // ownership derives from the shop level; slot order = WEAPONS order
+  for (const w of WEAPONS) {
+    w.owned = w.id === 'pistol' || shopLevel('w_' + w.id) > 0;
+  }
   player.hp = Math.min(player.hp, player.maxHp);
   updateHpHud();
   updateWeaponHud();

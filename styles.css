@@ -871,3 +871,27 @@ body.menu-bg #vignette { display: none !important; } /* beats the id-level displ
 @media (max-height: 620px) {
   .bst-desc { display: none; }
 }
+
+/* ==================== STRZELNICA (DEV) ==================== */
+/* developer range help panel; visible only while body.dev-mode is on
+   (main.js toggles it from game.dev + the playing/paused states) */
+#dev-hud {
+  display: none;
+  right: 18px;
+  top: 96px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #aab2e8;
+}
+body.dev-mode #dev-hud { display: block; }
+#dev-hud .dev-title { color: #ff8906; letter-spacing: 0.08em; margin-bottom: 4px; }
+#dev-hud .dev-row b {
+  display: inline-block;
+  min-width: 16px;
+  color: #00ebc7;
+  text-align: center;
+}

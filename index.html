@@ -112,10 +112,22 @@
   </div>
   <div id="weapon-slots">
     <div class="wslot active" id="wslot-1" title="Pistolet"><b>1</b><span class="icon" data-icon="pistol"></span></div>
-    <div class="wslot" id="wslot-2" title="Strzelba"><b>2</b><span class="icon" data-icon="shotgun"></span></div>
-    <div class="wslot" id="wslot-3" title="Karabin SMG"><b>3</b><span class="icon" data-icon="smg"></span></div>
-    <div class="wslot" id="wslot-4" title="Snajperka"><b>4</b><span class="icon" data-icon="sniper"></span></div>
+    <div class="wslot" id="wslot-2" title="SMG"><b>2</b><span class="icon" data-icon="smg"></span></div>
+    <div class="wslot" id="wslot-3" title="Strzelba"><b>3</b><span class="icon" data-icon="shotgun"></span></div>
+    <div class="wslot" id="wslot-4" title="Karabin"><b>4</b><span class="icon" data-icon="rifle"></span></div>
+    <div class="wslot" id="wslot-5" title="Snajperka"><b>5</b><span class="icon" data-icon="sniper"></span></div>
   </div>
+</div>
+
+<!-- developer range help (js/devmap.js); body.dev-mode shows it -->
+<div id="dev-hud" class="hud">
+  <div class="dev-title">STRZELNICA - tryb dev</div>
+  <div class="dev-row"><b>B</b> spawn bota w celowniku</div>
+  <div class="dev-row"><b>T</b> ogień botów: <span id="dev-fire">wstrzymany</span></div>
+  <div class="dev-row"><b>Y</b> ruch botów: <span id="dev-move">aktywny</span></div>
+  <div class="dev-row"><b>K</b> usuń wszystkie boty</div>
+  <div class="dev-row"><b>J</b> pełne HP / amunicja / granaty</div>
+  <div class="dev-row"><b>P</b> odbuduj cele strzelnicy</div>
 </div>
 
 <div id="radio-box" class="hud">
@@ -143,6 +155,7 @@
       <button class="btn secondary" id="btn-menu-settings">Ustawienia</button>
       <button class="btn secondary" id="btn-menu-bestiary">Bestiariusz</button>
       <button class="btn secondary" id="btn-menu-stats">Statystyki</button>
+      <button class="btn secondary" id="btn-menu-dev">Strzelnica (dev)</button>
     </div>
     <div class="screen-hint" id="menu-progress"></div>
   </div>
@@ -183,7 +196,7 @@
       <div class="key"><kbd>LPM</kbd></div><div class="desc">strzał</div>
       <div class="key"><kbd>PPM</kbd></div><div class="desc">celowanie (snajperka: luneta)</div>
       <div class="key"><kbd>R</kbd></div><div class="desc">przeładowanie</div>
-      <div class="key"><kbd>1</kbd>–<kbd>4</kbd> / <kbd>scroll</kbd></div><div class="desc">zmiana broni</div>
+      <div class="key"><kbd>1</kbd>-<kbd>5</kbd> / <kbd>scroll</kbd></div><div class="desc">zmiana broni</div>
       <div class="key"><kbd>Shift</kbd></div><div class="desc">bieg</div>
       <div class="key"><kbd>Spacja</kbd></div><div class="desc">skok</div>
       <div class="key"><kbd>Ctrl</kbd> / <kbd>C</kbd></div><div class="desc">kucanie (w biegu: wślizg)</div>
@@ -192,7 +205,7 @@
     </div>
     <button class="btn" id="btn-start">Start</button>
     <button class="btn secondary" id="btn-start-back">Menu</button>
-    <div class="screen-hint">Amunicję dropią jednostki PATROL i SZTURM, apteczki — TARAN.<br>Nowe bronie i ulepszenia kupisz za kredyty.</div>
+    <div class="screen-hint">Amunicję dropią jednostki PATROL.<br>Nowe bronie i ulepszenia kupisz za kredyty.</div>
     <div class="screen-hint" id="arena-seed-hint"></div>
   </div>
 </div>
@@ -254,9 +267,10 @@
     </div>
     <button class="btn" id="btn-settings-back">Wróć</button>
     <div class="screen-hint">Ustawienia zapisują się automatycznie.</div>
-    <!-- CC-BY attribution for the baked model geometry (see README) -->
+    <!-- CC-BY/CC0 attribution for the baked model geometry (see README) -->
     <div class="screen-hint credits">Modele (geometria): „Ross" - joney_lol [CC-BY],
-      „Glock" - J-Toastie [CC-BY], via Poly Pizza.</div>
+      „Glock" - J-Toastie [CC-BY], „Submachine Gun", „Shotgun",
+      „Assault Rifle" i „Sniper Rifle" - Quaternius [CC0], via Poly Pizza.</div>
   </div>
 </div>
 
@@ -358,6 +372,7 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/hud.js"></script>
 <script defer src="js/state.js"></script>
 <script defer src="js/settings.js"></script>
+<script defer src="js/devmap.js"></script>
 <script defer src="js/input.js"></script>
 <script defer src="js/testmode.js"></script>
 <script defer src="js/main.js"></script>
