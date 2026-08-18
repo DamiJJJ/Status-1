@@ -15,6 +15,7 @@ const game = {
   credits: 0,
   endless: false,  // arena mode past the final wave
   noCombat: false, // campaign epilogue: weapons stowed, crosshair hidden
+  dev: false,      // developer range (js/devmap.js): unlocks, no waves, no records
   grenades: GRENADE_START, // grenade count (key G; refilled per level, shop tops up)
   dmgMul: 1,       // damage multiplier (shop)
   reloadMul: 1,    // reload-time multiplier (shop)
@@ -63,6 +64,7 @@ function openArenaEntry() {
 function startArena() {
   game.mode = 'arena';
   game.missionId = null;
+  game.dev = false;
   buildArena(arenaModeDef());
   startGame({ usePointerLock: !TEST });
 }
@@ -112,7 +114,7 @@ function quitToMenu() {
     mission.abort();
     openLevels();
   } else {
-    if (game.score > game.best) {
+    if (!game.dev && game.score > game.best) {
       game.best = game.score;
       try { localStorage.setItem('status1_best', String(game.best)); } catch (e) { /* ignore */ }
     }
@@ -124,7 +126,7 @@ function endMatch(won) {
   game.state = won ? 'won' : 'over';
   firing = false;
   setAiming(false);
-  if (game.score > game.best) {
+  if (!game.dev && game.score > game.best) {
     game.best = game.score;
     try { localStorage.setItem('status1_best', String(game.best)); } catch (e) { /* ignore */ }
   }
@@ -226,6 +228,7 @@ function resetLevelState() {
   updateGrenadeHud();
 
   waveSystem.reset();
+  if (game.dev) devApplyLoadout(); // range: silence the director, unlock everything
   placeArenaPickups();
 
   updateHpHud();

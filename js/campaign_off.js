@@ -40,9 +40,11 @@ function statsFlush(force = false) {
 }
 
 function missionEvent(ev) {
+  if (game.dev) return; // the dev range must not inflate the service stats
   if (ev === 'kill') { lifeStats.kills++; statsDirty = true; statsFlush(); }
 }
 function missionShot(hit) {
+  if (game.dev) return;
   lifeStats.shots++;
   if (hit) lifeStats.hits++;
   statsDirty = true;
@@ -57,6 +59,7 @@ function updateRadio() { /* no queue without missions */ }
 /* ---- nawigacja menu ---- */
 function backToMenu() {
   game.state = 'menu';
+  game.dev = false; // leaving the range always lands in the normal menu flow
   renderMenuMeta();
   showScreen('menu');
 }

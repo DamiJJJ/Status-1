@@ -75,7 +75,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   **płaskie meshe w `worldGroup` z `userData.propRef`** — lustrzane odbicie
   `enemyRef`) → `effects.js` → `collisions.js` (okrąg-vs-AABB; parametr `minTop` —
   latające jednostki omijają collidery niższe od pułapu) → `player.js` →
-  `weapons.js` (WEAPONS/viewmodele/ADS/strzelanie; gałąź `propRef`; blokada
+  `weapons.js` (WEAPONS - 5 broni w slotach 1-5, viewmodele z wypieczonych
+  modeli/ADS/strzelanie; gałąź `propRef`; blokada
   `game.noCombat`) → `grenades.js` (granaty na G: pula pocisków, łuk, odbicia,
   AoE; licznik `game.grenades`) → `enemies.js` (ENEMY_TYPES/modele/AI; liberie policyjne + strobo,
   UAV, tarcza bossa, jednostki pasywne parady) → `icons.js` (`UI_ICONS`; pętla
@@ -90,7 +91,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   `renderMenuMeta`; oryginały w `_kosz/kampania/`) → `hud.js` → `state.js`
   (obiekt `game`; **`resetRunState`** = progresja, **`resetLevelState`** = świat/ciało;
   `resetGameState` = obie, tylko arena) → `settings.js` (obiekt `SETTINGS`,
-  ekran ustawień, zapis `status1_settings`) → `input.js` → `testmode.js` → `main.js`
+  ekran ustawień, zapis `status1_settings`) → `devmap.js` (STRZELNICA - mapa
+  deweloperska, patrz Konwencje) → `input.js` → `testmode.js` → `main.js`
   (bootstrap + pętla `tick`). Nowy plik wpinaj zgodnie z zależnościami wykonywanymi
   przy ładowaniu; odwołania z wnętrza funkcji mogą wskazywać „w przód".
 - Każdy plik `js/` zaczyna się od `'use strict';` (kod był modułem ES, czyli strict —
@@ -204,9 +206,16 @@ więc formy męskie w kwestiach DO gracza są OK.
   `matFor(srcMaterialName)` mapuje materiał ŹRÓDŁOWY na nasz — dzięki temu jeden
   mesh nosi dowolną liberię. `sockets` (np. `handR`) to punkty montażowe z bind
   pose'u; `socketLocal(model, socket, part)` przelicza je do układu części, żeby
-  doczepiona broń jechała z ręką. Nowy model = wpis w `MODELS` w skrypcie
+  doczepiona broń jechała z ręką. Rigi, których macierze inverse-bind NIE
+  znoszą się z grafem węzłów (surowe pozycje wierzchołków nie są w przestrzeni
+  sceny - np. Mossberg z armaturą o własnej skali), dostają w `MODELS` flagę
+  `bindWorld: True`: wierzchołki idą wtedy przez `jointWorld*IBM` dominującego
+  jointu, a piwoty z grafu węzłów. Nowy model = wpis w `MODELS` w skrypcie
   (mapowanie jointów/węzłów, `rot`, `height`/`length`), `--probe` do sprawdzenia
   orientacji i granic, potem przegenerowanie pliku i kredyt w README.
+  Konwencja broni: lufa wzdłuż **lokalnego −Z**, `length` = długość całkowita,
+  `center: True`; wypieczone są `glock`, `mp5`, `mossberg` (części
+  body+pump), `rifle`, `sniper`.
 - **Kucanie** (Ctrl/C, trzymane): `player.crouching` + `player.eyeH` (płynny lerp
   `PLAYER_EYE`↔`CROUCH_EYE`; podłoga to `pos.y <= eyeH` — stojąc na ziemi oko podąża
   za lerpem wprost, bez grawitacji, żeby zejście w kucki nie brzmiało jak upadek).
@@ -288,6 +297,24 @@ więc formy męskie w kwestiach DO gracza są OK.
   Ekran `screen-settings` otwierany ze startu i pauzy (`openSettings(from)`
   pamięta powrót); stan gry `'settings'`. Nowa opcja = pole w `SETTINGS`,
   wiersz w markupie, sync w `syncSettingsUi()` i gałąź w `applySettings()`.
+- **STRZELNICA - mapa deweloperska** (`js/devmap.js`, 2026-08-18): przycisk
+  „Strzelnica (dev)" w menu głównym → `startDevMap()`. To zwykły tryb arena
+  z flagą `game.dev`: stały seed 1337, niska gęstość przeszkód, 5 celów
+  treningowych (propy `target`) na ~16 i ~38 m, gracz na południu patrzy na
+  północ. `resetLevelState` woła `devApplyLoadout()` przy `game.dev`:
+  wszystkie bronie `owned`, kredyty 100000, granaty do limitu,
+  `waveSystem.paused = true` (reżyser milczy - boty spawnuje się ręcznie).
+  Klawisze (input.js → `devKey`, tylko w dev): **B** spawn PATROLU w punkcie
+  celowania (raycast do świata), **T** ogień botów wstrzymany/aktywny
+  (`devHoldFire`, domyślnie wstrzymany; bramka w `updateEnemies`), **Y**
+  zamrożenie ruchu (`devHoldMove`; boty dalej obracają się do gracza), **K**
+  ciche usunięcie botów (`killEnemy(e, true)`), **J** pełne HP/amunicja/
+  granaty, **P** odbudowa strzelnicy (wraca zestrzelone cele). Panel pomocy
+  `#dev-hud` steruje `body.dev-mode` (toggle w `tick`). Higiena: dev NIE
+  zapisuje rekordu areny (guardy w `endMatch`/`quitToMenu`) i NIE liczy się
+  do statystyk służby (`missionEvent`/`missionShot` wychodzą przy `game.dev`);
+  `backToMenu()` zdejmuje flagę. Diagnostyka: `__test.dev`; testy
+  `tests/devmap_test.py`, zrzuty broni `tests/shots_weapons.py`.
 - Model bota: przód to lokalne **+Z** (yaw = `atan2(dx, dz)`); meshe głowy mają
   `userData.isHead` (headshot ×2), wszystkie meshe `userData.enemyRef`.
 - Typy botów (`ENEMY_TYPES`): pole `weapon` ('pistol' | 'auto' | 'shotgun') steruje
@@ -296,8 +323,15 @@ więc formy męskie w kwestiach DO gracza są OK.
   Dropy per typ w `rollDrop()`: scout/assault/uav → amunicja, heavy → apteczka.
   Typ latający: pole `fly` (pułap w metrach) — patrz sekcja Kampania → Drony.
 - Bronie gracza mają flagę `owned` — start tylko z pistoletem, reszta kupowana
-  w sklepie (pozycje `w_*` w `SHOP_ITEMS`). Nowa broń = wpis w `WEAPONS`, viewmodel
-  w `buildViewmodel()`, pozycja `w_...` w sklepie i slot na HUD.
+  w sklepie (pozycje `w_*` w `SHOP_ITEMS`; `applyAllShopEffects` wyprowadza
+  `owned` z poziomu pozycji `w_<id>` automatycznie). Sloty 1-5 (2026-08-18):
+  pistolet (Glock) · SMG (id `smg`) · strzelba · karabin (id `rifle`) ·
+  snajperka; cztery długie bronie z jednej paczki Quaterniusa. Wszystkie viewmodele idą z wypieczonych modeli
+  (`buildModel` w `buildViewmodel()`). Nowa broń = wpis w `WEAPONS`, model
+  w `tools/gen_models.py`, gałąź w `buildViewmodel()`, pozycja `w_<id>`
+  w sklepie, slot na HUD (`wslot-N` w index.html + pętla czyta
+  `WEAPONS.length`), klawisz `Digit-N` w input.js i w `GAME_KEYS`, dźwięk
+  w `AudioSys.shot(id)` i waga w `switch_`.
 - **Audio (`AudioSys` w `js/audio.js`) — cały dźwięk syntetyzowany w WebAudio.**
   - **Szyna (nie omijaj jej):** głosy → `sfxBus`/`musicGain` → `master` → `duckFilter`
     (lowpass całego miksu) → `compressor` (limiter) → `destination`. Równolegle **pogłos**:
@@ -350,28 +384,72 @@ więc formy męskie w kwestiach DO gracza są OK.
 - Viewmodel: dziecko kamery; w animacjach **nigdy nie przybliżaj broni do kamery**
   (near plane 0.08 — geometria „wybucha" na ekranie); odsuwaj (`z` bardziej ujemne).
 - ADS (PPM, zmienna `aiming` + `adsBlend`): każdy viewmodel ma `userData.adsPos` —
-  pozycję, w której **muszka trafia w oś kamery** (x=0, y=−wysokość muszki). Muszki
-  w stylu **three-dot**: CIENKIE ciemne słupki (~0.011 — grubsze zasłaniają cel;
-  sprawdzone na graczu) z małymi świecącymi kropkami: muszka `vmMatTeal` (~0.008,
-  najjaśniejszy punkt obrazu), szczerbinka 2× `vmMatTealDim` (~0.0065); wszystkie
-  trzy kropki NA JEDNEJ wysokości = `-adsPos.y`. Wszystko **osadzone na geometrii
-  broni** (zamek/szyna/lufa), nie lewitujące — słupki muszą stać na bryle; na wąskiej
-  szynie SMG stoi najpierw poprzeczka-podstawka, dopiero na niej słupki. Nowa broń
-  musi dostać komplet: muszkę, szczerbinkę i adsPos.
-  Przy broni z wypieczonego modelu (Glock) przyrządy są JUŻ w geometrii i to
-  ich używamy — **nie doklejaj słupków ani kropek** (decyzja użytkownika
-  2026-08-18; doklejane bryły albo lewitowały, albo zasłaniały cel). Odlana
-  muszka i szczerbinka rzadko są w poziomie (tu 4,2 mm różnicy na 245 mm bazy),
-  więc zamiast dokładek **przechyl cały model** o tę różnicę
-  (`m.root.rotation.x`) — oba szczyty lądują wtedy na jednej wysokości i z niej
-  bierzesz `adsPos`. Lufa celuje wtedy ~1° nad oś kamery, co jest niewidoczne
-  i nieszkodliwe (pociski lecą promieniem kamery, nie lufą). Geometrię odlanych
-  przyrządów mierz probem po `js/models.js` (najwyższe wierzchołki części
-  `slide`, kubełkowane po Z, POTEM po X — same kubełki po Z skłamią, bo uśrednią
-  wąską muszkę z całą szerokością zamka). Wyrównanie sprawdzaj liczbowo:
-  `vm.localToWorld(punkt).project(camera)` musi dać środek ekranu, bo na
-  ciemnym zrzucie ciemnych przyrządów nie da się tego ocenić okiem.
+  pozycję, w której **przyrządy trafiają w oś kamery** (x=0, y=−wysokość linii
+  celowania). Od 2026-08-18 **wszystkie viewmodele są z wypieczonych modeli**
+  i celują własnymi, odlanymi przyrządami - **nie doklejaj słupków ani kropek**
+  (decyzja użytkownika; doklejane bryły albo lewitowały, albo zasłaniały cel).
+  Stary proceduralny three-dot (cienkie słupki + tealowe kropki na jednej
+  wysokości) zostaje wyłącznie planem B dla broni, której model nie ma
+  żadnych przyrządów.
+  Odlana muszka i szczerbinka rzadko są w poziomie - zamiast dokładek
+  **przechyl cały model** o różnicę (`m.root.rotation.x`); linia celowania
+  ląduje wtedy na jednej wysokości i z niej bierzesz `adsPos`. Lufa celuje
+  wtedy o ułamek stopnia obok osi kamery, co jest niewidoczne i nieszkodliwe
+  (pociski lecą promieniem kamery, nie lufą). **Przy ghost-ringu muszka ma
+  siedzieć w ŚRODKU otworu pierścienia, nie na jego szczycie** - wyrównanie
+  szczyt-do-szczytu wygląda krzywo (feedback użytkownika 2026-08-18).
+  **Punkt celowniczy = drobny zielony emiter `vmMatDot` (0x00ff44, decyzja
+  użytkownika)**: odlana muszka na 1-1.3 m przy ADS jest ciemna na ciemnym
+  i niewidoczna, więc na szczycie muszki karabinu i strzelby siedzi
+  ~4 mm kropka (Glock: 2,8 mm - mniejsza, bo przy ADS jest bliżej kamery,
+  więc kątowo wychodzi tyle samo); w SMG siedzi na szczycie zabudowanej
+  szyny. **Kropkę ma każda z pięciu broni.** Nadal ZERO doklejanych słupków i brył - tylko emitery na
+  istniejącej geometrii. Przy strzelbie uwaga na pułapkę: prawdziwe ostrze
+  muszki to wąska płetwa na wieży, a wyższa z pozoru krawędź przy samym
+  wylocie to dekor, który zasłaniał kropkę (dokładne współrzędne w komentarzach
+  buildViewmodel). **Sondowanie samych wierzchołków blisko osi KŁAMIE**:
+  szyna SMG to dwa mostki, których wierzchołki leżą poza osią (x ±0.033),
+  a trójkąty przechodzą nad środkiem - kropka pod nimi celowała prosto
+  w mostek. Dlatego **widoczność kropki weryfikuj raycastem po osi kamery**
+  (pierwsze trafienie w viewmodel musi być `vmMatDot`; robi to
+  `tests/shots_weapons.py`, materiały wypieczonych meshy to TABLICE - materiał
+  trafienia czytaj z grupy geometrii po `faceIndex`). Bieżące przechyły:
+  Glock +0.0176, strzelba +0.0086, karabin −0.0478, SMG +0.0041 (szczerbinki
+  celowo 4 mm POD linią - na równi z nią zasłaniałyby kropkę).
+  **Długie bronie kotwiczy się ZA TYŁ, nie za środek bboxa**: `root.z =
+  0.41 − połowa długości` stawia kolbę na stałym z −0.14 w hip pose
+  (wyjątek: SMG i snajperka są przysunięte o 0.10 bliżej kamery - czytały się
+  jako odsunięte; `adsPos.z` oddaje ten dystans z powrotem, więc pozycja ADS
+  zostaje ta sama). Wszystkie cztery długie bronie siedzą też **0.03 niżej
+  niż pistolet** (`root.position.y`, decyzja użytkownika) - to samo
+  `adsPos.y` kompensuje, więc rusza się tylko poza ADS, więc
+  powiększenie modelu (length w gen_models.py; to JEDNOLITA SKALA całej
+  bryły, normalizowana po długości) rośnie w ekranowy rozmiar chwytu zamiast
+  uciekać w głąb; przy ADS ten sam luz daje `adsPos.z` −0.54 (kolba =
+  adsPos.z + 0.41). Snajperka bez ADS: tylko ofset roota (−0.38).
+  Skale są CELOWO ponad wymiary rzeczywiste (length: SMG 1.00, strzelba 1.45,
+  karabin 1.05, snajperka 1.58, Glock 0.30); po zmianie length przelicz
+  kropki/przechyły/adsPos (wszystko skaluje się liniowo).
+  **Cztery długie bronie to JEDNA rodzina - paczka broni Quaterniusa (CC0)**
+  (decyzja użytkownika 2026-08-18: realistyczne, smukłe modele czytały się za
+  drobno obok stylizowanych brył Quaterniusa, więc SMG i strzelba pojechały
+  na jego odpowiedniki; pistolet ZOSTAJE Glockiem). Materiały całej rodziny
+  wychodzą z jednego resolvera `quatMat(src)`, który celowo używa **tych
+  samych materiałów co Glock** (decyzja użytkownika 2026-08-18: „kolory
+  w stylu glocka" - wszystkie bronie mają wyglądać na jedną rodzinę sprzętu):
+  Metal/Grey/MainLight → `vmMatMid`, Glass → `vmMatLens`, **cała reszta
+  (w tym Wood/DarkWood) → `vmMatDark`** - żadnego drewna ani czerni
+  (osobna, ciemniejsza paleta gunmetalu była testowana i odpadła: bronie
+  gubiły bryłę na ciemnych arenach). Nowa broń z tej paczki nie potrzebuje
+  własnego mapowania. Geometrię odlanych przyrządów mierz probem po `js/models.js`
+  (najwyższe wierzchołki, kubełkowane po Z blisko osi |x|≈0 - same kubełki
+  po Z skłamią, bo uśrednią wąską muszkę z całą szerokością bryły).
+  Wyrównanie sprawdzaj liczbowo: `vm.localToWorld(punkt).project(camera)`
+  musi dać środek ekranu, bo na ciemnym zrzucie ciemnych przyrządów nie da
+  się tego ocenić okiem - robi to `tests/shots_weapons.py`.
   Snajperka (`zoom: true`) zamiast ADS pokazuje lunetę i chowa viewmodel.
+  Część ruchoma czeka wypieczona w `userData` (`slide` Glocka) - nic jej
+  jeszcze nie animuje.
   Balans: `spread` w WEAPONS to rozrzut Z BIODRA (celowo duży); ADS mnoży przez
   `adsMul` (domyślnie 0.3). ADS blokuje sprint i spowalnia ruch ×0.55.
   FOV: luneta 24° / ADS 60° / sprint+bhop poszerzają.
@@ -523,8 +601,9 @@ więc formy męskie w kwestiach DO gracza są OK.
   Po wycięciu kampanii zostały: `phase0` (cykl życia świata, determinizm areny,
   sklep, pełny bieg `?test=win`), `phase1` (generator aren), `phase7` (ustawienia,
   wślizg, granaty, tarcza skrótów), `menu_test` (menu + panorama + motyw),
-  `bestiary_test` (bestiariusz) oraz `shots2.py`/`shots_models.py` (zrzuty do
-  oceny wizualnej). Testy kampanii (`phase2`–`phase6`, `phase5d`, `status1_test`,
+  `bestiary_test` (bestiariusz), `devmap_test` (strzelnica dev) oraz
+  `shots2.py`/`shots_models.py`/`shots_weapons.py` (zrzuty do oceny wizualnej;
+  `shots_weapons.py` liczy też projekcję przyrządów ADS na oś kamery). Testy kampanii (`phase2`-`phase6`, `phase5d`, `status1_test`,
   `shots.py`) pojechały razem z nią do `_kosz/kampania/tests/`.
   Po większych zmianach odpal przynajmniej `phase0_test.py` i `menu_test.py`.
 - Hooki diagnostyczne w grze (nie usuwać):
@@ -532,7 +611,7 @@ więc formy męskie w kwestiach DO gracza są OK.
     ammo, fov, credits, headshots, endless, errors[], mode, difficulty,
     mission {id, active, time, kills, objectives[]}, seed, arenaHash,
     arenaReachable, pointerLock/wantLock, crouch/eyeH, slide, grenades,
-    settings, pressure, radioHold, menuBg);
+    settings, pressure, radioHold, menuBg, dev);
     audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`, `menuMusic`;
   - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
     (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);

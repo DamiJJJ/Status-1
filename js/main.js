@@ -60,6 +60,10 @@ function tick(now) {
   __test.grenades = game.grenades;
   __test.pressure = waveSystem.pressure;
   __test.radioHold = radioHoldT > 0;
+  __test.dev = game.dev;
+  // dev range: the key-help panel rides only with an active dev session
+  document.body.classList.toggle('dev-mode',
+    game.dev && (game.state === 'playing' || game.state === 'paused'));
   __test.mission = (game.mode === 'campaign' && mission.def) ? {
     id: mission.def.id,
     active: mission.active,

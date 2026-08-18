@@ -296,7 +296,8 @@ function updateEnemies(dt) {
       _eMove.addScaledVector(_ePerp, e.strafeDir * 0.55);
     }
     const prevX = g.position.x, prevZ = g.position.z;
-    const wantsMove = _eMove.lengthSq() > 1e-4;
+    // dev range (js/devmap.js): frozen bots stand still but keep facing the player
+    const wantsMove = !(game.dev && devHoldMove) && _eMove.lengthSq() > 1e-4;
     if (wantsMove) {
       _eMove.normalize();
       g.position.addScaledVector(_eMove, e.type.speed * dt);
@@ -355,7 +356,9 @@ function updateEnemies(dt) {
 
     // --- strzelanie (pistolet / strzelba / seria z karabinu) ---
     e.cooldown -= dt;
-    if (e.burst > 0) {
+    if (game.dev && devHoldFire) {
+      e.burst = 0; // dev range: hold fire until released (T)
+    } else if (e.burst > 0) {
       e.burstT -= dt;
       if (e.burstT <= 0) {
         e.burstT = e.type.burstInterval;
