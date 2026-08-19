@@ -128,6 +128,7 @@
   <div class="dev-row"><b>K</b> usuń wszystkie boty</div>
   <div class="dev-row"><b>J</b> pełne HP / amunicja / granaty</div>
   <div class="dev-row"><b>P</b> odbuduj cele strzelnicy</div>
+  <div class="dev-row"><b>H</b> edytor chwytu (DEVRIG)</div>
 </div>
 
 <div id="radio-box" class="hud">
@@ -151,11 +152,10 @@
     </h1>
     <div class="game-subtitle">Symulacja szkoleniowa dronów LSPD &middot; przeglądarkowy FPS</div>
     <div class="menu-buttons">
-      <button class="btn" id="btn-menu-arena">Arena bez końca</button>
-      <button class="btn secondary" id="btn-menu-settings">Ustawienia</button>
+      <button class="btn" id="btn-menu-dev">Strzelnica (dev)</button>
       <button class="btn secondary" id="btn-menu-bestiary">Bestiariusz</button>
       <button class="btn secondary" id="btn-menu-stats">Statystyki</button>
-      <button class="btn secondary" id="btn-menu-dev">Strzelnica (dev)</button>
+      <button class="btn secondary" id="btn-menu-settings">Ustawienia</button>
     </div>
     <div class="screen-hint" id="menu-progress"></div>
   </div>
@@ -182,37 +182,6 @@
     <div class="screen-hint">…albo wciśnij <b>Esc</b></div>
   </div>
 </div>
-
-<!-- arena entry: the pre-run screen with the controls reference; the main
-     menu above it owns campaign/settings navigation -->
-<div id="screen-start" class="screen">
-  <div class="screen-box">
-    <img src="assets/logo-mark.png" alt="" class="screen-mark" draggable="false">
-    <h2>Arena bez końca</h2>
-    <div class="game-subtitle">Fale dronów bez limitu &middot; rekord zapisuje się lokalnie</div>
-    <div class="controls-grid">
-      <div class="key"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div><div class="desc">ruch</div>
-      <div class="key"><kbd>Mysz</kbd></div><div class="desc">rozglądanie / celowanie</div>
-      <div class="key"><kbd>LPM</kbd></div><div class="desc">strzał</div>
-      <div class="key"><kbd>PPM</kbd></div><div class="desc">celowanie (snajperka: luneta)</div>
-      <div class="key"><kbd>R</kbd></div><div class="desc">przeładowanie</div>
-      <div class="key"><kbd>1</kbd>-<kbd>5</kbd> / <kbd>scroll</kbd></div><div class="desc">zmiana broni</div>
-      <div class="key"><kbd>Shift</kbd></div><div class="desc">bieg</div>
-      <div class="key"><kbd>Spacja</kbd></div><div class="desc">skok</div>
-      <div class="key"><kbd>Ctrl</kbd> / <kbd>C</kbd></div><div class="desc">kucanie (w biegu: wślizg)</div>
-      <div class="key"><kbd>G</kbd></div><div class="desc">granat</div>
-      <div class="key"><kbd>Esc</kbd></div><div class="desc">pauza</div>
-    </div>
-    <button class="btn" id="btn-start">Start</button>
-    <button class="btn secondary" id="btn-start-back">Menu</button>
-    <div class="screen-hint">Amunicję dropią jednostki PATROL.<br>Nowe bronie i ulepszenia kupisz za kredyty.</div>
-    <div class="screen-hint" id="arena-seed-hint"></div>
-  </div>
-</div>
-
-
-
-
 
 <div id="screen-pause" class="screen">
   <div class="screen-box">
@@ -269,8 +238,9 @@
     <div class="screen-hint">Ustawienia zapisują się automatycznie.</div>
     <!-- CC-BY/CC0 attribution for the baked model geometry (see README) -->
     <div class="screen-hint credits">Modele (geometria): „Ross" - joney_lol [CC-BY],
-      „Glock" - J-Toastie [CC-BY], „Submachine Gun", „Shotgun",
-      „Assault Rifle" i „Sniper Rifle" - Quaternius [CC0], via Poly Pizza.</div>
+      „Glock" i „Rigged FPS Arms" - J-Toastie [CC-BY], „Submachine Gun",
+      „Shotgun", „Assault Rifle" i „Sniper Rifle" - Quaternius [CC0],
+      via Poly Pizza.</div>
   </div>
 </div>
 
@@ -327,6 +297,33 @@
   </div>
 </div>
 
+<!-- DEVRIG: grip editor (dev only, H on the shooting range). Transparent
+     screen - the editor's own scene renders behind it, only the panel is solid. -->
+<div id="screen-devrig" class="screen screen--devrig">
+  <div id="devrig-panel">
+    <div class="dr-head">
+      <span class="dr-title">DEVRIG - chwyt broni</span>
+      <button class="dr-x" id="btn-devrig-close" title="Zamknij (Esc)">✕</button>
+    </div>
+    <div class="dr-tabs" id="devrig-weapons"></div>
+    <div class="dr-tabs" id="devrig-hands">
+      <button class="dr-tab on" data-drh="R">Prawa dłoń</button>
+      <button class="dr-tab" data-drh="L">Lewa dłoń</button>
+    </div>
+    <div id="devrig-controls"></div>
+    <div class="dr-section">Eksport / import</div>
+    <div class="dr-hint">JSON to CAŁA tablica HANDS (wszystkie bronie i obie dłonie) - nie zmienia się przy przełączaniu zakładek.</div>
+    <textarea id="devrig-json" spellcheck="false"></textarea>
+    <div class="dr-btns">
+      <button class="btn secondary" id="btn-devrig-copy">Kopiuj</button>
+      <button class="btn secondary" id="btn-devrig-paste">Wczytaj</button>
+      <button class="btn secondary" id="btn-devrig-reset">Przywróć</button>
+    </div>
+    <div class="dr-msg" id="devrig-msg"></div>
+    <div class="dr-hint">Obrót: przeciągnij poza panelem · Zoom: kółko · Esc: zamknij</div>
+  </div>
+</div>
+
 <pre id="testlog"></pre>
 
 <!-- ============================================================
@@ -360,6 +357,7 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/effects.js"></script>
 <script defer src="js/collisions.js"></script>
 <script defer src="js/player.js"></script>
+<script defer src="js/hands.js"></script>
 <script defer src="js/weapons.js"></script>
 <script defer src="js/grenades.js"></script>
 <script defer src="js/enemies.js"></script>
@@ -373,6 +371,7 @@ Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, 
 <script defer src="js/state.js"></script>
 <script defer src="js/settings.js"></script>
 <script defer src="js/devmap.js"></script>
+<script defer src="js/devrig.js"></script>
 <script defer src="js/input.js"></script>
 <script defer src="js/testmode.js"></script>
 <script defer src="js/main.js"></script>

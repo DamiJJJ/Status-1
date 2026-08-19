@@ -15,9 +15,12 @@ because they learn by copying *you*. No install, no backend — Three.js from
 a CDN, everything else procedural.
 
 > **Status (2026-08-18):** the campaign and three of the four drone types have
-> been pulled out of the build and parked in `_kosz/` (see `_kosz/README.md`).
-> What ships right now is the endless **Arena** with a single opponent, PATROL.
-> The campaign sections below describe code that is on the shelf, not in the game.
+> been pulled out of the build and parked in `_kosz/` (see `_kosz/README.md`),
+> and the endless Arena entry has since been removed from the menu as well.
+> What ships right now is the **developer shooting range** (with the PATROL
+> drone as the only opponent) while the combat sandbox is rebuilt around baked
+> 3D models. The campaign sections below describe code that is on the shelf,
+> not in the game.
 
 ## ▶ [Play now](https://damijjj.github.io/Neon-Arena/)
 
@@ -146,6 +149,16 @@ materials, colors and lighting are the game's own procedural ones.
 - Shotgun by Quaternius [CC0] via Poly Pizza
 - Assault Rifle by Quaternius [CC0] via Poly Pizza
 - Sniper Rifle by Quaternius [CC0] via Poly Pizza
+- Rigged FPS Arms by J-Toastie [CC-BY] via Poly Pizza (first-person arms on
+  every weapon viewmodel; upper arms are cut at the elbow during baking and
+  a finger-curl grip pose is baked into the vertices)
+
+Present in `assets_src/` and credited ahead of use - these are staged for the
+planned enemy work (see `ROADMAP.md`) and are not baked into `js/models.js`
+yet:
+
+- Stinger Drone by Aaron Clifford [CC-BY] via Poly Pizza
+- Police Shield by CreativeTrio [CC-BY] via Poly Pizza
 
 The source `.glb` files live in `assets_src/`; regenerate with
 `python3 tools/gen_models.py`. Everything else (textures, sounds, music,

@@ -177,8 +177,154 @@ function buildViewmodel(id) {
 }
 
 const VM_BASE = new THREE.Vector3(0.32, -0.28, -0.55);
+
+/* ==================== RĘCE (BRON-2) ====================
+   Per-weapon arm placement (gun-model space) + reload-animation anchors.
+   Baked FPS arms attach under each gun's model root (js/hands.js), so ADS,
+   sway and recoil carry the hands for free. Anchors:
+   mag/port = where the left hand works, low = off-frame (fresh mag/shell),
+   bolt = charging handle / slide / pump, pull = its travel (dz). */
+/* Per-weapon grip pose. `channel` (knuckle line) + `palm` orient the hand
+   (js/hands.js), `curl` bends every finger chain in radians, proximal ->
+   distal: f = paired middle/ring fingers, i = index, t = thumb. Every gun is
+   held differently, so each hand gets its own curl:
+   - a pistol grip is narrow -> fingers close hard, thumb locks over;
+   - a pump/handguard is fat -> shallower wrap, thumb hooks under;
+   - the FIRING hand's index finger rests on the trigger (bent at the first
+     knuckle only), it never joins the fist. */
+const CURL_TRIGGER = { f: [0.95, 1.00, 0.60], i: [0.50, 0.26, 0.12],
+                      t: [0.45, 0.50, 0.30], tAdd: 0.55 };   // finger on the trigger
+const CURL_FIST    = { f: [0.95, 1.00, 0.60], i: [0.92, 0.98, 0.58],
+                      t: [0.50, 0.50, 0.30], tAdd: 0.70 };   // full wrap (support hand)
+const CURL_PUMP    = { f: [0.80, 0.85, 0.50], i: [0.78, 0.82, 0.48],
+                      t: [0.35, 0.40, 0.25], tAdd: 0.50 };   // fat pump/forend
+const CURL_GUARD   = { f: [0.68, 0.72, 0.44], i: [0.64, 0.70, 0.42],
+                      t: [0.30, 0.30, 0.20], tAdd: 0.45 };   // handguard, shallow
+
+/* Neutral = the rig's own BIND pose, measured off the skeleton (2026-08-19),
+   NOT hand-picked numbers. That matters: the hand orientation is set
+   absolutely while the forearm is aimed separately, so the wrist absorbs
+   whatever disagreement is left between them. The first version guessed
+   `palm` and was 90 deg off the bind, which bent every wrist by a right angle
+   and kinked the skin across it - the "twisted hands". Starting from bind
+   means a reset gives a dead-straight arm with nothing to unbend.
+     channel  axis of the hole through the closed fist = the knuckle line,
+              which is what the grip is threaded through: it runs down a
+              pistol grip and along a forend. The neutral has it lying across
+              the gun (+X) only because the rig's BIND hand is flat and holds
+              nothing - a dialled-in grip turns it onto the grip itself.
+     palm     direction the BACK of the hand faces (neutral: up)
+     fore     forearm direction, elbow -> wrist
+     upper    upper-arm direction, shoulder -> elbow
+   Remapped 2026-08-19: `channel` used to land on the hand bone's local X,
+   which is the PALM normal on this rig, so the two fields were really aiming
+   the palm and the fingers and every editor label lied. The orientations
+   below are unchanged - the numbers were converted, not re-tuned.
+   Note both hands share channel/palm: the arms are mirrored in POSITION, but
+   the bind orientation of the two hand bones is the same (so on the right
+   hand the channel runs index -> little finger, mirrored on the left). */
+const NEUTRAL_R = { channel: [1, 0, 0], palm: [0, 1, 0],
+                    fore: [-0.077, 0, -0.997], upper: [0.114, 0, -0.993] };
+const NEUTRAL_L = { channel: [1, 0, 0], palm: [0, 1, 0],
+                    fore: [0.077, 0, -0.997], upper: [-0.114, 0, -0.993] };
+
+const HANDS = {
+  /* RESET 2026-08-19: every orientation is back to a neutral start after the
+     rig moved onto real bones (js/hands.js). `pos` (the per-weapon anchor the
+     fist has to land on) is kept, because that is measured from the gun; the
+     four direction fields below are deliberately the SAME on all five weapons
+     and are meant to be dialled in per weapon in DEVRIG (key H on the range).
+
+       channel  axis of the hole through the closed fist = the knuckle line
+       palm     direction the BACK of the hand faces
+       fore     forearm direction, elbow -> wrist
+       upper    upper-arm direction, shoulder -> elbow  */
+  pistol: {
+    style: 'mag', scale: 1.05,
+    /* dialled in in DEVRIG (2026-08-19). Nothing here is neutral any more:
+       both hands are turned onto the grip, and the curls are per-weapon
+       (a pistol grip is thin, so the fingers close differently than the
+       shared CURL_* presets and both thumbs ride high along the frame). */
+    r: { pos: [0.04, -0.018, 0.022],
+         channel: [-0.0202, -0.9985, -0.0513],
+         palm: [0.9984, -0.0175, -0.0532],
+         fore: [-0.077, -0.0349, -0.9964],
+         upper: [0.1139, -0.0523, -0.9921],
+         curl: { f: [0.95, 0.63, 0.60], i: [0.28, 0.25, 0.12],
+                 t: [0.00, 1.16, 0.26], tAdd: -0.08 } },
+    l: { pos: [-0.026, -0.038, 0.032],
+         channel: [-0.2503, 0.9653, -0.0737],
+         palm: [-0.9555, -0.2586, -0.1421],
+         fore: [0.3256, 0, -0.9455],
+         upper: [0.4829, -0.0872, -0.8713],
+         curl: { f: [0.00, 0.69, 0.00], i: [0.32, 0.00, 0.00],
+                 t: [0.08, 1.25, 0.49], tAdd: -0.13 } },
+    mag: [-0.0021, -0.0223, 0.0699], low: [-0.0521, -0.5273, 0.2749],
+    bolt: [-0.0021, 0.1277, 0.0849], pull: 0.06,
+    magDim: [0.018, 0.07, 0.032],
+  },
+  smg: {
+    style: 'mag', scale: 1.05,
+    r: { pos: [-0.0001, -0.0455, 0.0282], ...NEUTRAL_R, curl: CURL_TRIGGER },
+    l: { pos: [0.0001, -0.0237, -0.3556], ...NEUTRAL_L, curl: CURL_GUARD },
+    mag: [-0.0099, -0.1287, -0.1706], low: [-0.0699, -0.5787, 0.0844],
+    bolt: [-0.0099, 0.1913, -0.0656], pull: 0.07,
+    magDim: [0.024, 0.10, 0.05],
+  },
+  shotgun: {
+    style: 'shell', scale: 1.0,
+    r: { pos: [-0.0001, -0.0094, 0.234], ...NEUTRAL_R, curl: CURL_TRIGGER },
+    l: { pos: [0.0001, 0.0265, -0.2195], ...NEUTRAL_L, curl: CURL_PUMP },
+    port: [0.0451, 0.0065, 0.0805], low: [0.1401, -0.4785, 0.3305],
+    bolt: [0.0001, 0.0265, -0.2195], pull: 0.12,   // bolt = the pump itself
+    shellDim: [0.0115, 0.052],
+  },
+  rifle: {
+    style: 'mag', scale: 1.05,
+    r: { pos: [-0.0001, -0.0305, 0.1882], ...NEUTRAL_R, curl: CURL_TRIGGER },
+    l: { pos: [0.0001, 0.0313, -0.3456], ...NEUTRAL_L, curl: CURL_GUARD },
+    mag: [-0.0099, -0.1187, -0.0056], low: [-0.0699, -0.5787, 0.1344],
+    bolt: [-0.0099, 0.1713, 0.0844], pull: 0.07,
+    magDim: [0.026, 0.11, 0.055],
+  },
+  sniper: {
+    style: 'shellBolt', scale: 1.0,
+    r: { pos: [-0.0161, -0.0314, 0.384], ...NEUTRAL_R, curl: CURL_TRIGGER },
+    l: { pos: [-0.0159, 0.0252, -0.3148], ...NEUTRAL_L, curl: CURL_GUARD },
+    port: [0.0201, 0.0502, 0.1852], low: [0.1401, -0.4798, 0.4352],
+    bolt: [0.0299, 0.0786, 0.234], pull: 0.08,
+    shellDim: [0.007, 0.06],
+  },
+};
+
+/* the fresh magazine / shell riding in the left fist during reloads */
+const vmMatShell = new THREE.MeshStandardMaterial({
+  color: 0x7d1f2e, emissive: PALETTE.red, emissiveIntensity: 0.25,
+  roughness: 0.6, flatShading: true });
+
+function attachHandsAndProps(g, id) {
+  const cfg = HANDS[id];
+  const gunRoot = g.children[0]; // every case adds exactly one model root
+  g.userData.handCfg = cfg;
+  g.userData.arms = attachArms(gunRoot, cfg);
+  if (cfg.magDim) {
+    const prop = new THREE.Mesh(
+      new THREE.BoxGeometry(cfg.magDim[0], cfg.magDim[1], cfg.magDim[2]), vmMatMid);
+    prop.visible = false;
+    attachToFist(g.userData.arms.L, prop);
+    g.userData.magProp = prop;
+  } else if (cfg.shellDim) {
+    const geo = new THREE.CylinderGeometry(cfg.shellDim[0], cfg.shellDim[0], cfg.shellDim[1], 8);
+    const prop = new THREE.Mesh(geo, id === 'shotgun' ? vmMatShell : vmMatMid);
+    prop.visible = false;
+    attachToFist(g.userData.arms.L, prop);
+    g.userData.shellProp = prop;
+  }
+}
+
 const viewmodels = WEAPONS.map(w => {
   const g = buildViewmodel(w.id);
+  attachHandsAndProps(g, w.id);
   g.position.copy(VM_BASE);
   g.visible = false;
   camera.add(g);
@@ -190,41 +336,235 @@ viewmodels[0].visible = true;
 let vmBobT = 0;
 let vmRecoil = 0;
 
+/* ==================== POZY / ANIMACJE VIEWMODELU ==================== */
+
+/* sprint: gun swings down and in toward the body (Battlefield-style) */
+const SPRINT_POS = [-0.05, -0.11, -0.03];
+const SPRINT_ROT = [-0.38, 0.55, 0.14];
+let sprintBlend = 0;
+
+/* sniper scope: the overlay waits for a raise animation - the rifle travels
+   "to the eye" first (zoomBlend 0->1), only then the scope cuts in */
+const ZOOM_RAISE = new THREE.Vector3(0.10, -0.16, -0.50);
+let zoomBlend = 0;
+let scoped = false;
+
+function setScopeOverlay(on) {
+  scoped = on;
+  document.getElementById('scope').style.display = on ? 'block' : 'none';
+  lookScale = on ? 0.35 : (aiming ? 0.7 : 1);
+}
+
+/* --- reload animation ---
+   startReload() builds a plan (style, phase table, sound/prop events); the
+   pose is computed per frame from the normalized time t (0..1) so the whole
+   sequence scales with reloadTime * game.reloadMul. */
+let reloadFromEmpty = false;
+let relPlan = null;
+let relEvIdx = 0;
+
+function vmEase(t, a, b) { // smoothstep of t over [a, b]
+  const x = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return x * x * (3 - 2 * x);
+}
+function vmPulse(t, a, b) { const m = (a + b) / 2; return vmEase(t, a, m) * (1 - vmEase(t, m, b)); }
+function lerp3(out, a, b, k) {
+  out[0] = a[0] + (b[0] - a[0]) * k;
+  out[1] = a[1] + (b[1] - a[1]) * k;
+  out[2] = a[2] + (b[2] - a[2]) * k;
+  return out;
+}
+
+/* phase tables (fractions of the reload); *_E = reload from an empty mag,
+   which appends the charge (bolt/slide/pump) move at the end */
+const T_MAG = { reach: [0.05, 0.22], out: [0.22, 0.42], back: [0.55, 0.73], ret: [0.78, 0.95] };
+const T_MAG_E = { reach: [0.04, 0.16], out: [0.16, 0.32], back: [0.42, 0.58],
+                  toBolt: [0.60, 0.70], pull: [0.70, 0.80], ret: [0.84, 0.97] };
+
+const _gp = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0 };
+const _lp = [0, 0, 0];
+const _rp = [0, 0, 0];
+
+/* per-frame reload pose: fills _gp (gun offset) and places both hands */
+function applyReloadPose(vm, t) {
+  const cfg = vm.userData.handCfg;
+  const rig = vm.userData.arms;
+  const env = vmEase(t, 0, 0.10) * (1 - vmEase(t, 0.90, 1));
+  const P = relPlan;
+  let lw = 0, rw = 0;
+  _lp[0] = 0; _lp[1] = 0; _lp[2] = 0;
+  if (P.style === 'mag') {
+    // gun tips slightly UP while the left hand swaps the magazine
+    _gp.rx = 0.26 * env; _gp.ry = 0.10 * env; _gp.rz = 0.10 * env;
+    _gp.px = -0.03 * env; _gp.py = -0.02 * env; _gp.pz = -0.03 * env;
+    const T = P.empty ? T_MAG_E : T_MAG;
+    if (t < T.out[0]) { lw = vmEase(t, T.reach[0], T.reach[1]); _lp[0] = cfg.mag[0]; _lp[1] = cfg.mag[1]; _lp[2] = cfg.mag[2]; }
+    else if (t < T.back[0]) { lw = 1; lerp3(_lp, cfg.mag, cfg.low, vmEase(t, T.out[0], T.out[1])); }
+    else if (t < T.back[1]) { lw = 1; lerp3(_lp, cfg.low, cfg.mag, vmEase(t, T.back[0], T.back[1])); }
+    else if (!P.empty) { lw = 1 - vmEase(t, T.ret[0], T.ret[1]); _lp[0] = cfg.mag[0]; _lp[1] = cfg.mag[1]; _lp[2] = cfg.mag[2]; }
+    else {
+      // charge the bolt: hand rides to the handle, yanks it, lets go
+      const T2 = T_MAG_E;
+      const k = vmEase(t, T2.toBolt[0], T2.toBolt[1]);
+      lerp3(_lp, cfg.mag, cfg.bolt, k);
+      _lp[2] += cfg.pull * vmPulse(t, T2.pull[0], T2.pull[1]);
+      _gp.pz += 0.02 * vmPulse(t, T2.pull[0], T2.pull[1]);
+      _gp.rx += 0.10 * vmPulse(t, T2.pull[0], T2.pull[1]);
+      lw = 1 - vmEase(t, T2.ret[0], T2.ret[1]);
+    }
+  } else {
+    // shells one at a time; shotgun rolls to show the port, sniper pitches
+    if (P.style === 'shell') {
+      _gp.rx = -0.18 * env; _gp.rz = -0.35 * env;
+      _gp.px = -0.03 * env; _gp.py = 0.02 * env;
+    } else {
+      _gp.rx = -0.16 * env; _gp.ry = 0.18 * env;
+      _gp.px = -0.04 * env; _gp.py = 0.02 * env;
+    }
+    const [w0, w1] = P.win;
+    if (t >= w0 && t < w1 && P.cycles > 0) {
+      const cw = (w1 - w0) / P.cycles;
+      const ct = ((t - w0) % cw) / cw; // 0..1 inside this cycle
+      lw = 1;
+      if (ct < 0.45) lerp3(_lp, cfg.low, cfg.port, vmEase(ct, 0.05, 0.45));
+      else lerp3(_lp, cfg.port, cfg.low, vmEase(ct, 0.6, 1.0));
+    } else if (t >= w1 && P.empty) {
+      if (P.style === 'shell') {
+        // the classic pump rack, left hand on the forend
+        lw = vmEase(t, P.win[1], P.win[1] + 0.06);
+        _lp[0] = cfg.bolt[0]; _lp[1] = cfg.bolt[1];
+        _lp[2] = cfg.bolt[2] + cfg.pull * vmPulse(t, 0.78, 0.94);
+        _gp.pz += 0.025 * vmPulse(t, 0.78, 0.94);
+        _gp.rx -= 0.08 * vmPulse(t, 0.78, 0.94);
+        lw *= 1 - vmEase(t, 0.95, 1.0);
+      } else {
+        // sniper: the RIGHT hand works the bolt at the rear
+        rw = vmEase(t, 0.66, 0.76) * (1 - vmEase(t, 0.90, 0.98));
+        _rp[0] = cfg.bolt[0]; _rp[1] = cfg.bolt[1];
+        _rp[2] = cfg.bolt[2] + cfg.pull * vmPulse(t, 0.76, 0.90);
+        _gp.pz += 0.02 * vmPulse(t, 0.76, 0.90);
+        _gp.rx -= 0.06 * vmPulse(t, 0.76, 0.90);
+      }
+    } else if (t < w0) {
+      lw = vmEase(t, 0.02, w0); _lp[0] = cfg.low[0]; _lp[1] = cfg.low[1]; _lp[2] = cfg.low[2];
+    } else {
+      lw = 1 - vmEase(t, w1, Math.min(1, w1 + 0.08));
+      _lp[0] = cfg.low[0]; _lp[1] = cfg.low[1]; _lp[2] = cfg.low[2];
+    }
+  }
+  blendArm(rig.L, lw > 0 ? _lp : rig.L.basePos, lw);
+  blendArm(rig.R, rw > 0 ? _rp : rig.R.basePos, rw);
+}
+
+/* one-shot side effects (sounds, the mag/shell prop) along the timeline */
+function buildReloadEvents(w, vm) {
+  const cfg = vm.userData.handCfg;
+  const ev = [];
+  const mag = vm.userData.magProp, shell = vm.userData.shellProp;
+  if (cfg.style === 'mag') {
+    const T = reloadFromEmpty ? T_MAG_E : T_MAG;
+    ev.push({ t: T.reach[1], fn: () => AudioSys.magOut() });
+    ev.push({ t: T.out[0] + 0.02, fn: () => { if (mag) mag.visible = true; } });
+    ev.push({ t: T.back[1] - 0.02, fn: () => AudioSys.magIn() });
+    ev.push({ t: T.back[1], fn: () => { if (mag) mag.visible = false; } });
+    if (reloadFromEmpty) ev.push({ t: 0.76, fn: () => AudioSys.boltPull() });
+  } else {
+    const P = relPlan;
+    const cw = (P.win[1] - P.win[0]) / P.cycles;
+    for (let i = 0; i < P.cycles; i++) {
+      const c0 = P.win[0] + i * cw;
+      ev.push({ t: c0 + 0.02 * cw, fn: () => { if (shell) shell.visible = true; } });
+      ev.push({ t: c0 + 0.5 * cw, fn: () => { AudioSys.shellIn(); if (shell) shell.visible = false; } });
+    }
+    if (reloadFromEmpty) {
+      ev.push({ t: 0.84, fn: () => (cfg.style === 'shell' ? AudioSys.pump() : AudioSys.boltPull()) });
+    }
+  }
+  ev.sort((a, b) => a.t - b.t);
+  return ev;
+}
+
+function clearReloadVisuals(vm) {
+  if (vm.userData.magProp) vm.userData.magProp.visible = false;
+  if (vm.userData.shellProp) vm.userData.shellProp.visible = false;
+}
+
+/* full visual reset (level restarts, weapon switches mid-reload) */
+function resetWeaponFx() {
+  sprintBlend = 0;
+  zoomBlend = 0;
+  relPlan = null;
+  setScopeOverlay(false);
+  for (const vm of viewmodels) {
+    clearReloadVisuals(vm);
+    const rig = vm.userData.arms;
+    if (rig) {
+      placeArm(rig.L, rig.L.basePos);
+      placeArm(rig.R, rig.R.basePos);
+    }
+  }
+}
+
 function updateViewmodel(dt) {
   const vm = viewmodels[currentWeapon];
+  const w = WEAPONS[currentWeapon];
   const speedFactor = player.moving && player.onGround ? 1 : 0;
   vmBobT += dt * (keys['ShiftLeft'] ? 11 : 8) * (speedFactor ? 1 : 0.3);
   vmRecoil = Math.max(0, vmRecoil - dt * 6);
   const sprintScale = player.sprinting ? 1.7 : 1;
   const bobX = Math.sin(vmBobT) * 0.012 * (speedFactor || 0.25) * sprintScale;
   const bobY = Math.abs(Math.cos(vmBobT)) * 0.014 * (speedFactor || 0.25) * sprintScale;
-  // animacja przeładowania: broń opada, przechyla się i obraca (0→1→0)
-  let ra = 0;
-  if (reloading) {
-    const t = 1 - reloadTimer / reloadDuration; // 0→1
-    ra = Math.sin(Math.PI * Math.min(1, t));
+
+  // sprint pose: broken by aiming, reloading and firing (gun snaps back up)
+  const sprintTarget = (player.sprinting && !aiming && !reloading
+    && !firing && fireCooldown === 0) ? 1 : 0;
+  sprintBlend += (sprintTarget - sprintBlend) * Math.min(1, dt * 7);
+
+  // sniper scope: raise "to the eye" first, the overlay cuts in at the top
+  const zoomTarget = (aiming && w.zoom && !reloading) ? 1 : 0;
+  if (zoomTarget) zoomBlend = Math.min(1, zoomBlend + dt / 0.32); // raise ~0.32 s
+  else zoomBlend = Math.max(0, zoomBlend - dt / 0.22);            // lower a touch faster
+  if (!scoped && zoomTarget === 1 && zoomBlend >= 1) setScopeOverlay(true);
+  else if (scoped && zoomTarget === 0) setScopeOverlay(false);
+
+  // reload: gun pose + hand choreography from the plan built in startReload()
+  _gp.px = 0; _gp.py = 0; _gp.pz = 0; _gp.rx = 0; _gp.ry = 0; _gp.rz = 0;
+  if (reloading && relPlan) {
+    const t = 1 - reloadTimer / reloadDuration; // 0 -> 1
+    while (relEvIdx < relPlan.events.length && t >= relPlan.events[relEvIdx].t) {
+      relPlan.events[relEvIdx++].fn();
+    }
+    applyReloadPose(vm, t);
+  } else {
+    const rig = vm.userData.arms;
+    if (rig) {
+      placeArm(rig.L, rig.L.basePos);
+      placeArm(rig.R, rig.R.basePos);
+    }
   }
+
   // ADS: płynne przejście do pozycji celowania (muszka w osi kamery)
-  const w = WEAPONS[currentWeapon];
   const adsTarget = (aiming && !w.zoom && !reloading) ? 1 : 0;
   adsBlend += (adsTarget - adsBlend) * Math.min(1, dt * 12);
   const ads = vm.userData.adsPos || VM_BASE;
-  const bx = VM_BASE.x + (ads.x - VM_BASE.x) * adsBlend;
-  const by = VM_BASE.y + (ads.y - VM_BASE.y) * adsBlend;
-  const bz = VM_BASE.z + (ads.z - VM_BASE.z) * adsBlend;
-  const bobScale = 1 - 0.85 * adsBlend; // przy celowaniu broń prawie nie buja
+  const zb = w.zoom ? zoomBlend : 0;
+  const bx = VM_BASE.x + (ads.x - VM_BASE.x) * adsBlend + (ZOOM_RAISE.x - VM_BASE.x) * zb;
+  const by = VM_BASE.y + (ads.y - VM_BASE.y) * adsBlend + (ZOOM_RAISE.y - VM_BASE.y) * zb;
+  const bz = VM_BASE.z + (ads.z - VM_BASE.z) * adsBlend + (ZOOM_RAISE.z - VM_BASE.z) * zb;
+  const bobScale = 1 - 0.85 * Math.max(adsBlend, zb); // przy celowaniu broń prawie nie buja
   vm.position.set(
-    bx + bobX * bobScale - ra * 0.05,
-    by + bobY * bobScale - ra * 0.11,
-    bz + vmRecoil - ra * 0.08   // odsuń od kamery (nigdy nie zbliżaj do near plane)
+    bx + bobX * bobScale + _gp.px + SPRINT_POS[0] * sprintBlend,
+    by + bobY * bobScale + _gp.py + SPRINT_POS[1] * sprintBlend,
+    bz + vmRecoil + _gp.pz + SPRINT_POS[2] * sprintBlend // odsuń od kamery (nigdy nie zbliżaj do near plane)
   );
   vm.rotation.set(
-    vmRecoil * 1.5 - ra * 0.4,    // lufa w dół
-    ra * 0.22,                     // lekki obrót w bok
-    bobX * 0.6 * bobScale + ra * 0.3 // przechył
+    vmRecoil * 1.5 + _gp.rx + SPRINT_ROT[0] * sprintBlend + 0.06 * zb,
+    _gp.ry + SPRINT_ROT[1] * sprintBlend,
+    bobX * 0.6 * bobScale + _gp.rz + SPRINT_ROT[2] * sprintBlend
   );
-  // ukryj viewmodel przy lunecie snajperki
-  vm.visible = !(aiming && w.zoom);
+  // ukryj viewmodel dopiero pod pełną lunetą (po animacji podniesienia)
+  vm.visible = !(w.zoom && scoped);
+  __test.scoped = scoped;
 }
 
 function switchWeapon(idx) {
@@ -235,10 +575,12 @@ function switchWeapon(idx) {
     showCenterMsg('Broń zablokowana — kup w sklepie', 1.1, true);
     return;
   }
+  clearReloadVisuals(viewmodels[currentWeapon]);
   viewmodels[currentWeapon].visible = false;
   currentWeapon = idx;
   viewmodels[currentWeapon].visible = true;
   reloading = false;
+  relPlan = null;
   hideReloadHud();
   setAiming(false);
   AudioSys.switch_(WEAPONS[currentWeapon].id);
@@ -246,10 +588,10 @@ function switchWeapon(idx) {
 }
 
 function setAiming(on) {
-  const w = WEAPONS[currentWeapon];
   aiming = on;
-  const scoped = aiming && w.zoom; // snajperka: pełna luneta
-  document.getElementById('scope').style.display = scoped ? 'block' : 'none';
+  // sniper: the scope overlay waits for the raise animation (updateViewmodel);
+  // releasing RMB (or pausing) drops it immediately
+  if (!on && scoped) setScopeOverlay(false);
   document.getElementById('crosshair').style.display = aiming ? 'none' : 'block';
   lookScale = scoped ? 0.35 : (aiming ? 0.7 : 1);
 }
@@ -259,9 +601,25 @@ function startReload() {
   const w = WEAPONS[currentWeapon];
   if (reloading || w.mag >= w.magSize || w.reserve <= 0) return;
   reloading = true;
-  reloadDuration = w.reloadTime * game.reloadMul;
+  reloadFromEmpty = w.mag <= 0;
+  if (scoped) setScopeOverlay(false); // the scope drops for the reload
+  // from empty the sequence is longer: the charge move (bolt/slide/pump) is
+  // appended, not squeezed into the same time (user call 2026-08-18)
+  reloadDuration = w.reloadTime * game.reloadMul * (reloadFromEmpty ? 1.3 : 1);
   reloadTimer = reloadDuration;
-  AudioSys.reloadSeq(reloadDuration);
+  // animation plan: style + shell-cycle window + one-shot events (sounds, prop)
+  const vm = viewmodels[currentWeapon];
+  const cfg = vm.userData.handCfg;
+  relPlan = { style: cfg.style, empty: reloadFromEmpty, cycles: 0, win: [0, 1], events: [] };
+  if (cfg.style !== 'mag') {
+    relPlan.cycles = Math.max(1, Math.min(cfg.style === 'shell' ? 4 : 3,
+      Math.min(w.magSize - w.mag, w.reserve)));
+    relPlan.win = [0.14, reloadFromEmpty ? 0.70 : 0.90];
+  }
+  relPlan.events = buildReloadEvents(w, vm);
+  relEvIdx = 0;
+  clearReloadVisuals(vm);
+  AudioSys.grab();
   const rm = document.getElementById('reload-msg');
   rm.style.display = 'block';
 }
@@ -315,7 +673,7 @@ function tryFire() {
 
   // z biodra strzela się niecelnie; ADS zbija rozrzut (snajperka: spreadZoom),
   // kucanie daje mniejszy bonus do strzału z biodra
-  const spread = aiming
+  const spread = (w.zoom ? scoped : aiming)
     ? (w.spreadZoom !== undefined ? w.spreadZoom : w.spread * (w.adsMul || 0.3))
     : w.spread * (player.crouching ? 0.65 : 1);
   let anyHit = false, anyKill = false, anyHead = false;
@@ -335,7 +693,7 @@ function tryFire() {
       const enemy = h.object.userData.enemyRef;
       if (enemy && enemy.alive) {
         anyHit = true;
-        const isHead = !!h.object.userData.isHead;
+        const isHead = hitFaceIsHead(h);
         if (isHead) {
           anyHead = true;
           __test.headshots = (__test.headshots || 0) + 1;
@@ -393,7 +751,8 @@ function updateWeapons(dt) {
   }
   // płynny FOV: luneta 24° / ADS 60° / sprint i bunnyhop poszerzają
   let targetFov;
-  if (aiming && w.zoom) targetFov = ZOOM_FOV;
+  if (w.zoom && scoped) targetFov = ZOOM_FOV;
+  else if (aiming && w.zoom) targetFov = BASE_FOV - 8 * zoomBlend; // raising
   else if (aiming) targetFov = 60;
   else targetFov = BASE_FOV + (player.sprinting ? 6 : 0) + (player.sliding ? 7 : 0)
     + (player.hopBoost - 1) * 10;

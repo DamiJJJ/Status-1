@@ -29,13 +29,13 @@ const screens = {
   menu: el('screen-menu'),
   stats: el('screen-stats'),
   bestiary: el('screen-bestiary'),
-  start: el('screen-start'),
   pause: el('screen-pause'),
   over: el('screen-over'),
   win: el('screen-win'),
   shop: el('screen-shop'),
   lock: el('screen-lock'),
   settings: el('screen-settings'),
+  devrig: el('screen-devrig'),
 };
 
 function showScreen(name) {
@@ -52,15 +52,9 @@ function beginPlaying() {
   hideScreens();
 }
 
-/* MENU-1: the arena pre-run screen (controls reference + seed hint); the main
-   menu is the navigation layer above it, so it shares the 'menu' state */
-function openArenaEntry() {
-  game.state = 'menu';
-  showScreen('start');
-}
-
-/* arena mode entry: always rebuild the default arena first — the campaign
-   may have left a mission layout behind */
+/* arena mode entry - NO user-facing path since 2026-08-18 (the endless arena
+   was cut; the dev range is the only playable mode). Kept because the ?test=
+   automation flows (testmode.js) still exercise the full wave machinery. */
 function startArena() {
   game.mode = 'arena';
   game.missionId = null;
@@ -219,6 +213,7 @@ function resetLevelState() {
   fireCooldown = 0;
   firing = false;
   adsBlend = 0;
+  resetWeaponFx(); // sprint/zoom blends, reload hand poses, mag/shell props
   setAiming(false);
   hideReloadHud();
 

@@ -516,17 +516,29 @@ const AudioSys = (() => {
       }
     },
     empty() { tone({ type: 'square', f0: 1100, f1: 900, dur: 0.04, vol: 0.12 }); },
-    // reload spread over its duration: cloth + mag out -> mag in -> bolt
-    reloadSeq(dur) {
-      burst({ dur: 0.07, vol: 0.09, freq: 750, q: 1.1, type: 'bandpass' });
-      tone({ type: 'square', f0: 520, f1: 380, dur: 0.06, vol: 0.18 });
-      burst({ dur: 0.05, vol: 0.1, freq: 900, delay: 0.04 });
-      tone({ type: 'square', f0: 330, f1: 240, dur: 0.08, vol: 0.16, delay: dur * 0.35 });
-      burst({ dur: 0.06, vol: 0.1, freq: 320, delay: dur * 0.35 });
-      tone({ type: 'square', f0: 420, f1: 640, dur: 0.07, vol: 0.18, delay: dur * 0.68 });
-      burst({ dur: 0.06, vol: 0.07, freq: 800, q: 1.1, type: 'bandpass', delay: dur * 0.66 });
-      tone({ type: 'square', f0: 700, f1: 980, dur: 0.05, vol: 0.2, delay: dur * 0.9 });
-      burst({ dur: 0.06, vol: 0.12, freq: 1300, delay: dur * 0.9 });
+    /* reload foley, fired as keyframe events by the viewmodel animation
+       (weapons.js buildReloadEvents) so the sound lands ON the hand motion */
+    grab() { burst({ dur: 0.07, vol: 0.09, freq: 750, q: 1.1, type: 'bandpass' }); }, // cloth
+    magOut() {
+      tone({ type: 'square', f0: 330, f1: 240, dur: 0.08, vol: 0.16 });
+      burst({ dur: 0.06, vol: 0.1, freq: 320 });
+    },
+    magIn() {
+      tone({ type: 'square', f0: 420, f1: 640, dur: 0.07, vol: 0.18 });
+      burst({ dur: 0.06, vol: 0.1, freq: 800, q: 1.1, type: 'bandpass' });
+    },
+    boltPull() {
+      tone({ type: 'square', f0: 700, f1: 980, dur: 0.05, vol: 0.2 });
+      burst({ dur: 0.06, vol: 0.12, freq: 1300, delay: 0.05 });
+    },
+    shellIn() {
+      burst({ dur: 0.04, vol: 0.12, freq: 1100 });
+      tone({ type: 'square', f0: 520, f1: 400, dur: 0.05, vol: 0.14, delay: 0.01 });
+    },
+    pump() {
+      tone({ type: 'square', f0: 480, f1: 320, dur: 0.07, vol: 0.2 });
+      burst({ dur: 0.07, vol: 0.14, freq: 900, delay: 0.07 });
+      tone({ type: 'square', f0: 340, f1: 520, dur: 0.06, vol: 0.18, delay: 0.09 });
     },
     // weapon draw: cloth swish + bolt click-clack; heavier guns lower & slower
     switch_(id = 'pistol') {
