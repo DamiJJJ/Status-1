@@ -21,6 +21,11 @@ python -m http.server 8137
 (Port 8137 celowo, nie 8000 — patrz CLAUDE.md.) Testy `file://` działają
 bez serwera. Uruchamianie: `python tests/phase0_test.py` itd.
 
+W Claude Code jest do tego komenda **`/tests`** (`.claude/commands/tests.md`):
+bez argumentu odpala wszystkie aktywne zestawy, z argumentem tylko wybrane
+(np. `/tests devrig`). Claude **nie odpala pełnej regresji sam** — sprawdza
+tylko to, co dotyczy bieżącej zmiany.
+
 > ⚠️ **2026-08-18:** testy kampanii (`phase2`–`phase6`, `phase5d`,
 > `status1_test`, `shots.py`) pojechały razem z kampanią do
 > `_kosz/kampania/tests/` i **nie przejdą** na obecnej wersji gry. W `tests/`
@@ -43,6 +48,7 @@ bez serwera. Uruchamianie: `python tests/phase0_test.py` itd.
 | ~~`status1_test.py`~~ (kosz) | Smoke po rebrandingu: tytuł/wordmark STATUS 1, treść odprawy (Davidson/R36), migracja starych kluczy zapisu, karta finału, `file://` |
 | `bestiary_test.py` | BESTIARIUSZ: wejście z menu, lista jednostek, własna scena podglądu, powrót Esc, `file://` |
 | `devmap_test.py` | STRZELNICA (dev, `js/devmap.js`): wejście z pełnym odblokowaniem, wyciszony reżyser fal, klawisze B/T/Y/K/J/P, higiena (kille/strzały z dev nie liczą się do statystyk służby, wyjście nie dotyka rekordu areny) |
+| `devrig_test.py` | DEVRIG (edytor chwytu, `js/devrig.js`): wejście klawiszem H tylko na strzelnicy, własna scena i ukryty HUD, kontrolki generowane z `HANDS`, skin z pełnym drzewem kości (nadgarstek, ramię), niezależność nadgarstka/przedramienia/ramienia, brak martwych suwaków (każdy przeciągany i sprawdzany, że rusza rigiem), determinizm pozy (te same liczby = ta sama poza) i odporność na dane zdegenerowane (wszystko na zero nie ścina bryły), izolacja współdzielonych stałych `CURL_*`, przeliczenie podglądu I żywego viewmodelu, kotwica pięści lądująca na `pos`, przełączanie ramki kanał↔przedramię, runda JSON eksport→import (w tym błędny JSON), „Przywróć", powrót do strzelnicy bez dotykania stanu gry |
 | ~~`shots.py`~~ (kosz), `shots2.py`, `shots_models.py`, `shots_weapons.py` | Nie-testy: zrzuty ekranów i modeli do `tests/_shots/` - do ręcznej oceny wizualnej; `shots_weapons.py` dodatkowo liczy projekcję przyrządów ADS na oś kamery (na zrzutach ciemnych przyrządów nie widać) |
 
 ## Pułapki

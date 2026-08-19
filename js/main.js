@@ -79,10 +79,16 @@ function tick(now) {
   // the game world — retarget the shared render pass (bloom stays in place)
   const onMenuBg = menuBgActive();
   const onBestiary = game.state === 'bestiary';   // navigation layer, own scene
-  if (onBestiary) Bestiary.update(dt);
+  const onDevRig = game.state === 'devrig';      // grip editor, own scene too
+  if (onDevRig) DevRig.update(dt);
+  else if (onBestiary) Bestiary.update(dt);
   else if (onMenuBg) MenuBg.update(dt);
-  renderPass.scene = onBestiary ? Bestiary.scene : (onMenuBg ? MenuBg.scene : scene);
-  renderPass.camera = onBestiary ? Bestiary.camera : (onMenuBg ? MenuBg.camera : camera);
+  renderPass.scene = onDevRig ? DevRig.scene
+    : (onBestiary ? Bestiary.scene : (onMenuBg ? MenuBg.scene : scene));
+  renderPass.camera = onDevRig ? DevRig.camera
+    : (onBestiary ? Bestiary.camera : (onMenuBg ? MenuBg.camera : camera));
+  // the editor screen is transparent, so the gameplay HUD would bleed through
+  document.body.classList.toggle('devrig', onDevRig);
   if (onMenuBg !== menuBgWas) {
     // the transparent menu screen would let the gameplay HUD bleed through
     menuBgWas = onMenuBg;
@@ -91,6 +97,7 @@ function tick(now) {
   }
   __test.menuBg = onMenuBg;
   __test.bestiary = onBestiary ? BESTIARY[Bestiary.index()].type : null;
+  __test.devrig = onDevRig ? `${WEAPONS[devRigWeapon].id}:${devRigHand}` : null;
 
   composer.render();
 }

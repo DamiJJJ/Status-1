@@ -111,6 +111,9 @@ function devKey(code) {
       updateGrenadeHud();
       showCenterMsg('Uzupełniono HP / amunicję / granaty', 1.4);
       break;
+    case 'KeyH':
+      openDevRig(); // grip editor (js/devrig.js)
+      return;       // it owns the state from here; no HUD resync
     case 'KeyP':
       // rebuild the range (shot-out target plates come back); enemies survive
       clearPickups();

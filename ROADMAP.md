@@ -1,8 +1,10 @@
 # ROADMAPA - STATUS 1
 
 > ⚠️ **2026-08-18: kampania i trzy typy botów wycięte z gry** (decyzja
-> użytkownika) - leżą w `_kosz/`, patrz `_kosz/README.md`. Grą jest teraz sama
-> Arena bez końca z jednym przeciwnikiem (PATROL). **Pozycje MISJA-\* zostały
+> użytkownika) - leżą w `_kosz/`, patrz `_kosz/README.md`. Tego samego dnia
+> z menu wyleciała też Arena bez końca - jedynym uruchamialnym trybem jest
+> STRZELNICA (dev) z jednym przeciwnikiem (PATROL); maszyneria fal/sklepu
+> zostaje w kodzie pod testy (`?test=`). **Pozycje MISJA-\* zostały
 > z roadmapy usunięte** - wrócą razem z kampanią, jeśli wróci. Pozycje, które
 > zakładają istnienie misji (PROG-1, SCENA-2, PROP-7/8/10), zostają na razie
 > zamrożone.
@@ -32,7 +34,7 @@ Rozmiary: **S** = drobiazg (godziny) · **M** = solidny kawałek (dzień-dwa) ·
 | PROP-6 | Dostępność (✅ wyłącznik strobo; remap klawiszy - otwarte) | S | 1 |
 | BOT-1 | ✅ Redesign botów (podwozie SENTINEL z modelu CC-BY) | L | 2 |
 | BRON-1 | ✅ Rework broni na modele 3D (5 broni z wypieczonych modeli, SMG jako nowa) | L | 2 |
-| BRON-2 | Ręce gracza na viewmodelu | S/M | 2 |
+| BRON-2 | ✅ Ręce gracza na viewmodelu (wypieczone ramiona, animacje przeładowań, sprint, luneta z podniesieniem) | S/M | 2 |
 | BRON-3 | Animacja inspekcji broni (klawisz F, jak w CS) | S | 2 |
 | BOT-3 | Rework przeciwników: modele, animacje, bronie | L | 2 |
 | MENU-1 | ✅ Menu główne z animowaną panoramą Los Santos | L | 2 |
@@ -236,6 +238,184 @@ model, ruszają się dwoma piwotami nóg i trzymają tego samego Glocka.
   `userData.enemyRef` na każdym meshu, geometrie cache'owane
   (`_modelGeoCache`), wpis w bestiariuszu (MENU-3) jedzie z `ENEMY_TYPES`.
 
+### BOT-4 · System statusów gracza (stun / daze) - M · **PREREKWIZYT dla BOT-5, BOT-7, BOT-8, BOT-9**
+
+Tonfa RIOTA, ładunek porażający MECHA, gaz łzawiący, granat prądowy i wariant
+oszałamiający wieżyczki to jedno i to samo zjawisko widziane z pięciu stron.
+Jeden system, zanim powstanie pierwszy z nich - inaczej każdy przeciwnik dorobi
+własną wersję i nie da się tego zbalansować.
+
+- `player.stun` - paraliż: blokada ruchu (obrót kamery ZOSTAJE wolny, jak przy
+  `radioHoldT` - odbieranie myszy w FPS-ie jest nie do przyjęcia).
+- `player.daze` - oszołomienie: rozmycie ekranu, spowolnienie, przytłumienie
+  miksu (`duckFilter` już to potrafi).
+- Oba z czasem trwania i wygaszaniem; jedno miejsce w `updatePlayer`, jedno
+  w HUD-zie, jedno w audio, reset w `resetLevelState`, podgląd w `__test`.
+- **Anti-frustracja:** krótko (0,4-0,8 s), z telegrafem przed trafieniem
+  i krótką odpornością po wyjściu ze stanu, żeby kilka jednostek nie zapętliło
+  gracza w bezruchu.
+
+### BOT-5 · Warianty SENTINELA (pałka, paralizator, glock, karabin, strzelba) - S
+
+Najtańsze urozmaicenie fal w całej roadmapie: to samo podwozie, inna broń
+w gnieździe `handR`. Modele broni są już wypieczone, `poseArm` uniesie każdą
+bryłę, więc wariant = wpis w `ENEMY_TYPES` + inny `buildModel` w ręce
+(+ dźwięk w `enemyShot` i zasięg). Pałka wchodzi w zwarcie i ogłusza (BOT-4),
+paralizator robi to na dystans. Zazębia się z BOT-3 („bronie botów").
+
+### BOT-6 · DRON - następca WAŻKI na modelu Stinger - M
+
+Model `assets_src/Stinger Drone by Aaron Clifford - 6CUQX98vha4.glb`
+(CC-BY → kredyt w README). Mechanika lotu zostaje bez zmian (`fly` +
+`resolveCollisions(..., minTop)`), nowa jest sylwetka i profil balansowy:
+**mały damage, wysoka prędkość, groźny w roju** (3-6 sztuk). Balans idzie
+w liczebność, nie w HP - to przeciwnik od zarządzania tłumem.
+
+### BOT-7 · RIOT - tarcza i zwarcie - L (po BOT-4)
+
+Podwozie ROSS + tarcza (`assets_src/Police Shield by CreativeTrio`) w lewej
+ręce, tonfa w prawej. Rola: **idzie PRZED grupą i osłania ją tarczą**.
+Trzy nowe mechaniki:
+
+- **Kierunkowa redukcja obrażeń** - trafienia w stożek przodu pochłania tarcza.
+  Własny mesh z `userData.shieldRef` (NIE `enemyRef`, inaczej policzy się jako
+  trafienie w bota); tarcza ma osobne HP i może paść.
+- **Formacja** - RIOT trzyma się na linii gracz↔centroid grupy, między nimi.
+  Prosty sterownik pozycji docelowej, bez pełnej nawigacji (ta jest w PROP-3).
+- **Ogłuszenie w zwarciu** - uderzenie tonfą daje `daze` + krótki `stun`
+  z systemu BOT-4.
+
+Pętla, o którą tu chodzi: **obejdź tarczę zamiast strzelać w nią** - domyka ją
+walka wręcz (BRON-5).
+
+### BOT-8 · RIOT LETHAL - S (po BOT-7)
+
+To samo podwozie i tarcza, ale zamiast tonfy pistolet (`weapon: 'pistol'`) -
+osłania grupę i strzela zza tarczy. Po BOT-7 prawie darmowy: różnica to broń
+w ręce i wpis w `ENEMY_TYPES`.
+
+### BOT-9 · SENTRY / wieżyczka - M (po BOT-4)
+
+Przeciwnik **stacjonarny**: statyczna podstawa + obrotowa głowica, skanuje stożek o zadanym zasięgu i otwiera ogień
+po wykryciu gracza (średnie obrażenia, wysoka szybkostrzelność). Stawiana
+w ciasnych przejściach - jej rolą jest **odmawianie terenu**, nie pościg:
+zamyka korytarz, dopóki gracz go nie obejdzie albo nie zniszczy wieżyczki.
+Jedyny przeciwnik w spisie, który karze stanie w miejscu na dystansie (reszta
+albo szarżuje, albo jest wolna), więc warto ją zrobić wcześnie.
+
+- **Telegraf obowiązkowy** (decyzja użytkownika 2026-08-18): ~sekunda
+  namierzania ze świecącą głowicą, ZANIM padnie pierwszy strzał. Ma być
+  zagadką „przebiegnij albo obejdź", nie strzałem z zaskoczenia w ciemnym
+  korytarzu.
+- **Model wybrany (2026-08-18): Space Kit Kenneya, CC0**
+  (https://poly.pizza/l/M8xXmqhHiU). Trzy powody: CC0 (zero warunków),
+  **GLB w pobraniu - wchodzi do `gen_models.py` bez konwersji przez Blendera**
+  (jedyna pozycja w spisie przeciwników bez tego kroku), a paczka zawiera
+  **dwa turrety: `Turret` i `Double Turret`**. To daje wariantom RÓŻNE
+  SYLWETKI za darmo - gracz musi rozpoznać z odległości, czy wieżyczka go
+  zabije, czy tylko zablokuje przejście; sam kolor na to nie wystarczy.
+  Propozycja: pojedyncza lufa = oszałamiająca, podwójna = letalna.
+  Zastrzeżenie: to kit SPACE, więc sci-fi, nie policja z Los Santos -
+  przy turrecie nieszkodliwe (neutralna bryła, materiały nadajemy własne).
+  *Alternatywa odrzucona:* turret ze Sketchfaba
+  (`free-turret-low-poly-640f6c10...`) - strony nie dało się zweryfikować
+  (renderuje się JS-em), więc licencja i formaty NIEPOTWIERDZONE. Wracać
+  do niej tylko po ręcznym sprawdzeniu licencji.
+- **Warianty w duchu policyjnym**: letalna (pociski) i oszałamiająca
+  (`daze`/`stun` z BOT-4 zamiast obrażeń - blokuje przejście, nie zabija).
+  Wariant oszałamiający jest mocniejszy projektowo: nie kończy biegu, więc
+  można go stawiać gęściej i agresywniej.
+- **Bot czy prop?** Technicznie bliżej jej do propa (zero nawigacji
+  i anti-stucka), ale prop odcina ją od fal, dropów i licznika zabójstw.
+  Rekomendacja: typ w `ENEMY_TYPES` z prędkością 0 i pominiętą nawigacją -
+  reżyser fal i ekonomia działają wtedy bez wyjątków. Własny collider, HP
+  i kierunkowy stożek widzenia i tak dochodzą.
+
+### BOT-10 · MECH - mini-boss - XL (po BOT-4, BOT-9)
+
+Najcięższy przeciwnik, służy w rejonach o najwyższej przestępczości.
+
+**Model wybrany (2026-08-18): „Modular Mech" rcorre, CC BY 4.0**
+(https://rcorre.itch.io/modular-mech) - kredyt w README obowiązkowy.
+Wybrany z trzech kandydatów; dwa pozostałe odpadły na licencji, nie na
+wyglądzie, i **nie wolno do nich wracać**:
+
+- *Practice Mech* (normansoftworx) - licencja zakazuje redystrybucji, a my
+  commitujemy plik źródłowy do `assets_src/` razem z wynikiem. Konflikt
+  wprost z zasadą odtwarzalności zasobów.
+- *Mech* (hackeddesign) - CC BY-**NC-SA**: NC zamyka komercjalizację na
+  stałe, SA jest zaraźliwe.
+
+Dlaczego rcorre pasuje technicznie:
+
+- **Weapon attachment points jako Empty objects** = nasze `sockets`
+  z `gen_models.py` (jak `handR`) - gotowe piwoty pod gatling i wyrzutnie,
+  bez zgadywania.
+- **Osobna, obracana głowa** - dokładnie to, czego wymaga „wolny obrót,
+  groźny tylko na linii ognia"; ta sama mechanika co głowica w BOT-9.
+- **Model jest modularny** - podział na części wyjdzie po węzłach, czysto,
+  zamiast po dominującym joincie.
+- **Ma animacje chodu** - materiał na BOT-3, gdyby doszło do wypiekania klipów.
+
+⚠️ **Konwersja:** źródło to .blend/FBX/Godot, a `gen_models.py` czyta glTF.
+Potrzebny jednorazowy eksport do `.glb` w Blenderze; do `assets_src/` trafia
+ten `.glb`. Pixel-artowa paleta AAP-64 jest bez znaczenia - wypiekamy SAMĄ
+geometrię, kolory nadaje nasz resolver materiałów.
+
+⚠️ **Groza nie jest w sylwetce.** To stylizowany low-poly walker, więc
+„wielki i przerażający" musi zrobić **skala i zachowanie**: duży `scaleMul`,
+wolny obrót, dudnienie kroków w audio, wstrząs kamery. Sam model tego nie
+udźwignie.
+
+Uzbrojenie:
+
+- **Gatling** - nowy `weapon: 'gatling'`: rozkręcanie lufy (telegraf!), długa
+  seria, wysoka szybkostrzelność, niska celność.
+- **Ładunki porażające** - trafienie = `stun`.
+- **Granaty łzawiące** - `daze` (rozmycie, oszołomienie, spowolnienie).
+- **Obszarowe granaty prądowe** - strefa, w której gracz jest sparaliżowany,
+  póki z niej nie wyjdzie.
+
+Projektowany tak, żeby **ucieczka była lepsza niż walka**: duże HP, wolny
+obrót, groźny wyłącznie na linii ognia. Ostatni w kolejce - największy zakres
+prac (cztery nowe systemy broni naraz), mimo że model jest już wybrany.
+
+### BOT-11 · Pojazdy dostawcze - widoczne źródło spawnów - L (po BOT-6)
+
+Dziś boty **pojawiają się z powietrza, bez uzasadnienia** - reżyser fal
+stawia je na spawnach i tyle. Pojazd, który wjeżdża albo nadlatuje, zrzuca
+jednostki i odjeżdża, zamienia spawn w **wydarzenie, które gracz widzi
+i może uprzedzić**: słychać nadjeżdżający transporter, wiadomo, z której
+strony przyjdzie fala, opłaca się tam być pierwszym. To jest właściwy powód
+tej pozycji - fabuła jest dodatkiem.
+
+Modele (oba GLTF/GLB - **bez konwersji przez Blendera**):
+
+- **M939 Truck** by J-Toastie, CC BY 3.0 (https://poly.pizza/m/y8lBpvMlim) -
+  transporter NAZIEMNY. Podjeżdża, otwiera się, wysypują się drony i roboty.
+  Ten sam autor co Glock i FPS Arms, więc styl się klei. Pasuje do LSPD
+  bez zgrzytu.
+- **Speeder ze Space Kitu Kenneya**, CC0 (ta sama paczka co BOT-9) -
+  **wyłącznie jako unoszący się dropship**, nie jako pojazd naziemny.
+  „Spacecraft speeder" jako radiowóz w Los Santos to rozjazd ze światem;
+  jako maszyna zrzucająca rój dronów w powietrzu broni się bez problemu.
+
+Zakres techniczny:
+
+- Pojazd to **prop z animacją trasy**, nie bot: wjazd po zadanej ścieżce,
+  postój na czas zrzutu, odjazd. Zero nawigacji i anti-stucka.
+- **Spawn przypięty do pojazdu** - reżyser fal (`waves.js`) dostaje nowy
+  rodzaj punktu spawnu: „przy pojeździe X, gdy dojedzie". Jednostki wychodzą
+  z drzwi/luku (socket na modelu), a nie materializują się w powietrzu.
+- **Collider tylko przy pojeździe naziemnym** - stojący M939 staje się
+  osłoną taktyczną na środku areny (i zmienia układ walki na czas fali).
+  Dropship wisi wysoko, więc nie koliduje.
+- **Audio jest połową efektu**: silnik z dopplerem na dojeździe, syk luku,
+  łomot lądujących jednostek. Wszystko syntetyczne, z pozycją 3D
+  (`tone`/`burst` przyjmują `pos`).
+- Do decyzji: czy pojazd da się zniszczyć (przerwanie zrzutu = realna
+  nagroda za agresję), czy jest nietykalny jak dekoracja.
+
 ---
 
 ## Bronie
@@ -411,6 +591,23 @@ kolejna rzecz do kupienia za kredyty, która nic nie zmienia.
 Kolejność: po BRON-1 (jest), **przed BRON-2** - ręka wspierająca ma trafić
 w chwyt przedni, jeśli go dołożymy.
 
+### BRON-5 · Walka wręcz - M (razem z BOT-7)
+
+Klawisz melee (V albo F) z modelami **noża** i **pałki/tonfy** jako
+viewmodelami. Krótki zasięg, wysokie obrażenia, natychmiastowe, bez amunicji -
+naturalna odpowiedź na RIOTA (BOT-7), który sam wchodzi w zwarcie.
+
+- **Trafienie z boku lub tyłu RIOTA omija tarczę** - to domyka pętlę „obejdź
+  tarczę zamiast strzelać w nią" i jest głównym powodem, dla którego ta pozycja
+  istnieje. Robić razem z BOT-7, nie osobno.
+- Modele przez `tools/gen_models.py` jak reszta broni; pałka/tonfa to ten sam
+  rekwizyt, co u wariantu SENTINELA z BOT-5 - jedna geometria, dwa zastosowania.
+- Zasady viewmodeli bez zmian: brak ADS, więc **bez przyrządów i bez zielonej
+  kropki**; animacja zamachu NIE zbliża bryły do kamery (near plane 0.08) -
+  ruch idzie w bok i w dół, nie w głąb kadru.
+- Do decyzji: osobny slot (klawisz 6) czy szybki atak nakładany na bieżącą broń
+  bez jej chowania. Drugie jest lepsze w walce, pierwsze tańsze w kodzie.
+
 ---
 
 ## Menu i oprawa
@@ -472,6 +669,42 @@ obejścia, której wtedy nie rozważono**:
   sylwetki wieżowców na horyzoncie zamiast czystego nieba. Buduje spójność
   „symulacje dzieją się w hali treningowej w mieście" i jest naturalnym
   krokiem do SCENA-1. Generowana raz do `CanvasTexture`/geometrii low-poly.
+
+### MENU-5 · Przebudowa całego UI w stylu menu głównego (cyberpunk) - M
+
+Menu główne (MENU-1) ma spójny, cyberpunkowy język wizualny: lewa kolumna
+na półprzezroczystym gradientowym panelu, tekstowe pozycje zamiast guzików,
+tealowa ramka na aktywnej, czerwień na reszcie, hover przebarwiający na teal,
+stempel wersji na dole. **Reszta interfejsu jest wciąż w starym stylu**
+(zwykłe przyciski, prostokątne panele) - HUD, pauza, sklep/Zbrojownia,
+ustawienia, ekrany końca/wygranej, statystyki, bestiariusz, odprawy misji,
+`screen-lock`, panel dev.
+
+Cel: **jeden język dla całego UI**, wyprowadzony z menu, a nie dziesięć
+wariantów. Zakres:
+
+- **Tokeny w `styles.css`** (kolory, ramki, gradienty panelu, typografia,
+  stany hover/active) jako zmienne CSS - żeby nowy ekran dziedziczył styl,
+  zamiast go kopiować. To jest właściwa robota tej pozycji; przemalowanie
+  ekranów bez tokenów po prostu powtórzy problem.
+- **Wspólne klasy komponentów**: panel, lista pozycji, przycisk pierwszo-
+  i drugorzędny, nagłówek ekranu (`.screen-mark` już istnieje), wiersz
+  ustawień, kafel sklepu.
+- **HUD** w tym samym języku: kreskowane ramki, tealowe akcenty, złoto na
+  kredytach/headshotach (paleta z CLAUDE.md zostaje bez zmian).
+- **Bez zmian w markupie tam, gdzie się da** - `index.html` ma statyczne
+  placeholdery `[data-icon]` obsługiwane RAZ przy ładowaniu; przebudowa
+  markupu dynamicznych ekranów musi sama wstawiać `UI_ICONS[key]`.
+
+Uwaga na czytelność: menu jest na ciemnej panoramie i może pozwolić sobie na
+niski kontrast, **HUD w trakcie walki nie może** - te same tokeny, ale HUD
+dostaje mocniejsze tło pod tekstem. Ekrany po rozgrywce (pauza/over/won) leżą
+na zamrożonym świecie gry, nie na panoramie, więc też potrzebują własnego
+przyciemnienia.
+
+Do decyzji: czy robić to jednym przejściem, czy ekran po ekranie (tokeny
+najpierw, potem migracja) - drugie jest bezpieczniejsze i testowalne
+zrzutami po każdym kroku.
 
 ---
 
@@ -757,12 +990,18 @@ Po PROG-1 bez komplikacji ekonomicznych (punkty tylko za ukończenie misji).
    dopiero na nowej progresji.
 2. **Faza 2 - tożsamość wizualna:** BOT-1, BRON-1 → BRON-4 → BRON-2 → BRON-3, BOT-3, MENU-1,
    MENU-2,
-   MENU-4, PROP-12. Gra zaczyna wyglądać jak „STATUS 1", nie jak prototyp.
+   MENU-4, MENU-5, PROP-12. Gra zaczyna wyglądać jak „STATUS 1", nie jak
+   prototyp. **MENU-5 (tokeny UI) warto zrobić wcześnie w tej fazie** - każdy
+   nowy ekran dodany później dziedziczy styl zamiast go dublować.
    **MAPA-1 przed MENU-4** - panorama z kitu wymaga gotowego pipeline'u.
 3. **Faza 3 - świat:** MAPA-1 → MAPA-2 + MAPA-3, PROP-3, potem SCENA-1,
    PROP-9. Największy skok jakościowy; **nawigacja botów (PROP-3) PRZED
    pełnym miastem** - inaczej AI klinuje na rogach budynków.
-4. **Faza 4 - zasięg:** TECH-1, potem TECH-2. Reszta PROP-ów wchodzi między
+4. **Faza 4 - bestiariusz:** BOT-4 (prerekwizyt!) → BOT-5 + BOT-6 (tanie,
+   od razu odświeżają fale) → BOT-9 → BOT-7 + BRON-5 (razem) → BOT-8 →
+   BOT-10 na koniec, BOT-11 razem z BOT-6 albo tuż po nim. Gra przestaje zadawać jedno pytanie taktyczne.
+   Można wpleść w Fazę 2/3 - nowi przeciwnicy nie czekają na miasto.
+5. **Faza 5 - zasięg:** TECH-1, potem TECH-2. Reszta PROP-ów wchodzi między
    fazy jako przerywniki.
 
 ## Decyzje do podjęcia (przy realizacji danej pozycji)
@@ -785,5 +1024,15 @@ Po PROG-1 bez komplikacji ekonomicznych (punkty tylko za ukończenie misji).
   zakładają misje) zostają w roadmapie, czy lecą za MISJA-\*?
 - **TECH-2:** który wariant sygnalizacji (ręczne SDP / lekki broker /
   odłożyć)?
+- **BOT-9:** wieżyczka jako typ w `ENEMY_TYPES` z prędkością 0 (fale, dropy,
+  licznik zabójstw działają) czy jako prop z props.js (czyściej technicznie,
+  ale poza ekonomią)? Rekomendacja: typ.
+- **BOT-10:** model wybrany (rcorre „Modular Mech", CC BY 4.0). Zostało:
+  czy wypiekamy jego animacje chodu (razem z decyzją z BOT-3), i czy cztery
+  rodzaje uzbrojenia wchodzą naraz, czy MECH debiutuje z samym gatlingiem.
+- **BOT-11:** czy pojazd dostawczy da się zniszczyć (przerwanie zrzutu jako
+  nagroda za agresję), czy jest nietykalną dekoracją?
+- **BRON-5:** osobny slot broni (klawisz 6) czy szybki atak nakładany na
+  bieżącą broń bez chowania jej?
 - **TRUD-1:** podnosimy bazę czy mnożniki `DIFFICULTIES` (easy ma zostać
   przystępne)?

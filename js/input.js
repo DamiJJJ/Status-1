@@ -19,6 +19,7 @@
        prevented, but an active run turns it into a "leave site?" question.
    Escape stays UNLOCKED on purpose — it must keep exiting pointer lock. */
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyG', 'KeyR',
+  'KeyH', // dev: opens the grip editor; shielded so Ctrl+H never opens history
   'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',
   'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']);
 const SHIELD_STATES = new Set(['playing', 'paused', 'shop', 'settings']);
@@ -46,14 +47,11 @@ el('btn-lock-skip').addEventListener('click', () => {
   if (wantLock) { wantLock = false; beginPlaying(); }
 });
 
-// main menu (MENU-1) + arena entry
-el('btn-menu-arena').addEventListener('click', () => openArenaEntry());
+// main menu (MENU-1)
 el('btn-menu-bestiary').addEventListener('click', () => openBestiary());
 el('btn-menu-stats').addEventListener('click', () => openStats());
 el('btn-stats-back').addEventListener('click', () => backToMenu());
 el('btn-bestiary-back').addEventListener('click', () => backToMenu());
-el('btn-start-back').addEventListener('click', () => backToMenu());
-el('btn-start').addEventListener('click', () => startArena());
 el('btn-resume').addEventListener('click', resumeGame);
 el('btn-restart-pause').addEventListener('click', restartGame);
 el('btn-quit-pause').addEventListener('click', quitToMenu);
@@ -87,6 +85,8 @@ document.addEventListener('keydown', e => {
   } else if ((game.state === 'stats' || game.state === 'bestiary')
              && (e.code === 'Escape' || enter)) {
     backToMenu();
+  } else if (game.state === 'devrig' && e.code === 'Escape') {
+    closeDevRig();
   }
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });

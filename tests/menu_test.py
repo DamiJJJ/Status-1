@@ -55,18 +55,15 @@ with sync_playwright() as pw:
           str(page.evaluate("MenuBg.scene.children.length")))
 
     # --- 2: navigation loop through every menu target and back ---
-    page.click("#btn-menu-arena")
-    check("nav: arena entry shows the controls screen",
-          page.evaluate("screens.start.classList.contains('visible')"
-                        " && game.state === 'menu'"), "")
-    page.click("#btn-start-back")
-    check("nav: back to menu from arena entry",
-          page.evaluate("screens.menu.classList.contains('visible')"), "")
+    # (the endless-arena entry was cut 2026-08-18; the dev range button is the
+    # only game entry and is exercised by tests/devmap_test.py)
+    check("nav: dev range button present, arena entry gone",
+          page.evaluate("!!el('btn-menu-dev') && !document.getElementById('btn-menu-arena')"), "")
 
     page.click("#btn-menu-stats")
     check("nav: stats screen renders rows",
           page.evaluate("game.state === 'stats'"
-                        " && el('stats-list').children.length >= 5"
+                        " && el('stats-list').children.length >= 4"
                         " && window.__test.menuBg === true"), "")
     page.keyboard.press("Escape")
     check("nav: Esc leaves stats",

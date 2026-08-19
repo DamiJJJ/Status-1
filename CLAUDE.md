@@ -1,8 +1,12 @@
 # STATUS 1 (dawniej NEON ARENA) — notatki dla Claude Code
 
 > ⚠️ **STAN NA 2026-08-18: kampania i trzy typy botów są WYCIĘTE z gry.**
-> Leżą w `_kosz/` (patrz `_kosz/README.md`) i nic ich nie ładuje. Grą jest
-> teraz sama **Arena bez końca**, a jedynym przeciwnikiem **PATROL**.
+> Leżą w `_kosz/` (patrz `_kosz/README.md`) i nic ich nie ładuje. Tego samego
+> dnia z menu wyleciała też **Arena bez końca** - jedynym uruchamialnym trybem
+> jest **STRZELNICA (dev)**, a jedynym przeciwnikiem **PATROL**. Maszyneria
+> areny (fale, sklep, rekord, ekrany over/win) zostaje w kodzie: `startArena()`
+> woła ją nadal tryb testowy `?test=` (testy phase0/phase1), a strzelnica
+> jeździ na tej samej instalacji z `waveSystem.paused`.
 > W `js/` została zaślepka `campaign_off.js` z globalami, które reszta kodu
 > woła bezwarunkowo (`difficulty()`, `missionEvent`, `radioHoldT`,
 > `backToMenu`, statystyki). Gałęzie `if (game.mode === 'campaign')` zostały
@@ -75,9 +79,13 @@ więc formy męskie w kwestiach DO gracza są OK.
   **płaskie meshe w `worldGroup` z `userData.propRef`** — lustrzane odbicie
   `enemyRef`) → `effects.js` → `collisions.js` (okrąg-vs-AABB; parametr `minTop` —
   latające jednostki omijają collidery niższe od pułapu) → `player.js` →
+  `hands.js` (BRON-2: ramiona gracza z wypieczonego modelu `arms` - materiały
+  rękawic/rękawów, ramki chwytu `handFrame`, `attachArms`;
+  wymaga tylko THREE przy ładowaniu, `buildModel` woła dopiero z weapons.js) →
   `weapons.js` (WEAPONS - 5 broni w slotach 1-5, viewmodele z wypieczonych
-  modeli/ADS/strzelanie; gałąź `propRef`; blokada
-  `game.noCombat`) → `grenades.js` (granaty na G: pula pocisków, łuk, odbicia,
+  modeli/ADS/strzelanie; RĘCE na każdej broni + animacje przeładowań/sprintu
+  i opóźniona luneta - patrz Konwencje → „Ręce gracza"; gałąź `propRef`;
+  blokada `game.noCombat`) → `grenades.js` (granaty na G: pula pocisków, łuk, odbicia,
   AoE; licznik `game.grenades`) → `enemies.js` (ENEMY_TYPES/modele/AI; liberie policyjne + strobo,
   UAV, tarcza bossa, jednostki pasywne parady) → `icons.js` (`UI_ICONS`; pętla
   `[data-icon]` działa RAZ przy ładowaniu — dynamiczny markup wstawia
@@ -92,7 +100,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   (obiekt `game`; **`resetRunState`** = progresja, **`resetLevelState`** = świat/ciało;
   `resetGameState` = obie, tylko arena) → `settings.js` (obiekt `SETTINGS`,
   ekran ustawień, zapis `status1_settings`) → `devmap.js` (STRZELNICA - mapa
-  deweloperska, patrz Konwencje) → `input.js` → `testmode.js` → `main.js`
+  deweloperska, patrz Konwencje) → `devrig.js` (DEVRIG - edytor chwytu rąk,
+  patrz Konwencje) → `input.js` → `testmode.js` → `main.js`
   (bootstrap + pętla `tick`). Nowy plik wpinaj zgodnie z zależnościami wykonywanymi
   przy ładowaniu; odwołania z wnętrza funkcji mogą wskazywać „w przód".
 - Każdy plik `js/` zaczyna się od `'use strict';` (kod był modułem ES, czyli strict —
@@ -200,8 +209,10 @@ więc formy męskie w kwestiach DO gracza są OK.
   dominującym jointcie, statyczne: po nazwie węzła), liczy piwoty z bind pose'u
   (`inverseBindMatrices`) i pakuje pozycje do int16 + normalne do int8 w base64.
   Runtime (`buildModel(name, matFor)`) buduje instancję: każda część siedzi we
-  własnej `Group` ustawionej NA PIWOCIE, więc `parts.legL.rotation.x` macha nogą
-  jak dotąd. **Geometrie są cache'owane i współdzielone** (`_modelGeoCache`) —
+  własnej `Group` ustawionej NA PIWOCIE, więc `parts.slide.position.z` odciąga
+  zamek. Rigi, które muszą się GIĄĆ (dziś: `arms` i `sentinel`), idą osobną
+  ścieżką `skin: True` → `build_skinned` → `buildSkinnedModel` - jeden
+  `SkinnedMesh` plus drzewo kości, bo cięcie na sztywne party pęka na szwach. **Geometrie są cache'owane i współdzielone** (`_modelGeoCache`) —
   boty spawnują się dziesiątkami, świeży `BufferGeometry` na sztukę to przeciek.
   `matFor(srcMaterialName)` mapuje materiał ŹRÓDŁOWY na nasz — dzięki temu jeden
   mesh nosi dowolną liberię. `sockets` (np. `handR`) to punkty montażowe z bind
@@ -213,6 +224,11 @@ więc formy męskie w kwestiach DO gracza są OK.
   jointu, a piwoty z grafu węzłów. Nowy model = wpis w `MODELS` w skrypcie
   (mapowanie jointów/węzłów, `rot`, `height`/`length`), `--probe` do sprawdzenia
   orientacji i granic, potem przegenerowanie pliku i kredyt w README.
+  ⚠️ `height`/`length` normalizuje bryłę **tylko po częściach z `order`**
+  (2026-08-19) - część zmapowana poza `order` i tak wypada przy `pack()`,
+  więc mierzenie modelu geometrią, której nikt nie zobaczy, dawało zły
+  rozmiar (ręce: ucięte ramię `cut` zawyżało bbox, patrz `--probe`, wiersz
+  `!! parts not in order`).
   Konwencja broni: lufa wzdłuż **lokalnego −Z**, `length` = długość całkowita,
   `center: True`; wypieczone są `glock`, `mp5`, `mossberg` (części
   body+pump), `rifle`, `sniper`.
@@ -245,10 +261,10 @@ więc formy męskie w kwestiach DO gracza są OK.
   `GRENADE_MAX` 4; consumable → w Zbrojowni kampanii niewidoczny — misja
   zawsze startuje z 2). Licznik na HUD (`#hud-grenade`, `updateGrenadeHud`).
 - **Menu główne + panorama** (MENU-1, `js/menubg.js`): ekran `screen-menu`
-  (Kampania / Arena bez końca / Zbrojownia / Ustawienia / Statystyki) to
-  nadrzędna warstwa nawigacji; stary `screen-start` został jako ekran wejścia
-  do areny (skróty klawiszowe + seed, stan nadal `'menu'`), `backToMenu()`
-  wraca do menu. Układ w stylu Cyberpunka (decyzja użytkownika): kolumna
+  (obecnie: Strzelnica (dev) / Bestiariusz / Statystyki / Ustawienia) to
+  nadrzędna warstwa nawigacji; `backToMenu()` wraca do menu. Ekran wejścia
+  do areny (`screen-start`) został USUNIĘTY razem z pozycją „Arena bez
+  końca" (2026-08-18) - `startArena()` żyje tylko dla trybów `?test=`. Układ w stylu Cyberpunka (decyzja użytkownika): kolumna
   menu PO LEWEJ na półprzezroczystym gradientowym panelu
   (`.screen--panorama::before`), pozycje tekstowe — pierwsza w tealowej
   ramce, reszta czerwona, hover przebarwia na teal; linia postępu na dole
@@ -315,8 +331,67 @@ więc formy męskie w kwestiach DO gracza są OK.
   do statystyk służby (`missionEvent`/`missionShot` wychodzą przy `game.dev`);
   `backToMenu()` zdejmuje flagę. Diagnostyka: `__test.dev`; testy
   `tests/devmap_test.py`, zrzuty broni `tests/shots_weapons.py`.
-- Model bota: przód to lokalne **+Z** (yaw = `atan2(dx, dz)`); meshe głowy mają
-  `userData.isHead` (headshot ×2), wszystkie meshe `userData.enemyRef`.
+- **DEVRIG - edytor chwytu rąk** (`js/devrig.js`, 2026-08-19): klawisz **H**
+  na strzelnicy (`devKey` → `openDevRig()`), stan gry `'devrig'`. Powstał, bo
+  ustawianie chwytów przez zgadywanie liczb w `HANDS` i ocenianie efektu ze
+  zrzutu jest wolne i niedokładne (ciemne rękawice na ciemnej arenie).
+  **Edytuje DOKŁADNIE pola z `HANDS`** (`pos`, `channel`, `palm`, `fore`,
+  `upper`, `curl`, `scale`) i nic więcej. ⚠️ Suwaki kierunków muszą być
+  **CIĄGŁE**: wektor odniesienia dla obrotu dłoni wybierany progiem
+  przeskakiwał o 90° w trakcie przeciągania (cztery skoki na suwaku przechyłu
+  kanału), więc `drPerp` używa jednego stałego odniesienia, a zmiana kanału
+  przenosi obrót dłoni **minimalnym obrotem** (`drTurnPalm`) - bez żadnej osi
+  odniesienia, więc skoczyć nie ma jak. Pilnuje tego asercja
+  `controls: no jump while dragging` (przemiata każdy suwak przez cały zakres
+  i mierzy zmianę pozy na krok). ⚠️ **Kierunki edytuje się KĄTAMI,
+  nie XYZ** (2026-08-19): kierunek ma dwa stopnie swobody, więc trzy suwaki
+  XYZ to jeden za dużo (przeskalowanie całej trójki nic nie robi), a przy
+  `palm` cała składowa wzdłuż kanału i tak wypada przy ortogonalizacji -
+  ten suwak nie robił dosłownie nic. Dlatego: `fore`/`upper` = azymut +
+  wznios, dłoń = azymut i wznios **kierunku palców** (lokalne +Y kości dłoni,
+  wzdłuż śródręcza) + **obrót dłoni** (rolka wokół tej samej osi, czyli tej,
+  wokół której realnie kręci się nadgarstek). Zero rolki = poza bind rigu.
+  ⚠️ **Cała ramka jest przebudowywana z tych trzech liczb przy każdej
+  edycji**, więc poza jest CZYSTĄ FUNKCJĄ suwaków. Dwie wcześniejsze wersje
+  na tym poległy: (1) przenoszenie rolki razem z osią (minimalny obrót
+  nakładany na `palm`) to transport równoległy po sferze, czyli rzecz
+  ZALEŻNA OD DROGI - azymut → wznios → powrót na te same liczby zostawiał
+  dłoń obróconą o **39°**, więc to samo przeciągnięcie robiło za każdym razem
+  co innego; (2) celowanie dwoma kątami w KANAŁ stawia osobliwość dokładnie
+  tam, gdzie żyją chwyty - kanał to linia kostek, a ta biegnie wzdłuż
+  rękojeści pistoletu (pionowo) albo wzdłuż łoża (w osi lufy), więc jeden
+  albo drugi biegun zawsze przeszkadzał. Kierunek palców nigdy nie jest
+  pionowy w chwycie, a suwak wzniosu i tak kończy się na 85°. Test `controls: no inert slider` przeciąga KAŻDY suwak
+  i sprawdza, że poza faktycznie się zmienia - to nie jest kosmetyka, tylko warunek
+  działania: `hands.js` NIE orientuje dłoni Eulerami, tylko składa ramkę
+  (`handFrame`) i **rozwiązuje pozycję ramienia wstecz** z
+  kotwicy pięści (`fistAnchor`). Suwaki wpięte w `part.rotation` walczyłyby
+  z tym solverem i dawały liczby, których nie da się wyeksportować z powrotem
+  do pliku. Kontrolki generują się z bieżącego wpisu `HANDS`, nie z listy na
+  sztywno. Podgląd przelicza `regripArms()` (hands.js) - `attachArms()`
+  alokowałoby 20 grup i meshy na każdą klatkę przeciągania suwaka.
+  ⚠️ **Stałe `CURL_*` są WSPÓŁDZIELONE** przez kilka broni w weapons.js,
+  więc `devRigIsolate()` klonuje je per broń przy pierwszym otwarciu -
+  bez tego jedna zmiana po cichu przestawiałaby pozostałe bronie.
+  Zmiana leci równolegle na podgląd i na ŻYWY viewmodel, więc po zamknięciu
+  edytora gra pokazuje nowy chwyt bez przebudowy. Własna scena i kamera
+  orbitalna renderowane wspólnym composerem (ten sam chwyt co MenuBg
+  i Bestiariusz: `main.js` przestawia `renderPass` przy stanie `'devrig'`);
+  ekran jest przezroczysty, więc `body.devrig` chowa HUD, a `.screen--devrig`
+  musi zdejmować `backdrop-filter` (bazowy `.screen` rozmywa tło).
+  Jasne, neutralne światło i szare tło są celowe - o to w tym narzędziu chodzi.
+  Eksport/import całej tablicy `HANDS` przez JSON (wklej wprost do
+  weapons.js), „Przywróć" wraca do wartości z pliku. Diagnostyka:
+  `__test.devrig` (`<broń>:<L|R>` albo null); testy `tests/devrig_test.py`.
+- Model bota: przód to lokalne **+Z** (yaw = `atan2(dx, dz)`); wszystkie meshe
+  mają `userData.enemyRef`. **Headshot (×2) czyta `hitFaceIsHead(hit)`
+  z modelkit.js**, nie flagę na meshu: podwozie SENTINEL jest JEDNYM skinem,
+  więc `userData.isHead` nie ma się na czym zawiesić. Wypiek klasyfikuje każdy
+  trójkąt po kości niosącej najwięcej jego wagi (`headBones` w
+  `tools/gen_models.py`), sortuje trójkąty głowy w ciągłe serie i wystawia ich
+  zakresy jako `mesh.userData.headFaces`; runtime porównuje z nimi `faceIndex`
+  raycastu. Modele sztywne dalej używają `userData.isHead` i ta sama funkcja je
+  obsługuje. Zmierzona strefa głowy: 1,85-2,25 m (barki kończą się na 1,77).
 - Typy botów (`ENEMY_TYPES`): pole `weapon` ('pistol' | 'auto' | 'shotgun') steruje
   ostrzałem w `enemyFire()` — 'auto' strzela seriami (`burstCount`/`burstInterval`),
   'shotgun' ma obrażenia malejące z dystansem i krótki `range` (musi podejść).
@@ -453,6 +528,166 @@ więc formy męskie w kwestiach DO gracza są OK.
   Balans: `spread` w WEAPONS to rozrzut Z BIODRA (celowo duży); ADS mnoży przez
   `adsMul` (domyślnie 0.3). ADS blokuje sprint i spowalnia ruch ×0.55.
   FOV: luneta 24° / ADS 60° / sprint+bhop poszerzają.
+- **Ręce gracza (BRON-2, 2026-08-18)** - `js/hands.js` + konfiguracja `HANDS`
+  w weapons.js; model `arms` („Rigged FPS Arms" - J-Toastie, CC-BY) wypiekany
+  w `tools/gen_models.py`:
+  - **Wypiek = PRAWDZIWY SKIN, nie sztywne party** (2026-08-19): `arms` idzie
+    przez `build_skinned()` w `tools/gen_models.py` - jeden `SkinnedMesh` plus
+    oryginalne drzewo kości (`UpperArm → LowerArm → Hand → trzy łańcuchy palców`
+    na stronę, 24 kości). Poprzednie podejście tnące mesh po dominującej kości
+    **pękało na każdym szwie**, gdy dwa party się rozjechały, a wycięte ramię
+    (`cut`) zostawiało otwarty przekrój przy łokciu - stąd dziury i prześwity.
+    Skin nie ma żadnego z tych problemów i **daje NADGARSTEK**, czyli staw,
+    który decyduje, dokąd ucieka przedramię. Całe ramię jedzie w komplecie,
+    z barkiem - to, co wyjdzie za kamerę, obcina near plane, dokładnie jak
+    w każdym FPS.
+    ⚠️ Trzy pułapki wypieku, wszystkie zweryfikowane na tym pliku:
+    (1) **`bindMatrix` musi być JEDNOSTKOWA** - `jointWorld · IBM` samo
+    przenosi surowy `POSITION` do przestrzeni sceny, więc podanie macierzy
+    węzła mesha nakłada ten transform drugi raz i zapada bryłę;
+    (2) korzeniem obu łańcuchów jest węzeł **`Armature`** (skala 188), który
+    NIE jest kością - jego macierz świata trzeba wmnożyć w `xform` grupy
+    roota, inaczej wszystkie translacje kości kurczą się do ułamka długości;
+    (3) rodzic korzenia łańcucha musi dawać `parent: -1`, a nie `null` -
+    w JS `null >= 0` jest prawdą i oba ramiona lądują na pierwszej kości.
+    Skala idzie z **rozpiętości kości** (`normPair`: łokieć→czubek palca
+    = `length` 0.42), nie z bboxa - bark już jedzie w komplecie, więc bbox
+    zmniejszyłby to, co faktycznie widać.
+  - **Cztery niezależne sterowania na dłoń** (`HANDS` w weapons.js, wszystkie
+    edytowalne w DEVRIG), wszystkie w **przestrzeni modelu broni**:
+    `pos` (gdzie ląduje zamknięta pięść), `channel` + `palm` (ramka chwytu =
+    orientacja kości DŁONI: linia kostek, czyli oś dziury w pięści, przez
+    którą przechodzi chwyt + kierunek, w który patrzy GRZBIET dłoni),
+    `fore` (przedramię, łokieć→nadgarstek) i `upper` (ramię, bark→łokieć).
+    `fore`/`upper` to dokładnie to, czego sztywna wersja nie umiała wyrazić:
+    tam przedramię było zaryglowane prostopadle do pięści, więc ramię trzymające
+    broń poprawnie musiało celować uciętym końcem wprost w kamerę.
+    Pozowanie: `aimBone` obraca kość tak, żeby kierunek do jej DZIECKA trafił
+    w zadany wektor (roll zostaje - od limby chcemy tylko „dokąd celuje"),
+    `orientBone` ustawia orientację dłoni wprost na bazie pozy bind, a palce
+    zginają się wokół osi zapisanej **w ich własnej ramce bind**, więc kąt
+    zgięcia znaczy to samo niezależnie od obrotu nadgarstka nad nim.
+    Umiejscowienie to czysta translacja: `placeArm` przesuwa CAŁE ramię za
+    bark, aż kotwica chwytu (`gripAnchor`) trafi w `pos` - żadnego IK.
+    ⚠️ **Kotwica chwytu jest ZAMROŻONA** (2026-08-19): mierzy się ją RAZ, na
+    pozie bind, i trzyma w układzie kości dłoni, więc jeździ tylko
+    z nadgarstkiem. Wcześniej `placeArm` używał kotwicy mierzonej na
+    ZGIĘTEJ pięści (`fistAnchor`), więc każdy ruch suwaka palca przesuwał
+    dziurę w pięści, a solver ciągnął za nią CAŁE ramię: +0,3 rad zjeżdżało
+    nadgarstkiem o centymetr, wyzerowanie zgięcia o trzy. Palce mają się
+    zamykać wewnątrz nieruchomej dłoni - pilnuje tego asercja
+    `curl: closing the fingers leaves the arm where it is`. Żywa kotwica
+    (`fistAnchor`) została do jednego zadania: `attachToFist` sadza w niej
+    magazynek/nabój, a ten MA jechać z palcami. Przy zmianie definicji
+    kotwicy trzeba przeliczyć `pos` ORAZ kotwice przeładowania
+    (`mag`/`low`/`port`/`bolt`) - wszystkie są w tej samej przestrzeni.
+    ⚠️ **`handFrame` zwraca orientację BEZWZGLĘDNĄ, nie deltę** - buduje bazę,
+    na której mają wylądować własne osie dłoni, więc `orientBone` NIE może
+    domnażać do niej pozy bind (nakładało ten sam obrót dwa razy i trzymało
+    każdy nadgarstek zgięty ~120°: prosisz o jeden kierunek, dostajesz obrót
+    nałożony dwa razy - to były te „powykręcane" dłonie). Pilnuje tego asercja
+    `wrist: hand reaches the orientation it was asked for`.
+    ⚠️ **Ramka siada na WŁASNYCH osiach kości dłoni** (zmierzone na tym rigu,
+    te same na obu dłoniach): lokalne **+Z = linia kostek** (`channel`),
+    lokalne **+X = normalna dłoni**, więc `palm` (grzbiet) to `-X`, a lokalne
+    **+Y biegnie wzdłuż palców**. Remap 2026-08-19: wcześniej `channel`
+    lądował na lokalnym X, czyli suwak „kanał" przechylał w rzeczywistości
+    normalną dłoni, a „grzbiet dłoni" celował palcami - obie etykiety kłamały.
+    Orientacje broni się NIE zmieniły (liczby zostały przeliczone, nie
+    przestrojone: `channel_new = channel_old × (-palm_old)`,
+    `palm_new = -channel_old`); pilnuje tego asercja
+    `wrist: channel really is the knuckle line`, która porównuje pole
+    `channel` ze zmierzoną linią kostek (znak jest lustrzany między dłońmi,
+    więc liczy się `|dot|`).
+    ⚠️ **Wartości neutralne = poza BIND rigu, zmierzona ze szkieletu**
+    (`NEUTRAL_R`/`NEUTRAL_L` w weapons.js: kanał `[1,0,0]`, grzbiet `[0,1,0]`
+    dla OBU dłoni - ramiona są lustrzane pozycją, ale orientacja bind obu
+    kości dłoni jest ta sama). Dobrane „na oko" były 90° obok i łamały
+    nadgarstek już na starcie. Orientacja dłoni jest ustawiana bezwzględnie,
+    a przedramię celowane osobno, więc **różnicę zawsze pochłania nadgarstek** -
+    dlatego DEVRIG pokazuje `Zgięcie nadgarstka` (żółte >45°, czerwone >75°)
+    i osobno `Skręt przedramienia` (żółte >80°, czerwone >110°).
+    ⚠️ **Skręt idzie do PRZEDRAMIENIA, nie do nadgarstka** (`rollForearm`
+    w hands.js, 2026-08-19): przedramię pronuje (kość promieniowa obraca się
+    nad łokciową), nadgarstek nie. `aimBone` celuje przedramieniem tylko
+    kierunkiem i zostawia jego rolkę w bindzie, więc bez tego przeniesienia
+    KAŻDY stopień obrotu dłoni siadał na nadgarstku i ścinał skórę na stawie -
+    obrotu nadgarstka po prostu nie dało się wyrazić. Oś przeniesienia biegnie
+    łokieć → nadgarstek, czyli przez początek kości ORAZ przez nadgarstek,
+    więc dłoń nie rusza się z miejsca. Pilnuje tego asercja
+    `wrist: the forearm takes the roll, not the joint`.
+    ⚠️ **Zgięcie czyta się z POZOWANEGO stawu** (`devRigWristAngles`: kość
+    dłoni względem własnej pozy bind, czyli w układzie przedramienia), a skręt
+    z tego, ile pronacji wzięło przedramię (`hand.foreTwist`). Poprzednia
+    wersja porównywała ramkę chwytu z orientacją
+    bind w przestrzeni broni: zgadzało się to tylko dopóki przedramię stało
+    w bindzie (przy lewej dłoni pistoletu pokazywało 17° zamiast 12°),
+    a przeciągnięcie suwaka przedramienia przez 124° realnego zgięcia
+    nadgarstka **w ogóle nie ruszało wskazania z 0** - jedyna kontrolka,
+    która naprawia wykręcony nadgarstek, nie dawała żadnego sprzężenia
+    zwrotnego. Pilnuje tego asercja
+    `wrist: readout follows the joint, not the bind pose`.
+    ⚠️ **Osie zawiasów palców NIE są zgadywane** - `fingerHinges()` mierzy je
+    z rigu: oś zgięcia = kierunek palca (staw → czubek) × normalna dłoni
+    (lokalne +X kości dłoni), więc dodatni kąt ZAMYKA palec. Kciuk ma osobne
+    osie per kość (jego stawy nie są równoległe), a `tAdd` jedzie wokół
+    normalnej dłoni. Normalna dłoni to zwykły kierunek i wychodzi TA SAMA na
+    obu dłoniach (ramiona są lustrzane względem x), więc przemiatanie kciuka
+    musi mieć znak per strona, a osie zgięcia (iloczyny wektorowe) odwracają
+    się z lustrem same. ⚠️ **Nie licz osi z pierwszego odcinka łańcucha**
+    (`p1-p0`, poprzednia wersja): kość 0 każdego palca siedzi w środku
+    nadgarstka, a jej odsunięcie do kostki biegnie W POPRZEK zgięcia, po linii
+    kostek - normalna takiej płaszczyzny jest 90° obok osi zgięcia i **zmienia
+    znak między wskazującym a parą środkowy+serdeczny** (wachlują na przeciwne
+    strony), więc palce przechodziły przez siebie nożycowo zamiast się zamykać.
+    Pilnują tego asercje `curl: every chain closes toward the palm` i
+    `curl: thumb sweeps toward the fingers` w `tests/devrig_test.py`.
+    ⚠️ `poseArm` **zaczyna od zresetowania kości do pozy bind**: `aimBone`
+    obraca od BIEŻĄCEGO kierunku, więc bez resetu roll z poprzedniej edycji
+    jedzie dalej i te same liczby przestają znaczyć tę samą pozę (poza musi
+    być czystą funkcją danych). ⚠️ `handFrame` musi **odsiewać dane
+    zdegenerowane** - zerowa oś albo `palm` równoległy do kanału zwijają bazę,
+    a `setFromRotationMatrix` oddaje wtedy kwaternion NIEJEDNOSTKOWY, który
+    ścina dłoń zamiast ją obracać; `aimBone` z zerowym celem zostawia kość
+    w pozie bind. Oba przypadki pilnuje `tests/devrig_test.py`.
+    ⚠️ Kierunki są w przestrzeni BRONI, nie roota rąk (root niesie własny obrót
+    z wypieku) - `aimBone`/`orientBone` przeliczają przez `gunRoot`.
+    Rekwizyty przeładowania wiesza `attachToFist()` na kości dłoni, odkręcając
+    skalę kości (geometria propa jest w jednostkach broni).
+  - **Zawieszenie:** ramiona są dziećmi roota modelu BRONI (nie kamery!), więc
+    ADS/sway/odrzut/pozy przeładowania niosą je za darmo; pozycje w `HANDS`
+    są w przestrzeni modelu broni (sondowane z js/models.js). Prawa dłoń na
+    chwycie/spuście, lewa: pistolet - druga dłoń na rękojeści, SMG/karabin -
+    łoże, strzelba - pompa, snajperka - przednie łoże.
+  - **Animacje przeładowania:** startReload buduje PLAN (`relPlan`: styl
+    mag/shell/shellBolt, okno cykli, `events[]` - jednorazowe dźwięki
+    i przełączenia propów odpalane po przekroczeniu ułamka czasu t). Pozę
+    liczy co klatkę `applyReloadPose(vm, t)` z tabel `T_MAG`/`T_MAG_E`
+    (smoothstep `vmEase`/`vmPulse`), dłonie przestawia `blendArm` (lerp
+    pozycji, orientacja zostaje ramką chwytu). Mag-styl: broń lekko w górę,
+    lewa dłoń wyjmuje/wsadza magazynek (prop `magProp` w pięści); shell-styl:
+    broń w dół (strzelba dodatkowo rolka, snajperka odsłania komorę), lewa
+    dłoń nosi pojedyncze naboje (`shellProp`). **Od pustego magazynka**
+    sekwencja jest DŁUŻSZA (`reloadDuration × 1.3`) i kończy ją przeładowanie:
+    zamek (mag-styl lewą, snajperka PRAWĄ dłonią) albo pompa (strzelba).
+    Dźwięki są keyframowane z animacji: `AudioSys.grab/magOut/magIn/boltPull/
+    shellIn/pump` (stary `reloadSeq` skasowany) - nowa broń = plan + kotwice
+    w `HANDS`.
+  - **Sprint:** `sprintBlend` → broń w dół i do ciała (`SPRINT_POS/ROT`,
+    battlefieldowe noszenie); zbijają go ADS, przeładowanie i strzał
+    (`firing`/`fireCooldown` - seria trzyma broń w górze).
+  - **Luneta z podniesieniem:** PPM na snajperce NIE włącza lunety od razu -
+    `zoomBlend` (~0.32 s) wiezie broń „do oka" (`ZOOM_RAISE`), overlay+FOV 24°
+    +czułość 0.35 wchodzą dopiero na szczycie (`setScopeOverlay`); puszczenie
+    PPM zdejmuje overlay natychmiast, broń opada. `spreadZoom` obowiązuje
+    tylko pod pełną lunetą (`scoped`), w trakcie podnoszenia strzela się
+    rozrzutem z biodra. Diagnostyka: `__test.scoped`.
+  - **Reset:** `resetWeaponFx()` (zeruje blendy, plan, propy, overlay,
+    pozy dłoni) woła `resetLevelState`; zmiana broni czyści propy starego
+    viewmodelu (`clearReloadVisuals`).
+  - Widoczność kropki celowniczej przy ADS dalej pilnuje
+    `tests/shots_weapons.py` (raycast osi kamery) - ręce nie mogą jej
+    zasłaniać.
 - Bunnyhop: `player.hopBoost` (do 1.35) rośnie za skok w oknie 0.25 s po lądowaniu
   (`player.sinceLand`), wygasa po dłuższym pobycie na ziemi; sprint nie wymaga ziemi.
 - Rozróżnianie botów (BOT-1, 2026-08-18): **w grze został sam PATROL** (reszta
@@ -460,8 +695,7 @@ więc formy męskie w kwestiach DO gracza są OK.
   (model `sentinel` z `MODEL_DATA`), więc **reguła „kształt głowy = typ" już
   nie obowiązuje**. Typ czytamy z: odcienia liberii (`t.body`), koloru
   akcentu (`t.accent` na materiale `Material.003` = świecące elementy), ROZMIARU
-  sylwetki (scout ×0.93, assault ×1, heavy ×1.14), grubości naramienników i dekoru
-  głowy (scout: antena, assault: daszek, heavy: obręcz — wszystko z `isHead`).
+  sylwetki (scout ×0.93, assault ×1, heavy ×1.14) i dekoru głowy.
   Podwozie ma 2,15 m (`height` w `tools/gen_models.py`), sylwetka ×1.05 / ×1 /
   ×1.15 — bot MUSI górować nad graczem (`PLAYER_EYE` 1,7), inaczej czyta się
   jak zabawka. Liberia PATROLU to granat LAPD (`0x30528c`); świecące panele
@@ -472,25 +706,46 @@ więc formy męskie w kwestiach DO gracza są OK.
   (decyzja użytkownika 2026-08-18): żadnych kogutów, naramienników, pasa służby
   ani anteny — model ma własną i doklejane bryły odcinały się od sylwetki.
   Strobo (`matStrobeR/B`) i biały pas nosi już tylko WAŻKA.
-  **Postawa strzelecka:** `poseArm(part, socket, x, y, z)` obraca sztywne ramię
-  kwaternionem `setFromUnitVectors` (kierunek bind-pose'owej dłoni → kierunek
-  celu), zamiast zgadywać kąty Eulera. Pozujemy TYLKO prawe ramię (cel
-  -0.13, 1.47, 0.62 — wyprostowane wprost, na wysokości barku); lewe zostaje
-  w bind pose przy nodze (decyzja użytkownika 2026-08-18: broń w jednej ręce).
-  Cel MUSI być na wysokości barku (~1.5) — niżej ramiona opadają i z przodu
-  czyta się to jak skrzyżowane ręce. Broń
-  wisi w gnieździe `handR` na `parts.armR` i dostaje ODWROTNOŚĆ kwaternionu
-  ramienia, dzięki czemu lufa zostaje równoległa do podwozia. Pistolet bota to
-  ten sam wypieczony Glock co u gracza (`buildModel('glock')`, obrót Y o π —
-  model celuje w -Z, bot w +Z). Nogi to `parts.legL/R` (pivot w biodrze).
+  **Podwozie jedzie jako PRAWDZIWY SKIN w czystej pozie BIND** (decyzja
+  użytkownika 2026-08-19): `buildSkinnedModel('sentinel', matFor)` zamiast
+  `buildModel`. Wcześniej rig był cięty na sztywne party po dominującej kości,
+  a w geometrię wypalona była poza (zgięte palce prawej dłoni) - party pękały
+  na szwach przy każdym obrocie, a wypalona poza zamrażała jeden chwyt na stałe.
+  Teraz `MODELS['sentinel']` ma `skin: True` i NIE MA `pose`, `joints`,
+  `sockets` ani `vertexSockets`. **Żadna poza i żadna animacja szkieletu nie
+  jest już nakładana** - ani w wypieku, ani w `buildEnemyModel`, ani
+  w `updateEnemies` (wahadło nóg `legL/legR` zostało usunięte; przy `enemy`
+  jest teraz `bones`, nie `legL/legR`). To celowo czysta kartka: pozy
+  i animacje buduje się od zera na `model.bones`, kluczowanych nazwami kości
+  źródłowych (`lower body`, `Upper body`, `neck`, `head`, `upper_arm.L/R`,
+  `forearm.L/R`, `hand.L/R`, `thumb/f_middle/f_ring .01/.02 .L/R`,
+  `thigh/shin/foot/toe/heel.02 .L/R` - 32 kości). Zostaje tylko podskok całej
+  grupy w `tick` (`g.position.y`), bo to transform grupy, nie riga.
+  `gunTip` (kotwica smug) wisi na razie na grupie bota (0, 1.45, 0.35) -
+  przenieś go na `bones['hand.R']` dopiero wtedy, gdy powstanie poza celowania.
+  Ograniczenia riga: 3 palce na dłoń (kciuk, środkowy, serdeczny, po 2 człony),
+  brak obojczyków i pośrednich kręgów (`lower body` → `Upper body` to jeden
+  staw), więc skręt tułowia będzie sztywny.
+  ⚠️ **Nie zgaduj, w jakiej przestrzeni leżą surowe wierzchołki.** `arms` mają
+  IBM-y znoszące się z grafem węzłów (surowy `POSITION` = przestrzeń sceny),
+  ale Ross NIE: jego `jointWorld·IBM` to macierz węzła mesha (skala 100), czyli
+  surowe pozycje są ~100× mniejsze niż poza bind. `build_skinned` liczy więc
+  pozę bind tak jak zrobi to GPU (suma `jointWorld·IBM` po wagach) i dopiero na
+  niej mierzy `height`/`ground`. Na surowych wierzchołkach dron wychodził
+  ~100× za wysoki. Ten sam rig ma też własną konwersję Z-up → Y-up w węźle
+  mesha, więc `rot` MUSI być puste (poza bind wychodzi Y-up, przodem w +Z).
+  ⚠️ FBX2glTF zostawia w tym pliku 180 wierzchołków z wagami **NaN** (wszystkie
+  wskazują slot 0 = `lower body`); NaN przechodzi przez normalizację i zabija
+  kwantyzator, więc wypiek podmienia je na pełną wagę pierwszego jointu.
+  PATROL nie nosi na razie modelu broni (decyzja użytkownika 2026-08-18:
+  wypieczony Glock nigdy nie siedział przekonująco w pięści).
 - Anti-stuck botów: gdy faktyczny ruch < 30% nominalnego przez 0.35 s → objazd boczny
   (`avoidT`/`avoidDir`) na ~1 s. Faktyczną prędkość mierzy się PO resolveCollisions.
 - Generator aren: `generateArena(ARENA_SEED)` (mulberry32, seed z `?seed=N` albo
   losowy per załadunek). Przeszkody TYLKO osiowe; `keepClear` chroni spawn gracza,
   spawny botów i startowe pickupy; MARGIN 2.2 gwarantuje przesmyki dla botów.
   Układ jest stały w obrębie sesji (restart nie przebudowuje świata). Determinizm
-  testuje `__test.arenaHash`. Głowy botów mają być zagłębione w tułów (top tułowia
-  1.575) — patrz `headY` w buildEnemyModel.
+  testuje `__test.arenaHash`.
 - Smugi strzałów botów są przycinane przed graczem (`_tv.lerp(_eGunPos, 0.12)`) —
   inaczej przelatują przez kamerę jako wielkie wstęgi.
 - Kołysanie kamery: roll nadpisywany w całości, pitch-bob nakładany **różnicowo**
@@ -601,17 +856,28 @@ więc formy męskie w kwestiach DO gracza są OK.
   Po wycięciu kampanii zostały: `phase0` (cykl życia świata, determinizm areny,
   sklep, pełny bieg `?test=win`), `phase1` (generator aren), `phase7` (ustawienia,
   wślizg, granaty, tarcza skrótów), `menu_test` (menu + panorama + motyw),
-  `bestiary_test` (bestiariusz), `devmap_test` (strzelnica dev) oraz
+  `bestiary_test` (bestiariusz), `devmap_test` (strzelnica dev),
+  `devrig_test` (edytor chwytu) oraz
   `shots2.py`/`shots_models.py`/`shots_weapons.py` (zrzuty do oceny wizualnej;
   `shots_weapons.py` liczy też projekcję przyrządów ADS na oś kamery). Testy kampanii (`phase2`-`phase6`, `phase5d`, `status1_test`,
   `shots.py`) pojechały razem z nią do `_kosz/kampania/tests/`.
-  Po większych zmianach odpal przynajmniej `phase0_test.py` i `menu_test.py`.
+- ⚠️ **NIE odpalaj pełnej regresji po każdej zmianie** (decyzja użytkownika,
+  2026-08-19) — każdy zestaw startuje własną przeglądarkę i przemiał całości
+  trwa kilka minut. Testy odpala **użytkownik**, komendą `/tests`
+  (`.claude/commands/tests.md`).
+  Ty uruchamiasz **tylko to, co bezpośrednio weryfikuje bieżącą zmianę** —
+  najczęściej jeden zestaw albo doraźny skrypt w katalogu scratchpad. Jeśli
+  uważasz, że zmiana jest ryzykowna szerzej, **napisz to i zaproponuj `/tests`**
+  zamiast odpalać wszystko z automatu. Wyjątki, kiedy wolno sprawdzić bez
+  pytania: zmiany w broni/rękach/viewmodelach warto przepuścić przez
+  `tests/shots_weapons.py` (liczy projekcję przyrządów ADS — na ciemnym zrzucie
+  nie da się tego ocenić okiem).
 - Hooki diagnostyczne w grze (nie usuwać):
   - `window.__test` — stan aktualizowany co klatkę (state, hp, score, wave, enemies,
     ammo, fov, credits, headshots, endless, errors[], mode, difficulty,
     mission {id, active, time, kills, objectives[]}, seed, arenaHash,
     arenaReachable, pointerLock/wantLock, crouch/eyeH, slide, grenades,
-    settings, pressure, radioHold, menuBg, dev);
+    settings, pressure, radioHold, menuBg, dev, devrig, scoped);
     audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`, `menuMusic`;
   - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
     (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);

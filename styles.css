@@ -895,3 +895,66 @@ body.dev-mode #dev-hud { display: block; }
   color: #00ebc7;
   text-align: center;
 }
+
+/* ==================== DEVRIG - edytor chwytu (dev) ==================== */
+/* transparent screen: the editor's own scene (js/devrig.js) renders behind it,
+   so only the control panel is solid; main.js hides the HUD via body.devrig */
+.screen--devrig {
+  background: transparent;
+  backdrop-filter: none;  /* .screen blurs its backdrop; the preview must stay sharp */
+  justify-content: flex-end; align-items: stretch;
+  pointer-events: none;   /* orbit drags land on the document, not the overlay */
+}
+body.devrig .hud,
+body.devrig #crosshair,
+body.devrig #vignette { display: none !important; } /* beats the id-level rules */
+
+#devrig-panel {
+  width: 372px;
+  max-height: 100vh;
+  overflow-y: auto;
+  background: rgba(12, 15, 28, 0.94);
+  border-left: 1px solid var(--panel-border);
+  padding: 12px 14px 18px;
+  font-size: 12px;
+  pointer-events: auto;
+}
+.dr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.dr-title { color: #ff8906; letter-spacing: 0.08em; font-weight: 700; }
+.dr-x {
+  background: none; border: 1px solid var(--panel-border); color: #ff5470;
+  border-radius: 4px; cursor: pointer; padding: 2px 8px;
+}
+.dr-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.dr-tab {
+  flex: 1 1 auto; padding: 4px 6px; font-size: 11px; cursor: pointer;
+  background: rgba(35, 41, 70, 0.7); color: #9aa6c8;
+  border: 1px solid var(--panel-border); border-radius: 4px;
+}
+.dr-tab.on { color: #00ebc7; border-color: #00ebc7; }
+.dr-section {
+  color: #ffd166; letter-spacing: 0.06em; font-size: 11px;
+  margin: 12px 0 5px; border-bottom: 1px solid var(--panel-border); padding-bottom: 3px;
+}
+.dr-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.dr-lab { flex: 0 0 108px; color: #9aa6c8; }
+.dr-row input[type="range"] { flex: 1 1 auto; min-width: 0; accent-color: #00ebc7; }
+.dr-num, .dr-sel {
+  flex: 0 0 68px; background: rgba(35, 41, 70, 0.8); color: #e8ecf8;
+  border: 1px solid var(--panel-border); border-radius: 3px; padding: 2px 4px;
+  font-family: inherit; font-size: 11px;
+}
+#devrig-json {
+  width: 100%; height: 130px; resize: vertical;
+  background: rgba(6, 8, 16, 0.9); color: #9aa6c8;
+  border: 1px solid var(--panel-border); border-radius: 4px;
+  font-family: ui-monospace, monospace; font-size: 10px; padding: 6px;
+}
+.dr-btns { display: flex; gap: 6px; margin-top: 6px; }
+.dr-btns .btn { flex: 1 1 0; padding: 5px 4px; font-size: 11px; }
+.dr-msg { color: #00ebc7; min-height: 15px; margin-top: 6px; }
+.dr-hint { color: #6b7699; margin-top: 4px; font-size: 10px; line-height: 1.5; }
+.dr-info { justify-content: space-between; margin: 2px 0 6px; }
+.dr-info b { color: #00ebc7; }
+.dr-info b.dr-warn { color: #ffd166; }
+.dr-info b.dr-bad { color: #ff5470; }

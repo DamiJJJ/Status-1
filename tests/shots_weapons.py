@@ -36,7 +36,9 @@ with sync_playwright() as pw:
         time.sleep(0.6)
         page.screenshot(path=str(OUT / f"w_{wid}_hip.png"))
         page.mouse.down(button="right")
-        time.sleep(1.2)
+        # dt is clamped, so under SwiftShader game time runs slower than the
+        # wall clock - a short wait catches ADS mid-blend and the shot lies
+        time.sleep(4.0)
         page.evaluate("camera.rotation.set(0, 0, 0)")
         time.sleep(0.2)
         page.screenshot(path=str(OUT / f"w_{wid}_ads.png"))
