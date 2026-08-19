@@ -91,6 +91,7 @@ function buildViewmodel(id) {
       m.root.position.set(0, -0.026, -0.08);
       g.add(m.root);
       g.userData.slide = m.parts.slide;   // cycles on every shot
+      g.userData.magPart = m.parts.mag;   // drops out on a reload
       /* Sights are the model's own: a front blade (top y 0.1001 in model space)
          and a rear tab (0.1043). They are 4.2 mm out of level over a 245 mm
          sight radius, so instead of gluing anything on, the whole pistol is
@@ -259,9 +260,55 @@ const HANDS = {
          upper: [0.4829, -0.0872, -0.8713],
          curl: { f: [0.00, 0.69, 0.00], i: [0.32, 0.00, 0.00],
                  t: [0.08, 1.25, 0.49], tAdd: -0.13 } },
-    mag: [-0.0021, -0.0223, 0.0699], low: [-0.0521, -0.5273, 0.2749],
-    bolt: [-0.0021, 0.1277, 0.0849], pull: 0.06,
-    magDim: [0.018, 0.07, 0.032],
+    /* Reload anchors, re-derived from the model once the grip above was
+       dialled in (2026-08-19). They are placements for the LEFT fist, in the
+       same space as `pos`, and the old numbers predate that grip: `mag` sat
+       at y -0.022, which is trigger height, so the hand reached INTO the
+       frame instead of down to the magwell. Measured off the geometry
+       (tools/gen_models.py --probe):
+         magazine  y[-0.104 0.025] z[0.048 0.134] -> axis (0, 0.832, -0.555)
+         slide     y[ 0.056 0.104] z[-0.147 0.132], rear serrations at z ~0.11
+       ⚠️ `bolt` sits ABOVE the slide top (0.104), not on the slide axis: the
+       anchor is the centre of the fist HOLE, so putting it level with what
+       the hand grabs buries the glove in the gun (user report 2026-08-19).
+       `low` is just under the frame, where a fresh magazine comes from - the
+       arm is anchored at the shoulder now (js/hands.js), so an anchor further
+       down than the arm is long would simply stop short in mid-air. */
+    mag: [-0.0292, -0.1039, 0.1146], low: [-0.0692, -0.3339, 0.1846],
+    /* Where the EMPTY magazine goes when it is pulled: 0.17 down its OWN
+       axis, far enough to clear the well before it is hidden. The gun ships
+       its magazine as its own part for exactly this (tools/gen_models.py).
+       ⚠️ The axis is (-0.0038, 0.9615, -0.2746) pointing up - MEASURED as the
+       principal axis of the magazine's own vertices, not read off its
+       bounding box. The bbox corners suggest a 34 degree rake; the magazine
+       actually leans 16. Sliding it out along the bbox guess dragged it
+       through the front and back walls of the grip, which is the magazine
+       poking out of the frame and z-fighting the grip (user report
+       2026-08-19). */
+    magDrop: [0.0006, -0.1635, 0.0467],
+    bolt: [-0.0044, 0.1244, 0.1043], pull: 0.055,
+    magDim: [0.026, 0.115, 0.042],   // matches the gun's own magazine
+    /* The reload grips. Sliding the FIRING grip onto a magazine is what made
+       the old animation read wrong: the left hand kept its knuckle line
+       vertical against the frame and its fingers curled around nothing. Each
+       entry overrides the fields it names and inherits the rest from `l`;
+       `upper` is the elbow hint the IK swings the joint into. */
+    grips: {
+      // magazine held base-in-palm, its body threaded through the fist, so
+      // the channel runs along the magazine
+      mag: { channel: [0, 0.832, -0.555], palm: [-0.93, 0.05, -0.36],
+             upper: [0.18, -0.42, 0.89],
+             curl: { f: [0.85, 0.92, 0.52], i: [0.80, 0.86, 0.46],
+                     t: [0.18, 0.45, 0.22], tAdd: 0.34 } },
+      // overhand slide rack: the slide runs through the fist along the
+      // barrel and the back of the hand faces up. This is the grip the old
+      // animation could not express at all - 90 deg off the firing one, and
+      // no amount of moving the fist covers that.
+      bolt: { channel: [0, 0, 1], palm: [-0.42, 0.90, 0],
+              upper: [-0.05, -0.48, 0.88],
+              curl: { f: [1.00, 1.05, 0.60], i: [0.96, 1.00, 0.56],
+                      t: [0.40, 0.55, 0.30], tAdd: 0.55 } },
+    },
   },
   smg: {
     style: 'mag', scale: 1.05,
@@ -338,10 +385,85 @@ let vmRecoil = 0;
 
 /* ==================== POZY / ANIMACJE VIEWMODELU ==================== */
 
-/* sprint: gun swings down and in toward the body (Battlefield-style) */
-const SPRINT_POS = [-0.05, -0.11, -0.03];
-const SPRINT_ROT = [-0.38, 0.55, 0.14];
+/* Sprint carry (2026-08-19): the gun drops and comes IN toward the middle of
+   the frame, muzzle down, still held in BOTH hands (user call - a one-handed
+   carry was tried first and rejected: it read wrong on the long guns, which
+   nobody runs with by the pistol grip).
+
+   Both hands used to swing out to the right with it (user report): the arms
+   hang under the gun's model root, so the yaw carried the shoulders along
+   too. They no longer do - the shoulders are anchored to the body (see
+   armBodyFix) and only the joints move, which is also why the yaw here can
+   stay small: it no longer has to be paid for by the arms.
+
+   The hands stay ON the gun, so the sprint targets carry no pose of their
+   own - only the body transform the shoulders are held against. */
+const SPRINT_POS = [-0.06, -0.20, 0.05];
+const SPRINT_ROT = [-0.55, 0.50, 0.34];
+/* Per-weapon deviation from that carry. The drop is what takes the hands out
+   of frame, and how much of the gun is left depends on how long it is: a
+   rifle still lies across the bottom edge, a pistol at the same offset is
+   gone completely. "Barely visible or invisible depending on the weapon" was
+   the ask (user 2026-08-19) - gone entirely was not. */
+const SPRINT_TWEAK = { pistol: { pos: [0.02, 0.10, -0.02], rot: [0.12, -0.12, -0.08] } };
+const _spPos = [0, 0, 0];
+const _spRot = [0, 0, 0];
+
+function sprintCarry(id) {
+  const t = SPRINT_TWEAK[id];
+  for (let i = 0; i < 3; i++) {
+    _spPos[i] = SPRINT_POS[i] + (t ? t.pos[i] : 0);
+    _spRot[i] = SPRINT_ROT[i] + (t ? t.rot[i] : 0);
+  }
+}
+const _spTargetL = { bodyFix: null };
+const _spTargetR = { bodyFix: null };
 let sprintBlend = 0;
+
+/* The shoulder belongs to the BODY, not to the gun. The arms hang under the
+   gun's model root, so anything that moved the fist used to drag the whole
+   limb after it - the reload slid the arm bodily down out of the frame and
+   the sprint swung both of them sideways (user report 2026-08-19). This is
+   the map from the gun's REST transform to the one it has this frame: run the
+   rest shoulder through it and the joint stays put in the player's chest
+   while the gun moves under it (js/hands.js then solves the elbow to it).
+     rest = the viewmodel parked at VM_BASE, unrotated
+     now  = vm.matrix as set for this frame
+   Both are LOCAL matrices, so the camera never enters the maths. */
+const _vmRest = new THREE.Matrix4();
+const _vmInv = new THREE.Matrix4();
+const _bodyFix = new THREE.Matrix4();
+/* The reference is the gun's CARRY transform for this frame - hip or ADS,
+   with bob and recoil - not VM_BASE. Aiming raises the whole gun to the eye
+   and the arms are meant to come with it; only the reload/sprint deviation on
+   top of that is what the joints have to absorb. Anchoring against VM_BASE
+   instead would make the arms jump the moment a reload started mid-ADS. */
+const _carryPos = new THREE.Vector3();
+const _carryRot = new THREE.Euler();
+const _carryQ = new THREE.Quaternion();
+const _one = new THREE.Vector3(1, 1, 1);
+
+function armBodyFix(vm) {
+  const root = vm.children[0];              // the gun model root = grip space
+  root.updateMatrix();
+  vm.updateMatrix();
+  _vmRest.compose(_carryPos, _carryQ.setFromEuler(_carryRot), _one);
+  return _bodyFix.copy(root.matrix).invert()
+    .multiply(_vmInv.copy(vm.matrix).invert())
+    .multiply(_vmRest)
+    .multiply(root.matrix);
+}
+
+function applySprintPose(vm, w) {
+  const rig = vm.userData.arms;
+  if (!rig) return;
+  if (w <= 0.001) { blendArm(rig.L, null, 0); blendArm(rig.R, null, 0); return; }
+  const fix = armBodyFix(vm);
+  _spTargetR.bodyFix = fix;   // both stay on the gun, neither on its swing
+  _spTargetL.bodyFix = fix;
+  blendArm(rig.R, _spTargetR, w);
+  blendArm(rig.L, _spTargetL, w);
+}
 
 /* sniper scope: the overlay waits for a raise animation - the rifle travels
    "to the eye" first (zoomBlend 0->1), only then the scope cuts in */
@@ -385,19 +507,89 @@ const _gp = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0 };
 const _lp = [0, 0, 0];
 const _rp = [0, 0, 0];
 
-/* per-frame reload pose: fills _gp (gun offset) and places both hands */
+/* Where each hand is headed this frame. Filled by applyReloadPose and applied
+   only once the gun's own transform is final (applyReloadArms), because the
+   shoulder anchor is read THROUGH that transform. */
+const NO_GRIPS = {};
+function relScratch() {
+  return { pos: null, frame: new THREE.Quaternion(), bodyFix: null,
+           curl: { f: [0, 0, 0], i: [0, 0, 0], t: [0, 0, 0], tAdd: 0 },
+           fore: [0, 0, 0], upper: [0, 0, 0] };
+}
+const _relL = relScratch();
+const _relR = relScratch();
+let _relLw = 0, _relRw = 0;
+
+function gripFrame(g) {
+  if (!g._frame) g._frame = handFrame(g.channel, g.palm);
+  return g._frame;
+}
+
+/* Resolve one hand's target: `pos` plus a grip mixed k of the way from `a` to
+   `b` (either may be undefined = keep the firing grip). Anything a grip
+   leaves out falls back to the hand's rest pose, so a weapon with no `grips`
+   block still moves position-only - exactly what the reload did before the
+   pistol got real ones. */
+function relTarget(t, hand, pos, a, b, k) {
+  const base = hand.baseSpec;
+  t.pos = pos;
+  const fa = a ? gripFrame(a) : hand.baseFrame;
+  t.frame.copy(fa).slerp(b ? gripFrame(b) : fa, k);
+  const ca = (a && a.curl) || base.curl;
+  const cb = (b && b.curl) || ca;
+  for (const c of ['f', 'i', 't']) {
+    const x = ca[c] || base.curl[c], y = cb[c] || x;
+    for (let i = 0; i < 3; i++) t.curl[c][i] = x[i] + (y[i] - x[i]) * k;
+  }
+  const ta = ca.tAdd || 0, tb = cb.tAdd === undefined ? ta : cb.tAdd;
+  t.curl.tAdd = ta + (tb - ta) * k;
+  const foA = (a && a.fore) || base.fore, upA = (a && a.upper) || base.upper;
+  lerpDir(t.fore, foA, (b && b.fore) || foA, k);
+  lerpDir(t.upper, upA, (b && b.upper) || upA, k);
+  return t;
+}
+
+/* apply what applyReloadPose resolved, now that the gun transform is final */
+function applyReloadArms(vm) {
+  const rig = vm.userData.arms;
+  if (!rig) return;
+  const fix = armBodyFix(vm);
+  _relL.bodyFix = fix; _relR.bodyFix = fix;
+  // both hands go through the solver, including one at weight 0: staying on
+  // the gun is a pose too, and it is the one that needs the shoulder held
+  blendArm(rig.L, _relL, _relLw);
+  blendArm(rig.R, _relR, _relRw);
+}
+
+/* per-frame reload pose: fills _gp (gun offset) and resolves both hands */
 function applyReloadPose(vm, t) {
   const cfg = vm.userData.handCfg;
   const rig = vm.userData.arms;
   const env = vmEase(t, 0, 0.10) * (1 - vmEase(t, 0.90, 1));
   const P = relPlan;
+  const G = cfg.grips || NO_GRIPS;
   let lw = 0, rw = 0;
+  let lgA = null, lgB = null, lgK = 0;   // the grip the left hand is mixing into
   _lp[0] = 0; _lp[1] = 0; _lp[2] = 0;
   if (P.style === 'mag') {
-    // gun tips slightly UP while the left hand swaps the magazine
-    _gp.rx = 0.26 * env; _gp.ry = 0.10 * env; _gp.rz = 0.10 * env;
-    _gp.px = -0.03 * env; _gp.py = -0.02 * env; _gp.pz = -0.03 * env;
+    // the gun comes UP and IN toward the middle of the frame while the left
+    // hand swaps the magazine - at the hip offset the magwell is otherwise
+    // below the bottom edge and the whole reload plays off-screen
+    _gp.rx = 0.30 * env; _gp.ry = 0.14 * env; _gp.rz = 0.12 * env;
+    _gp.px = -0.10 * env; _gp.py = 0.05 * env; _gp.pz = -0.03 * env;
     const T = P.empty ? T_MAG_E : T_MAG;
+    lgA = G.mag;
+    // the gun's OWN magazine leaves the well with the hand that pulled it and
+    // is only back once the hand pushes the fresh one home - in between the
+    // well is empty, which is what sells the swap (the box in the fist is the
+    // fresh magazine, not this one)
+    const mp = vm.userData.magPart;
+    if (mp && cfg.magDrop) {
+      const d = Math.max(0, vmEase(t, T.reach[1], T.reach[1] + 0.10)
+                          - vmEase(t, T.back[1] - 0.10, T.back[1]));
+      mp.position.set(cfg.magDrop[0] * d, cfg.magDrop[1] * d, cfg.magDrop[2] * d);
+      mp.visible = d < 0.97;
+    }
     if (t < T.out[0]) { lw = vmEase(t, T.reach[0], T.reach[1]); _lp[0] = cfg.mag[0]; _lp[1] = cfg.mag[1]; _lp[2] = cfg.mag[2]; }
     else if (t < T.back[0]) { lw = 1; lerp3(_lp, cfg.mag, cfg.low, vmEase(t, T.out[0], T.out[1])); }
     else if (t < T.back[1]) { lw = 1; lerp3(_lp, cfg.low, cfg.mag, vmEase(t, T.back[0], T.back[1])); }
@@ -407,9 +599,14 @@ function applyReloadPose(vm, t) {
       const T2 = T_MAG_E;
       const k = vmEase(t, T2.toBolt[0], T2.toBolt[1]);
       lerp3(_lp, cfg.mag, cfg.bolt, k);
-      _lp[2] += cfg.pull * vmPulse(t, T2.pull[0], T2.pull[1]);
-      _gp.pz += 0.02 * vmPulse(t, T2.pull[0], T2.pull[1]);
-      _gp.rx += 0.10 * vmPulse(t, T2.pull[0], T2.pull[1]);
+      const yank = vmPulse(t, T2.pull[0], T2.pull[1]);
+      _lp[2] += cfg.pull * yank;
+      _gp.pz += 0.02 * yank;
+      _gp.rx += 0.10 * yank;
+      // the slide travels with the hand pulling it (the model ships it as its
+      // own part exactly for this)
+      if (vm.userData.slide) vm.userData.slide.position.z = cfg.pull * yank;
+      lgB = G.bolt; lgK = k;
       lw = 1 - vmEase(t, T2.ret[0], T2.ret[1]);
     }
   } else {
@@ -422,6 +619,7 @@ function applyReloadPose(vm, t) {
       _gp.px = -0.04 * env; _gp.py = 0.02 * env;
     }
     const [w0, w1] = P.win;
+    lgA = G.port;
     if (t >= w0 && t < w1 && P.cycles > 0) {
       const cw = (w1 - w0) / P.cycles;
       const ct = ((t - w0) % cw) / cw; // 0..1 inside this cycle
@@ -432,6 +630,7 @@ function applyReloadPose(vm, t) {
       if (P.style === 'shell') {
         // the classic pump rack, left hand on the forend
         lw = vmEase(t, P.win[1], P.win[1] + 0.06);
+        lgA = G.bolt;
         _lp[0] = cfg.bolt[0]; _lp[1] = cfg.bolt[1];
         _lp[2] = cfg.bolt[2] + cfg.pull * vmPulse(t, 0.78, 0.94);
         _gp.pz += 0.025 * vmPulse(t, 0.78, 0.94);
@@ -452,8 +651,9 @@ function applyReloadPose(vm, t) {
       _lp[0] = cfg.low[0]; _lp[1] = cfg.low[1]; _lp[2] = cfg.low[2];
     }
   }
-  blendArm(rig.L, lw > 0 ? _lp : rig.L.basePos, lw);
-  blendArm(rig.R, rw > 0 ? _rp : rig.R.basePos, rw);
+  _relLw = lw; _relRw = rw;
+  relTarget(_relL, rig.L, lw > 0 ? _lp : rig.L.basePos, lgA, lgB, lgK);
+  relTarget(_relR, rig.R, rw > 0 ? _rp : rig.R.basePos, null, null, 0);
 }
 
 /* one-shot side effects (sounds, the mag/shell prop) along the timeline */
@@ -487,6 +687,11 @@ function buildReloadEvents(w, vm) {
 function clearReloadVisuals(vm) {
   if (vm.userData.magProp) vm.userData.magProp.visible = false;
   if (vm.userData.shellProp) vm.userData.shellProp.visible = false;
+  if (vm.userData.slide) vm.userData.slide.position.z = 0;
+  if (vm.userData.magPart) {
+    vm.userData.magPart.position.set(0, 0, 0);
+    vm.userData.magPart.visible = true;
+  }
 }
 
 /* full visual reset (level restarts, weapon switches mid-reload) */
@@ -495,13 +700,11 @@ function resetWeaponFx() {
   zoomBlend = 0;
   relPlan = null;
   setScopeOverlay(false);
+  _relLw = 0; _relRw = 0;
   for (const vm of viewmodels) {
     clearReloadVisuals(vm);
     const rig = vm.userData.arms;
-    if (rig) {
-      placeArm(rig.L, rig.L.basePos);
-      placeArm(rig.R, rig.R.basePos);
-    }
+    if (rig) { blendArm(rig.L, null, 0); blendArm(rig.R, null, 0); }
   }
 }
 
@@ -515,10 +718,14 @@ function updateViewmodel(dt) {
   const bobX = Math.sin(vmBobT) * 0.012 * (speedFactor || 0.25) * sprintScale;
   const bobY = Math.abs(Math.cos(vmBobT)) * 0.014 * (speedFactor || 0.25) * sprintScale;
 
-  // sprint pose: broken by aiming, reloading and firing (gun snaps back up)
+  // sprint pose: broken by aiming, reloading and firing (gun snaps back up).
+  // Those OUTRANK the run (user call 2026-08-19), so the carry drops away
+  // about three times faster than it comes on - easing it out at the same
+  // rate left the run pose fighting the animation that replaced it.
   const sprintTarget = (player.sprinting && !aiming && !reloading
     && !firing && fireCooldown === 0) ? 1 : 0;
-  sprintBlend += (sprintTarget - sprintBlend) * Math.min(1, dt * 7);
+  sprintBlend += (sprintTarget - sprintBlend)
+    * Math.min(1, dt * (sprintTarget ? 7 : 20));
 
   // sniper scope: raise "to the eye" first, the overlay cuts in at the top
   const zoomTarget = (aiming && w.zoom && !reloading) ? 1 : 0;
@@ -527,20 +734,18 @@ function updateViewmodel(dt) {
   if (!scoped && zoomTarget === 1 && zoomBlend >= 1) setScopeOverlay(true);
   else if (scoped && zoomTarget === 0) setScopeOverlay(false);
 
-  // reload: gun pose + hand choreography from the plan built in startReload()
+  // reload: gun pose + hand choreography from the plan built in startReload().
+  // Only the GUN offsets are applied here; the hands go on at the bottom,
+  // once vm's transform for this frame is final, because their shoulder
+  // anchor is read back THROUGH that transform.
   _gp.px = 0; _gp.py = 0; _gp.pz = 0; _gp.rx = 0; _gp.ry = 0; _gp.rz = 0;
-  if (reloading && relPlan) {
+  const reloadPose = reloading && !!relPlan;
+  if (reloadPose) {
     const t = 1 - reloadTimer / reloadDuration; // 0 -> 1
     while (relEvIdx < relPlan.events.length && t >= relPlan.events[relEvIdx].t) {
       relPlan.events[relEvIdx++].fn();
     }
     applyReloadPose(vm, t);
-  } else {
-    const rig = vm.userData.arms;
-    if (rig) {
-      placeArm(rig.L, rig.L.basePos);
-      placeArm(rig.R, rig.R.basePos);
-    }
   }
 
   // ADS: płynne przejście do pozycji celowania (muszka w osi kamery)
@@ -552,16 +757,24 @@ function updateViewmodel(dt) {
   const by = VM_BASE.y + (ads.y - VM_BASE.y) * adsBlend + (ZOOM_RAISE.y - VM_BASE.y) * zb;
   const bz = VM_BASE.z + (ads.z - VM_BASE.z) * adsBlend + (ZOOM_RAISE.z - VM_BASE.z) * zb;
   const bobScale = 1 - 0.85 * Math.max(adsBlend, zb); // przy celowaniu broń prawie nie buja
+  // the carry transform, i.e. everything EXCEPT the reload/sprint offsets -
+  // the reference the shoulder anchor is taken against (see armBodyFix)
+  _carryPos.set(bx + bobX * bobScale, by + bobY * bobScale, bz + vmRecoil);
+  _carryRot.set(vmRecoil * 1.5 + 0.06 * zb, 0, bobX * 0.6 * bobScale);
+  sprintCarry(w.id);
   vm.position.set(
-    bx + bobX * bobScale + _gp.px + SPRINT_POS[0] * sprintBlend,
-    by + bobY * bobScale + _gp.py + SPRINT_POS[1] * sprintBlend,
-    bz + vmRecoil + _gp.pz + SPRINT_POS[2] * sprintBlend // odsuń od kamery (nigdy nie zbliżaj do near plane)
+    bx + bobX * bobScale + _gp.px + _spPos[0] * sprintBlend,
+    by + bobY * bobScale + _gp.py + _spPos[1] * sprintBlend,
+    bz + vmRecoil + _gp.pz + _spPos[2] * sprintBlend // odsuń od kamery (nigdy nie zbliżaj do near plane)
   );
   vm.rotation.set(
-    vmRecoil * 1.5 + _gp.rx + SPRINT_ROT[0] * sprintBlend + 0.06 * zb,
-    _gp.ry + SPRINT_ROT[1] * sprintBlend,
-    bobX * 0.6 * bobScale + _gp.rz + SPRINT_ROT[2] * sprintBlend
+    vmRecoil * 1.5 + _gp.rx + _spRot[0] * sprintBlend + 0.06 * zb,
+    _gp.ry + _spRot[1] * sprintBlend,
+    bobX * 0.6 * bobScale + _gp.rz + _spRot[2] * sprintBlend
   );
+  // hands last: the body anchor is read off the gun transform set just above
+  if (reloadPose) applyReloadArms(vm);
+  else applySprintPose(vm, sprintBlend);   // a no-op while not sprinting
   // ukryj viewmodel dopiero pod pełną lunetą (po animacji podniesienia)
   vm.visible = !(w.zoom && scoped);
   __test.scoped = scoped;

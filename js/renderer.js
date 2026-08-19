@@ -30,7 +30,56 @@ composer.addPass(renderPass);
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.5, 0.55, 0.60);
 composer.addPass(bloomPass);
+
+/* Sprint blur: a RADIAL smear that leaves the middle of the screen sharp and
+   grows toward the edges - the running-tunnel look, driven by `sprintBlend`
+   through setSprintBlur(). Radial rather than a flat gaussian on purpose:
+   a uniform blur over the whole frame costs you the ability to see what you
+   are running at, which is not a trade a shooter can make.
+
+   The pass is DISABLED at strength 0, so it costs nothing whenever nobody is
+   running - it sits between the bloom and the output pass, i.e. it smears the
+   lit image before tone mapping. */
+const sprintBlurPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    strength: { value: 0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float strength;
+    varying vec2 vUv;
+    void main() {
+      vec2 dir = vUv - vec2(0.5);
+      // nothing happens in the middle third; the smear ramps up outward
+      float k = strength * smoothstep(0.34, 1.0, length(dir) * 2.0);
+      vec4 sum = vec4(0.0);
+      for (int i = 0; i < 8; i++) {
+        sum += texture2D(tDiffuse, vUv - dir * k * (float(i) / 7.0));
+      }
+      gl_FragColor = sum / 8.0;
+    }`,
+});
+sprintBlurPass.enabled = false;
+composer.addPass(sprintBlurPass);
 composer.addPass(new OutputPass());
+
+/* Kept deliberately small (user asked for a LIGHT blur): this is a uv offset,
+   so 0.035 smears a corner pixel by ~3% of the screen. Much past that the
+   taps stop overlapping and the smear breaks into visible ghost copies. */
+const SPRINT_BLUR_MAX = 0.035;
+
+function setSprintBlur(x) {
+  const s = Math.max(0, Math.min(1, x)) * SPRINT_BLUR_MAX;
+  sprintBlurPass.enabled = s > 0.001;
+  sprintBlurPass.uniforms.strength.value = s;
+}
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;

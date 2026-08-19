@@ -65,8 +65,10 @@ więc formy męskie w kwestiach DO gracza są OK.
   szyna WebAudio, SFX, muzyka proceduralna, motyw menu z pliku, stingery celów,
   robo-głosy `voice(who)`) →
   `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
+  `badge.js` (GENEROWANY przez `tools/gen_badge.py`: odznaka LSPD jako data URI) →
   `textures.js` (`TexGen`: proceduralne tekstury z canvasa; `makeLogTexture` — panele
-  z polskim tekstem; wymaga `renderer`, więc MUSI być po `renderer.js`) →
+  z polskim tekstem; `makeBotText`/`makeBotBadge` — dekale liberii botów;
+  wymaga `renderer`, więc MUSI być po `renderer.js`) →
   `models.js` (GENEROWANY przez `tools/gen_models.py`: `MODEL_DATA`, spakowana
   geometria zewnętrznych modeli) → `modelkit.js` (`buildModel`/`socketLocal`:
   dekoder + budowa instancji z cache'owaną geometrią) →
@@ -124,6 +126,12 @@ więc formy męskie w kwestiach DO gracza są OK.
     SAMĄ GEOMETRIĘ do `js/models.js` (kwantyzacja + base64). Materiały, kolory
     i światło zostają nasze — patrz Konwencje → „Modele zewnętrzne". Autorów
     trzeba wymienić w README (CC-BY), a plik źródłowy commitować razem z wynikiem.
+
+  - **odznaka LSPD** (decyzja użytkownika, 2026-08-19): `assets/lspd_badge.png`
+    to jedyna bitmapa gry, którą widać w scenie 3D. Idzie tą samą drogą co
+    wszystko inne — skrypt w repo (`tools/gen_badge.py`) przycina ją do bboxa
+    alfy, skaluje do 192 px i zapisuje `js/badge.js` z data URI. Źródło
+    commitujemy razem z wynikiem. Nie rozszerzaj tego wyjątku na inne tekstury.
 
   **Zabronione: gotowe TEKSTURY i dźwięki z zewnątrz** (stock, paczki assetów,
   biblioteki tekstur) — licencje i spójność stylu. Modele z zewnątrz wolno brać
@@ -224,6 +232,13 @@ więc formy męskie w kwestiach DO gracza są OK.
   jointu, a piwoty z grafu węzłów. Nowy model = wpis w `MODELS` w skrypcie
   (mapowanie jointów/węzłów, `rot`, `height`/`length`), `--probe` do sprawdzenia
   orientacji i granic, potem przegenerowanie pliku i kredyt w README.
+  **`paint` (2026-08-19)** dokłada modelowi materiały, których nie ma w źródle:
+  lista reguł `{mat, src?, bones?, x/y/z: (lo, hi)}` przenosi trójkąty do nowej
+  grupy materiałowej po dominującej kości i pudełku w METRACH pozy bind
+  (`scenev` - ta sama przestrzeń, którą drukuje `--probe`). Pierwsza pasująca
+  reguła wygrywa, malowany jest CAŁY trójkąt (stawiaj granice na krawędziach
+  fasetek), a `matFor` w runtime dostaje nową nazwę jak każdą inną. Tak jedzie
+  liberia LSPD (`Blue`, `Visor`) - patrz „Rozróżnianie botów".
   ⚠️ `height`/`length` normalizuje bryłę **tylko po częściach z `order`**
   (2026-08-19) - część zmapowana poza `order` i tak wypada przy `pack()`,
   więc mierzenie modelu geometrią, której nikt nie zobaczy, dawało zły
@@ -298,8 +313,9 @@ więc formy męskie w kwestiach DO gracza są OK.
   `menuBgActive()` zwraca `true` dla stanu `'bestiary'` (chowa HUD, gra motyw
   menu). **Modele są cache'owane per typ i tylko przełączane widocznością** -
   `buildEnemyModel` alokuje geometrie, więc przebudowa przy każdym kliknięciu
-  by przeciekała. `updateEnemies` w menu nie chodzi, więc strobo dronów
-  animuje `Bestiary.update`. Kamera per wpis (`entry.cam`) - WAŻKA jest za
+  by przeciekała. `updateEnemies` w menu nie chodzi, więc animowane
+  materiały botów (strobo, syreny) pcha `Bestiary.update` przez
+  `updateBotLights(dt)`. Kamera per wpis (`entry.cam`) - WAŻKA jest za
   mała, żeby czytać się z tej samej odległości co podwozie. Diagnostyka:
   `__test.bestiary` (nazwa typu albo null); testy `tests/bestiary_test.py`.
 - **Ustawienia** (`js/settings.js`, PROP-1/PROP-6): obiekt `SETTINGS` (sens,
@@ -567,8 +583,40 @@ więc formy męskie w kwestiach DO gracza są OK.
     `orientBone` ustawia orientację dłoni wprost na bazie pozy bind, a palce
     zginają się wokół osi zapisanej **w ich własnej ramce bind**, więc kąt
     zgięcia znaczy to samo niezależnie od obrotu nadgarstka nad nim.
-    Umiejscowienie to czysta translacja: `placeArm` przesuwa CAŁE ramię za
-    bark, aż kotwica chwytu (`gripAnchor`) trafi w `pos` - żadnego IK.
+    Umiejscowienie POZY SPOCZYNKOWEJ (to, co edytuje DEVRIG) jest czystą
+    translacją: `placeArm` przesuwa CAŁE ramię za bark, aż kotwica chwytu
+    (`gripAnchor`) trafi w `pos`. Dlatego w DEVRIG działają OBA suwaki
+    kierunku - `fore` i `upper` są niezależne, a bark ląduje tam, gdzie
+    wypadnie.
+    ⚠️ **Animacje NIE mogą tak jeździć - one idą przez IK** (2026-08-19,
+    zgłoszenie użytkownika „ramię lewituje"): przesuwanie całej kończyny za
+    pięścią zabierało ze sobą bark, więc przy przeładowaniu ramię zjeżdżało
+    o 30 cm w dół, a przy sprincie oba wyjeżdżały w bok razem z bronią.
+    `blendArm` woła więc `reachArm` - dwukostne IK w przestrzeni broni:
+    **bark jest zadany, a stawy rozwiązywane**. Punkt podparcia daje
+    `armBodyFix(vm)` w weapons.js: macierz z transformu NOSZENIA broni
+    (biodro/ADS + bob + odrzut, BEZ offsetów przeładowania i sprintu) do
+    bieżącego, przepuszczona przez `shoulderHome` - bark stoi w klatce
+    piersiowej gracza, broń jedzie pod nim. Odniesieniem jest noszenie,
+    nie `VM_BASE`: przy ADS ramiona MAJĄ jechać z bronią, inaczej start
+    przeładowania w trakcie celowania szarpałby ramieniem.
+    Podpowiedź łokcia (pole) to `upper` z wpisu - dokładnie ten kierunek,
+    na który dostrojona jest poza spoczynkowa, więc podanie wartości
+    spoczynkowych odtwarza ją kość w kość (`fore` w ścieżce IK nie robi
+    nic - przy zadanym barku i pięści łokieć wyznacza już samo pole).
+    ⚠️ Ten rig stoi w KAŻDYM dostrojonym chwycie na 99,5% wyprostu
+    (zmierzone: `SW` 0,4877 przy zasięgu 0,4901), więc bark na sztywno nie
+    dosięgnąłby nawet gniazda magazynka. Stąd dwa luzy w hands.js:
+    `SHOULDER_GIVE` (bark idzie ułamek drogi za dłonią, limit
+    `SHOULDER_GIVE_MAX`) i `SHOULDER_LEAN_MAX` (dochylenie, gdy celu i tak
+    nie da się dosięgnąć - dłoń NIGDY nie ma się odkleić od tego, co
+    trzyma). Pilnują tego asercje w `tests/shots_weapons.py`: bark nie
+    dryfuje w przestrzeni kamery, a nieruchoma dłoń zostaje na chwycie.
+    ⚠️ Rzeczy trzymane MIĘDZY klatkami (`shoulderHome`, `wristToGrip`,
+    długości kości - liczy je `measureArm`) muszą mieć WŁASNE wektory,
+    nie współdzielone scratche `_hV`/`_hQ`: `wristToGrip` przypisany ze
+    scratcha był kasowany przy następnym zapytaniu o kość i całe IK
+    celowało w zły punkt.
     ⚠️ **Kotwica chwytu jest ZAMROŻONA** (2026-08-19): mierzy się ją RAZ, na
     pozie bind, i trzyma w układzie kości dłoni, więc jeździ tylko
     z nadgarstkiem. Wcześniej `placeArm` używał kotwicy mierzonej na
@@ -658,24 +706,91 @@ więc formy męskie w kwestiach DO gracza są OK.
     ADS/sway/odrzut/pozy przeładowania niosą je za darmo; pozycje w `HANDS`
     są w przestrzeni modelu broni (sondowane z js/models.js). Prawa dłoń na
     chwycie/spuście, lewa: pistolet - druga dłoń na rękojeści, SMG/karabin -
-    łoże, strzelba - pompa, snajperka - przednie łoże.
+    łoże, strzelba - pompa, snajperka - przednie łoże. Bark za tym NIE
+    jedzie w animacjach - patrz „Animacje NIE mogą tak jeździć" wyżej.
+    ⚠️ Dlatego `updateViewmodel` **najpierw ustawia transform broni, a dopiero
+    potem ręce**: `applyReloadPose` tylko WYLICZA cele (`_relL`/`_relR`),
+    nakłada je `applyReloadArms`/`applySprintPose` na końcu funkcji. Kotwica
+    barku czyta `vm.matrix`, więc odwrotna kolejność dawałaby ją o klatkę
+    spóźnioną.
   - **Animacje przeładowania:** startReload buduje PLAN (`relPlan`: styl
     mag/shell/shellBolt, okno cykli, `events[]` - jednorazowe dźwięki
     i przełączenia propów odpalane po przekroczeniu ułamka czasu t). Pozę
     liczy co klatkę `applyReloadPose(vm, t)` z tabel `T_MAG`/`T_MAG_E`
-    (smoothstep `vmEase`/`vmPulse`), dłonie przestawia `blendArm` (lerp
-    pozycji, orientacja zostaje ramką chwytu). Mag-styl: broń lekko w górę,
+    (smoothstep `vmEase`/`vmPulse`), dłonie przestawia `blendArm` (pozycja
+    i palce lerpem, ramka chwytu SLERPEM - interpolacja samych wektorów
+    `channel`/`palm` zwija bazę w połowie kąta prostego).
+    ⚠️ **Chwyt przeładowania to osobne dane, nie chwyt bojowy** (2026-08-19):
+    opcjonalny blok `grips` we wpisie `HANDS` (`mag`/`bolt`/`port`) nadpisuje
+    `channel`/`palm`/`curl`/`upper` na czas danej fazy, resztę dziedziczy
+    po `l`. Bez tego dłoń jechała na magazynek z linią kostek ustawioną
+    pionowo do ramy i palcami zaciśniętymi na niczym, a chwyt zamka jest
+    90° od bojowego (kanał wzdłuż lufy) - żadne przesuwanie pięści tego nie
+    nadrabia. Dostrojony jest na razie **tylko Glock**; broń bez `grips`
+    jedzie po staremu, samą pozycją. Kotwice (`mag`/`low`/`bolt`) liczy się
+    z geometrii (`tools/gen_models.py --probe`), a `low` NIE może być dalej
+    niż sięga ramię - IK zatrzyma dłoń w powietrzu zamiast wyprowadzić ją
+    poza kadr. Mag-styl: broń lekko w górę,
     lewa dłoń wyjmuje/wsadza magazynek (prop `magProp` w pięści); shell-styl:
     broń w dół (strzelba dodatkowo rolka, snajperka odsłania komorę), lewa
     dłoń nosi pojedyncze naboje (`shellProp`). **Od pustego magazynka**
     sekwencja jest DŁUŻSZA (`reloadDuration × 1.3`) i kończy ją przeładowanie:
     zamek (mag-styl lewą, snajperka PRAWĄ dłonią) albo pompa (strzelba).
+    Przy Glocku zamek JEDZIE - `vm.userData.slide.position.z` idzie tym samym
+    impulsem co dłoń (`clearReloadVisuals` zeruje).
+    ⚠️ **Magazynek Glocka też WYPADA z gniazda** (2026-08-19): węzeł `Mag`
+    jest w `tools/gen_models.py` zmapowany na WŁASNĄ część (`order` ma
+    `mag`), więc runtime dostaje `vm.userData.magPart` i zjeżdża nim wzdłuż
+    osi magazynka (`magDrop` w `HANDS`), po czym chowa - gniazdo stoi puste,
+    dopóki dłoń nie wepchnie nowego.
+    ⚠️ **Oś zjazdu mierz jako oś główną wierzchołków magazynka, NIE z jego
+    bboxa** (2026-08-19): rogi bboxa sugerują pochylenie 34°, a magazynek
+    jest pochylony 16°. Po tym zgadnięciu wysuwał się skośnie i przechodził
+    przez przednią i tylną ściankę rączki (zgłoszenie użytkownika: „magazynek
+    wystaje z rączki, tekstura się przebija").
+    Pudełko w pięści (`magProp`/`magDim`) to ŚWIEŻY magazynek, nie ten
+    wypięty. `clearReloadVisuals` przywraca pozycję i widoczność.
     Dźwięki są keyframowane z animacji: `AudioSys.grab/magOut/magIn/boltPull/
     shellIn/pump` (stary `reloadSeq` skasowany) - nowa broń = plan + kotwice
     w `HANDS`.
-  - **Sprint:** `sprintBlend` → broń w dół i do ciała (`SPRINT_POS/ROT`,
-    battlefieldowe noszenie); zbijają go ADS, przeładowanie i strzał
-    (`firing`/`fireCooldown` - seria trzyma broń w górze).
+  - **Sprint** (przerobione 2026-08-19): `sprintBlend` zwozi broń **nisko,
+    do ciała i w poprzek kadru** (`SPRINT_POS/ROT`) - dalej trzymaną
+    **OBURĄCZ**. Docelowy odczyt to sprint z Battlefielda (referencja od
+    użytkownika): przy dolnej krawędzi leży sama bryła broni, **dłonie ledwo
+    widoczne albo w ogóle** - i to zależnie od broni.
+    ⚠️ Ten sam offset wywala krótką broń CAŁKIEM poza kadr (pistolet znikał
+    do jednego piksela), więc jest tabela odchyłek per broń `SPRINT_TWEAK`
+    (dziś tylko `pistol`) - „ledwo widoczne" tak, „nie ma jej" nie.
+    ⚠️ **Nie dosuwaj broni do kamery, żeby wyszła „bliżej"** - near plane to
+    0,08, a kolby długiej broni już przy biodrze siedzą 0,04 przed okiem
+    (zmierzone). Wrażenie „przy ciele" bierze się ze zjazdu w dół i obrotu,
+    nie z `SPRINT_POS[2]`. Wcześniej obie dłonie odjeżdżały w prawo razem
+    z bronią (zgłoszenie użytkownika): ramiona wiszą pod rootem broni, więc
+    pół radiana yawu zabierało ze sobą także barki. Teraz barki stoją
+    (`armBodyFix`, patrz wyżej) i rusza się sam staw - dlatego yaw może
+    zostać mały, nie musi go już płacić ramię. Cele sprintu
+    (`_spTargetL/R`) nie niosą żadnej własnej pozy, tylko `bodyFix`:
+    dłonie zostają na broni, ma stać sam bark.
+    ⚠️ **Noszenie jednorącz zostało odrzucone** (decyzja użytkownika
+    2026-08-19): puszczenie lewej dłoni czytało się źle na długiej broni -
+    nikt nie biega z karabinem trzymanym za chwyt pistoletowy. Nie wracaj
+    do tego bez osobnej pozy per broń.
+  - **Rozmycie biegu** (`sprintBlurPass` w renderer.js, 2026-08-19):
+    `ShaderPass` między bloomem a `OutputPass`, sterowany z `tick`
+    (`setSprintBlur(sprintBlend)` tylko w stanie `playing`, więc pauza ani
+    ekrany nawigacji go nie niosą). To rozmycie **PROMIENISTE**, nie
+    gaussowskie po całej klatce: środek zostaje ostry, smuga narasta ku
+    krawędziom - jednolity blur w strzelance odbiera możliwość zobaczenia,
+    na co się biegnie. Przy sile 0 pass jest `enabled = false`, czyli kosztuje
+    zero, gdy nikt nie biegnie. `SPRINT_BLUR_MAX` to offset w UV i jest
+    celowo mały (0,035) - powyżej ~0,05 próbki przestają na siebie zachodzić
+    i smuga rozpada się na widoczne duchy. `ShaderPass` dochodzi do listy
+    importów bootstrapu w `index.html`.
+    ⚠️ **ADS i przeładowanie GÓRUJĄ nad biegiem** (decyzja użytkownika):
+    `sprintTarget` zeruje je razem ze strzałem (`firing`/`fireCooldown` -
+    seria trzyma broń w górze), a zanik jest ~3× szybszy niż narastanie
+    (`dt * 20` vs `dt * 7`), więc poza biegu schodzi w ~80 ms zamiast
+    kłócić się z animacją, która ją zastąpiła.
   - **Luneta z podniesieniem:** PPM na snajperce NIE włącza lunety od razu -
     `zoomBlend` (~0.32 s) wiezie broń „do oka" (`ZOOM_RAISE`), overlay+FOV 24°
     +czułość 0.35 wchodzą dopiero na szczycie (`setScopeOverlay`); puszczenie
@@ -687,24 +802,114 @@ więc formy męskie w kwestiach DO gracza są OK.
     viewmodelu (`clearReloadVisuals`).
   - Widoczność kropki celowniczej przy ADS dalej pilnuje
     `tests/shots_weapons.py` (raycast osi kamery) - ręce nie mogą jej
-    zasłaniać.
+    zasłaniać. Ten sam zestaw sprawdza liczbowo kotwiczenie ramion
+    (bark w przestrzeni kamery, dłoń nieruchoma zostaje na chwycie)
+    w czterech fazach przeładowania i w sprincie - w sprincie sprawdzane są
+    OBIE dłonie, bo obie mają zostać na broni. Czarnej rękawicy na ciemnej
+    arenie nie da się ocenić ze zrzutu.
 - Bunnyhop: `player.hopBoost` (do 1.35) rośnie za skok w oknie 0.25 s po lądowaniu
   (`player.sinceLand`), wygasa po dłuższym pobycie na ziemi; sprint nie wymaga ziemi.
 - Rozróżnianie botów (BOT-1, 2026-08-18): **w grze został sam PATROL** (reszta
   w `_kosz/przeciwnicy/`). Typy naziemne dzielą JEDNO podwozie SENTINEL
   (model `sentinel` z `MODEL_DATA`), więc **reguła „kształt głowy = typ" już
   nie obowiązuje**. Typ czytamy z: odcienia liberii (`t.body`), koloru
-  akcentu (`t.accent` na materiale `Material.003` = świecące elementy), ROZMIARU
-  sylwetki (scout ×0.93, assault ×1, heavy ×1.14) i dekoru głowy.
+  akcentu (`t.accent`), ROZMIARU sylwetki (scout ×0.93, assault ×1,
+  heavy ×1.14) i dekoru głowy.
   Podwozie ma 2,15 m (`height` w `tools/gen_models.py`), sylwetka ×1.05 / ×1 /
   ×1.15 — bot MUSI górować nad graczem (`PLAYER_EYE` 1,7), inaczej czyta się
-  jak zabawka. Liberia PATROLU to granat LAPD (`0x30528c`); świecące panele
-  modelu (`Material.003`) idą na `matTrim` o niskiej emisji (0.5) — przy 2.2
-  bloom zamienia je w białe plamy. Akcent PATROLU jest CZERWONY (`0xff0033`,
-  decyzja użytkownika 2026-08-18); pod ACES czerwień ucieka w łososiowy, więc
-  bierz nasycone `0xff00xx`, nie „ładne" `0xff3b52`. **Do modelu NIE doklejamy dekoru**
-  (decyzja użytkownika 2026-08-18): żadnych kogutów, naramienników, pasa służby
-  ani anteny — model ma własną i doklejane bryły odcinały się od sylwetki.
+  jak zabawka.
+- **Liberia LSPD** (redesign 2026-08-19, wzorzec wizualny podany przez
+  użytkownika: policyjny robot w stylu „Chappie"). Cały kadłub jest SZARY
+  (`matBotBody` 0x8d939b, `matBotDim` 0x60656d), łącznie z dawnymi czerwonymi
+  dyskami akcentu (`Material.003` → `matBotTrim`, jasny gunmetal bez emisji).
+  ⚠️ **Pancerz jest METALEM i musi mieć co odbijać** (decyzja użytkownika
+  2026-08-19: „to w końcu robot, metalowy"). `MeshStandardMaterial`
+  z podniesionym `metalness` i BEZ środowiska robi się CIEMNY - metal nie ma
+  składowej rozproszonej, tylko odbicie - więc materiały liberii dostają
+  własną sondę `TexGen.makeBotEnv()` (mała kopuła gradientowa + ciepła plama
+  słońca, przefiltrowana przez `PMREMGenerator`), podpinaną leniwie przy
+  pierwszym bocie w `botDecalMats()`. **Celowo NIE jest to
+  `scene.environment`** - to przemalowałoby każdy materiał w grze (świat,
+  bronie, ręce). Sonda jest jaśniejsza niż prawdziwe niebo areny, bo chodzi
+  o jasny rant wzdłuż krawędzi paneli, a nie o uczciwe odbicie ciemnej hali.
+  Malowane panele (niebieskie) zostają na NISKIM `metalness` i biorą połysk
+  z niskiej szorstkości - przy wysokim pigment rozpuściłby się w odbiciu.
+  Rozpoznawalność policyjną niosą dwie rzeczy:
+  1. **MALOWANIE WYPIECZONE W MESHU** — nie doklejane panele. `MODELS['sentinel']`
+     ma w `tools/gen_models.py` listę `paint`: każda reguła (dominująca kość +
+     pudełko w METRACH pozy bind) przenosi pasujące trójkąty do OSOBNEJ grupy
+     materiałowej. Dzięki temu niebieski (`Blue` → `matBotBlue` 0x2a52c8) kryje
+     CZĘŚĆ kończyny (czapka hełmu, kołnierz, naramienniki, mankiety przedramion,
+     nakładki bioder, nakolanniki), a nie całą — bez ani jednego dodanego
+     trójkąta i bez szwów, które przy skinie i tak by pękły. Dysk „oka" idzie
+     tą samą drogą do materiału `Visor` (prawie czarne, błyszczące szkło).
+     Granice reguł stawiaj na krawędziach fasetek — malowany jest CAŁY trójkąt.
+     Współrzędne sondujesz `python3 tools/gen_models.py --probe sentinel`
+     albo wprost z `js/models.js` (poza bind: stopy na 0, wzrost 2,15, przód +Z).
+  2. **Osprzęt** montowany w `buildEnemyModel` (tablica `BOT_FIT`, współrzędne
+     w metrach pozy bind): trzy DEKALE (odznaka LSPD, napis LSPD, napis
+     POLICE), świecąca zielona ŹRENICA w wizjerze (`matBotPupil`, r 7 mm —
+     celowo dużo mniejsza niż dysk oka o r 35 mm) i dwie prostokątne lampy
+     syren przy szyi. ⚠️ Wszystko buduje się w przestrzeni podwozia i oddaje
+     kościom przez **`bone.attach()`** (zachowuje transform światowy
+     i rozwiązuje lokalny) — kości siedzą pod grupą niosącą 103× skalę riga,
+     więc wpisywanie liczb lokalnych kości byłoby zgadywaniem. Wymaga świeżego
+     `g.updateMatrixWorld(true)`, bo grupa nie jest jeszcze w scenie. Źrenica
+     ma `userData.isHead`, żeby strzał w oko dalej liczył się jako headshot.
+  ⚠️ **Oznaczenia są MALOWANE, nie przykręcane** (decyzja użytkownika
+  2026-08-19: pierwsza wersja wieszała na piersi i plecach czarne tabliczki
+  z geometrią i „wyglądało to jak naklejka"). `projectBotDecal()` rzutuje
+  dekal na PRAWDZIWY pancerz: siatka wierzchołków jest zrzucana raycastem na
+  podwozie i unoszona 4 mm wzdłuż normalnej trafienia, więc napis oblewa
+  fasety i krawędzie paneli tak jak farba. Płaski quad tego nie umie — pierś
+  odchyla się od płaszczyzny o ±3 cm, plecy o ±7 cm, więc jedną stroną
+  tonąłby w bryle, a drugą wisiał w powietrzu. Materiały jadą na **`alphaTest`**
+  (nie `transparent`), czyli przezroczyste tło jest po prostu odrzucane i dekal
+  z-testuje się jak zwykła geometria: żadnego sortowania, żadnej sylwetki
+  tabliczki. `polygonOffset` domyka ostatnie ułamki milimetra. Geometria dekala
+  jest liczona RAZ i cache'owana (`_decalGeoCache`) — to ~100 promieni na
+  dekal, a boty spawnują się dziesiątkami.
+  ⚠️ **Miejsca dekali wybiera się z MAPY GŁĘBOKOŚCI, nie z sylwetki**: pierś ma
+  duży ośmiokątny bok po PRAWEJ stronie bota i czysty, podniesiony panel po
+  lewej, a plecy zapadają się w heksagonalne wgłębienie. Napis położony
+  w poprzek boku znika za jego rantem (tak wyszło za pierwszym razem).
+  Bieżące umiejscowienie: **LSPD na NIEBIESKIM panelu piersi** (biel na
+  granacie czyta się sama, dlatego napisy nie mają już ciemnej obwódki —
+  decyzja użytkownika), **odznaka OBOK napisu, na lewej piersi bota** (jego
+  własna lewa = +X), a **POLICE na płycie międzyłopatkowej**.
+  ⚠️ Dekal ma się MIEŚCIĆ W JEDNEJ fasecie (decyzja użytkownika 2026-08-19):
+  napis zawinięty za krawędź czyta się krzywo, choć technicznie leży na
+  pancerzu. Płaskie okna są ciasne — plecy trzymają z w granicach kilku mm
+  tylko na x ±0,08 i y 1,40–1,45 — więc napis dobiera się do okna, a nie
+  odwrotnie.
+  Tekstury robi `TexGen.makeBotText()` / `makeBotBadge()` (canvas w runtime,
+  tło PRZEZROCZYSTE); napis rozciąga się do szerokości płótna, bo nie wiadomo,
+  jaki font kondensowany ma maszyna. Odznaka to JEDYNA bitmapa w grze:
+  `assets/lspd_badge.png` → `tools/gen_badge.py` → `js/badge.js` jako data URI
+  (PNG z dysku taintuje WebGL przy `file://`); dekoduje się asynchronicznie,
+  więc tekstura wraca od razu, a `needsUpdate` leci w `img.onload`.
+  **Syreny**: dwie PROSTOKĄTNE lampy (`matSirenL/R`) WPUSZCZONE w kołnierz -
+  wystaje tylko `proud` (3 mm) klosza, a głębokość osadzenia liczy raycast
+  (`sirenSeatZ`, cache'owany per strona), bo kołnierz nie jest symetryczny:
+  na y 1,65 jedna strona siedzi na z 0,031, druga na 0,081. Cykl sześciokrokowy
+  ~9 Hz; OBIE przechodzą pełny zestaw czerwony → biały → niebieski (lampa
+  zamrożona na jednym kolorze to światło pozycyjne, nie syrena), prawa
+  przesunięta o pół cyklu. Sterowane przez `updateBotLights(dt)` — JEDNO
+  miejsce dla wszystkich animowanych materiałów botów, wołane z `updateEnemies`
+  i z `Bestiary.update` (w menu pętla wrogów nie chodzi).
+  ⚠️ **Każdy krok niesie WŁASNĄ `emissiveIntensity`**, bo bloom progu­je po
+  LUMINANCJI (0.60 w renderer.js), a niebieski prawie jej nie ma: `0x2a5cff`
+  przy wzmocnieniu białej lampy wychodzi ~0,43 i **w ogóle nie świeci** (zgłoszone
+  przez użytkownika). Liczby w `SIREN_SEQ` wyrównują trzy barwy po luminancji,
+  a nie po wzmocnieniu (czerwony 6,0 / biały 2,2 / niebieski 8,0).
+  `SETTINGS.strobe = false` (PROP-6) zamienia miganie na stałe świecenie.
+  ⚠️ Materiały liberii są WSPÓŁDZIELONE (moduł, nie instancja) — bot na sztukę
+  mnożyłby draw calle bez powodu; z tego samego powodu tekstury dekali budują
+  się raz, przy pierwszym bocie (`botDecalMats()`).
+  **Do modelu NIE doklejamy DEKORU** (decyzja użytkownika 2026-08-18): żadnych
+  kogutów, naramienników, pasa służby ani anteny — model ma własną, a doklejane
+  bryły odcinały się od sylwetki. Okucia wyżej to wyjątek uzgodniony
+  2026-08-19 i ograniczony do oznakowania policyjnego.
   Strobo (`matStrobeR/B`) i biały pas nosi już tylko WAŻKA.
   **Podwozie jedzie jako PRAWDZIWY SKIN w czystej pozie BIND** (decyzja
   użytkownika 2026-08-19): `buildSkinnedModel('sentinel', matFor)` zamiast

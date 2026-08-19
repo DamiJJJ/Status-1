@@ -99,6 +99,10 @@ function tick(now) {
   __test.bestiary = onBestiary ? BESTIARY[Bestiary.index()].type : null;
   __test.devrig = onDevRig ? `${WEAPONS[devRigWeapon].id}:${devRigHand}` : null;
 
+  // the run smears the edges of the frame; navigation screens and a frozen
+  // paused world must never carry it
+  setSprintBlur(game.state === 'playing' ? sprintBlend : 0);
+
   composer.render();
 }
 

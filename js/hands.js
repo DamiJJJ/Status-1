@@ -119,7 +119,8 @@ function aimBone(hand, bone, child, target) {
   bone.getWorldPosition(_hV);
   child.getWorldPosition(_hV2);
   const cur = _hV2.sub(_hV).normalize();
-  const t = new THREE.Vector3().fromArray(target);
+  const t = new THREE.Vector3();
+  if (target.isVector3) t.copy(target); else t.fromArray(target);
   if (t.lengthSq() < 1e-10) return;   // no direction asked for: stay at bind
   t.transformDirection(hand.gunRoot.matrixWorld).normalize();
   const q = new THREE.Quaternion().setFromUnitVectors(cur, t);
@@ -308,9 +309,12 @@ function rollForearm(hand) {
   hand.foreTwist = 2 * Math.acos(Math.min(1, Math.abs(twist.w)));
 }
 
-/* Pose one arm from its HANDS entry: fingers first (the anchor depends on
-   them), then the chain from the shoulder down, then slide it into place. */
-function poseArm(hand, sd) {
+/* Solve one arm from a resolved spec: fingers first (the hinge angles are
+   independent of the wrist, but the pose has to exist before the arm is
+   slid), then the chain from the shoulder down, then the placement. `frame`
+   is the hand orientation; pass it in when it was slerped (blends) so the
+   channel/palm pair is not rebuilt from interpolated vectors. */
+function applyArmPose(hand, sd, frame) {
   // Restart from the BIND pose every time. aimBone() rotates from whatever
   // direction the bone currently points, so without this reset the leftover
   // roll from the previous edit rides along and the same numbers stop meaning
@@ -322,25 +326,220 @@ function poseArm(hand, sd) {
   poseFingers(hand, sd.curl);
   if (sd.upper) aimBone(hand, hand.bones.upper, hand.bones.fore, sd.upper);
   if (sd.fore) aimBone(hand, hand.bones.fore, hand.bones.hand, sd.fore);
-  const frame = handFrame(sd.channel, sd.palm);
-  orientBone(hand, hand.bones.hand, frame);
+  const f = frame || handFrame(sd.channel, sd.palm);
+  orientBone(hand, hand.bones.hand, f);
   rollForearm(hand);                  // pronation belongs to the forearm
-  orientBone(hand, hand.bones.hand, frame);   // re-solve against the new roll
-  hand.basePos = sd.pos.slice();
+  orientBone(hand, hand.bones.hand, f);   // re-solve against the new roll
   hand.bones.upper.position.copy(hand.shoulderRest);
-  placeArm(hand, hand.basePos);
+  placeArm(hand, sd.pos);
 }
 
-/* Lerp an arm's grip point between its base pose and `pos` by w (0..1) -
-   called per frame during reloads; the orientation stays as posed. */
-function blendArm(hand, pos, w) {
-  _hV2.set(
-    hand.basePos[0] + (pos[0] - hand.basePos[0]) * w,
-    hand.basePos[1] + (pos[1] - hand.basePos[1]) * w,
-    hand.basePos[2] + (pos[2] - hand.basePos[2]) * w);
+/* Pose one arm from its HANDS entry and remember it as the arm's REST pose -
+   the one every animation blends away from and back to. */
+function poseArm(hand, sd) {
+  hand.baseSpec = sd;
+  hand.baseFrame = handFrame(sd.channel, sd.palm);
+  hand.basePos = sd.pos.slice();
+  hand.blended = false;
+  applyArmPose(hand, sd, hand.baseFrame);
+  measureArm(hand);
+}
+
+/* Read the solved rest arm back out: the bone lengths, where the shoulder
+   ended up, and the fist anchor as an offset from the WRIST in the hand's own
+   frame. The animation IK needs all three, and all three depend on the grip
+   that was just applied - so they are re-measured on every re-grip rather
+   than assumed. */
+const _maE = new THREE.Vector3();
+const _maW = new THREE.Vector3();
+
+function measureArm(hand) {
+  const g = hand.gunRoot;
+  hand.root.updateMatrixWorld(true);
+  // Both survivors get their OWN vector, never a shared scratch: they are
+  // kept across frames, and a scratch is overwritten by the very next bone
+  // query - wristToGrip held that way came back zeroed and the IK aimed the
+  // wrist at the fist anchor instead of the wrist.
+  hand.shoulderHome = hand.shoulderHome || new THREE.Vector3();
+  hand.wristToGrip = hand.wristToGrip || new THREE.Vector3();
+  hand.bones.upper.getWorldPosition(hand.shoulderHome);
+  g.worldToLocal(hand.shoulderHome);
+  hand.bones.fore.getWorldPosition(_maE); g.worldToLocal(_maE);
+  hand.bones.hand.getWorldPosition(_maW); g.worldToLocal(_maW);
+  hand.upperLen = hand.shoulderHome.distanceTo(_maE);
+  hand.foreLen = _maE.distanceTo(_maW);
+  gripAnchor(hand, hand.wristToGrip);
+  hand.wristToGrip.sub(_maW).applyQuaternion(_hQ.copy(hand.baseFrame).invert());
+}
+
+/* Two-bone IK, all in gun-model space: shoulder at `S`, fist anchor on `pos`,
+   hand at `frame`, elbow swung into the plane picked by the pole hint.
+
+   This exists because the arms are attached at the WRIST end: placeArm()
+   slides the whole limb until the fist lands on its anchor, which is right
+   for a grip that is dialled in once and wrong for anything that moves - the
+   reload used to carry the shoulder 30 cm down with the hand, so the arm
+   visibly floated (user report 2026-08-19). Here the shoulder is given and
+   the joint angles are solved, which is what a shoulder does.
+
+   The pole hint is the spec's own `upper`, i.e. the shoulder -> elbow
+   direction the rest pose was dialled to, so feeding the rest values back in
+   reproduces the dialled pose bone for bone.
+
+   Reach is CLAMPED, not enforced: this rig sits at 99.5% extension in every
+   grip (measured), so a hand sent further than the arm is long straightens
+   and stops short along the line rather than tearing off the shoulder. */
+const _ikW = new THREE.Vector3();
+const _ikD = new THREE.Vector3();
+const _ikN = new THREE.Vector3();
+const _ikE = new THREE.Vector3();
+const _ikV = new THREE.Vector3();
+const _ikT = new THREE.Vector3();
+const _ikS = new THREE.Vector3();
+
+function reachArm(hand, S, pos, frame, pole) {
+  // back to bind first, for the same reason applyArmPose does it: aimBone
+  // takes the minimal rotation from wherever the bone currently points, so
+  // last frame's roll would ride along and the pose would stop being a
+  // function of its inputs
+  for (const k of ['upper', 'fore', 'hand']) {
+    hand.bones[k].quaternion.copy(hand.bones[k].userData.bindLocal);
+  }
+  hand.root.updateMatrixWorld(true);
+  // the fist anchor rides the hand bone, so a known hand orientation turns
+  // the fist target straight into a wrist target
+  _ikW.fromArray(pos).sub(_ikV.copy(hand.wristToGrip).applyQuaternion(frame));
+  _ikD.copy(_ikW).sub(S);
+  let len = _ikD.length();
+  const L1 = hand.upperLen, L2 = hand.foreLen;
+  if (len < 1e-6) return false;
+  _ikD.divideScalar(len);
+  // Out of reach: lean the shoulder in rather than let the hand slide off
+  // what it is holding. A hand detached from the grip is the one artefact
+  // nobody forgives, and the lean is what a body does anyway.
+  _ikS.copy(S);
+  if (len > L1 + L2) {
+    const lean = Math.min(len - (L1 + L2), SHOULDER_LEAN_MAX);
+    _ikS.addScaledVector(_ikD, lean);
+    len -= lean;
+  }
+  S = _ikS;
+  const cl = Math.min(L1 + L2 - 1e-4, Math.max(Math.abs(L1 - L2) + 1e-4, len));
+  const a = (L1 * L1 - L2 * L2 + cl * cl) / (2 * cl);
+  const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
+  if (pole.isVector3) _ikN.copy(pole); else _ikN.fromArray(pole);
+  _ikN.addScaledVector(_ikD, -_ikN.dot(_ikD));
+  if (_ikN.lengthSq() < 1e-8) {              // pole along the arm: any plane
+    _ikN.set(0, 1, 0).addScaledVector(_ikD, -_ikD.y);
+    if (_ikN.lengthSq() < 1e-8) _ikN.set(1, 0, 0).addScaledVector(_ikD, -_ikD.x);
+  }
+  _ikN.normalize();
+  _ikE.copy(S).addScaledVector(_ikD, a).addScaledVector(_ikN, h);
+  // shoulder first - aiming a bone rotates it about its own origin, so the
+  // joint stays where it is put
   hand.bones.upper.position.copy(hand.shoulderRest);
   hand.root.updateMatrixWorld(true);
-  placeArm(hand, [_hV2.x, _hV2.y, _hV2.z]);
+  hand.bones.upper.getWorldPosition(_hV);
+  hand.gunRoot.worldToLocal(_hV);
+  _hV.subVectors(S, _hV)
+     .applyQuaternion(_hQ.copy(hand.root.quaternion).invert())
+     .divideScalar(hand.root.scale.x);        // gun space -> arms-root space
+  hand.bones.upper.position.add(_hV);
+  hand.root.updateMatrixWorld(true);
+  aimBone(hand, hand.bones.upper, hand.bones.fore, _ikT.copy(_ikE).sub(S));
+  aimBone(hand, hand.bones.fore, hand.bones.hand, _ikW.sub(_ikE));
+  orientBone(hand, hand.bones.hand, frame);
+  rollForearm(hand);
+  orientBone(hand, hand.bones.hand, frame);
+  return true;
+}
+
+/* Blend the arm from its rest pose toward a temporary one by w (0..1) -
+   reload moves, the sprint carry. A target may override any of pos / curl /
+   fore / upper / frame; whatever it leaves out stays at rest, so a target
+   carrying only `pos` behaves exactly like the old position-only lerp.
+
+   The grip ORIENTATION is what this exists for: a hand that grabs a magazine
+   or racks a slide has its knuckle line 90 deg off the firing grip, and no
+   amount of sliding the fist to the right place makes that read. The frame is
+   SLERPED, never lerped through its channel/palm vectors - those collapse the
+   basis halfway through a right angle. */
+const _baPos = [0, 0, 0];
+const _baFore = [0, 0, 0];
+const _baUpper = [0, 0, 0];
+const _baCurl = { f: [0, 0, 0], i: [0, 0, 0], t: [0, 0, 0], tAdd: 0 };
+const _baSpec = { pos: _baPos, fore: _baFore, upper: _baUpper, curl: _baCurl };
+const _baFrame = new THREE.Quaternion();
+const _baS = new THREE.Vector3();
+const _baV = new THREE.Vector3();
+const ZERO3 = [0, 0, 0];
+/* The shoulder is anchored to the body, not welded to it: this rig sits at
+   99.5% extension in every dialled grip (measured), so a shoulder that never
+   moved could not reach the magwell at all - the hand would stop short in
+   mid-air. It is allowed to lean a bounded fraction of the way toward
+   wherever the hand is going, which is what a body does when you reach. */
+const SHOULDER_GIVE = 0.45;
+const SHOULDER_GIVE_MAX = 0.10;
+/* Extra reach, and ONLY when the arm would otherwise fall short. The sprint
+   carry is what needs it: dropping a long gun to the hip puts the forward
+   handguard past what a pinned shoulder can hold, and a support hand floating
+   off the forend is worse than a shoulder that leans a little. */
+const SHOULDER_LEAN_MAX = 0.12;
+
+function lerpDir(out, a, b, k) {
+  for (let i = 0; i < 3; i++) out[i] = a[i] + (b[i] - a[i]) * k;
+  const n = Math.hypot(out[0], out[1], out[2]);
+  if (n > 1e-6) { out[0] /= n; out[1] /= n; out[2] /= n; }
+  return out;
+}
+
+function blendArm(hand, target, w) {
+  const base = hand.baseSpec;
+  const k = Math.min(1, Math.max(0, w));
+  // A target with a body transform still runs even at w = 0: a hand that
+  // stays PUT on the gun (the firing hand through a magazine swap) needs its
+  // shoulder anchored just as much as the one that moves - otherwise that arm
+  // is the one that floats. At w = 0 the solve reproduces the rest pose with
+  // the shoulder held still, which is exactly the wanted no-op.
+  if (!target || (k <= 0 && !target.bodyFix)) {
+    // already at rest: the placement is all that can have drifted (the gun
+    // pose moves under it), so skip the full solve
+    if (!hand.blended) { placeArm(hand, hand.basePos); return; }
+    hand.blended = false;
+    applyArmPose(hand, base, hand.baseFrame);
+    return;
+  }
+  hand.blended = true;
+  const tp = target.pos || base.pos;
+  for (let i = 0; i < 3; i++) _baPos[i] = base.pos[i] + (tp[i] - base.pos[i]) * k;
+  lerpDir(_baFore, base.fore, target.fore || base.fore, k);
+  lerpDir(_baUpper, base.upper, target.upper || base.upper, k);
+  const tc = target.curl || base.curl;
+  for (const c of FINGER_CHAINS) {
+    const a = base.curl[c] || ZERO3, b = tc[c] || a;
+    for (let i = 0; i < 3; i++) _baCurl[c][i] = a[i] + (b[i] - a[i]) * k;
+  }
+  const ta = base.curl.tAdd || 0;
+  const tb = tc.tAdd === undefined ? ta : tc.tAdd;
+  _baCurl.tAdd = ta + (tb - ta) * k;
+  _baFrame.copy(hand.baseFrame).slerp(target.frame || hand.baseFrame, k);
+  // With a body transform given, the arm is SOLVED to a shoulder that stays
+  // with the BODY instead of being slid along by the fist - that is what
+  // stops it floating away with the hand. `bodyFix` maps the rest shoulder
+  // through whatever the gun is doing now (weapons.js owns it, since it owns
+  // the gun's rest transform).
+  if (target.bodyFix) {
+    _baS.copy(hand.shoulderHome).applyMatrix4(target.bodyFix);
+    _baV.set(_baPos[0] - base.pos[0], _baPos[1] - base.pos[1], _baPos[2] - base.pos[2]);
+    const d = _baV.length();
+    if (d > 1e-6) {
+      _baS.addScaledVector(_baV.divideScalar(d),
+                           Math.min(d * SHOULDER_GIVE, SHOULDER_GIVE_MAX));
+    }
+    poseFingers(hand, _baCurl);
+    if (reachArm(hand, _baS, _baPos, _baFrame, _baUpper)) return;
+  }
+  applyArmPose(hand, _baSpec, _baFrame);
 }
 
 /* Build one pair of arms and hang them under a gun's model root.

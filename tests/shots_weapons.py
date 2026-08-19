@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Visual pass on the baked weapon viewmodels: hip + ADS per weapon, plus a
-numeric ADS alignment check (each sight point projected onto the camera axis
-must land at NDC ~0,0 - dark sights on dark screenshots cannot be judged by
-eye). Runs on the dev range so every weapon is unlocked."""
+"""Visual pass on the baked weapon viewmodels: hip + ADS per weapon, plus two
+numeric checks that a screenshot cannot settle - dark sights and black gloves
+on a dark arena:
+  * ADS alignment: each sight point projected onto the camera axis has to land
+    at NDC ~0,0, and the aim dot has to be the first thing on that axis;
+  * arm anchoring: through a reload and the sprint carry the shoulders stay
+    put in camera space and the hand that is NOT moving stays on its grip.
+Runs on the dev range so every weapon is unlocked."""
 import time, pathlib
 from playwright.sync_api import sync_playwright
 
@@ -89,5 +93,74 @@ with sync_playwright() as pw:
             print(f"{'  first hit':16s} {occ}{flag}")
         page.mouse.up(button="right")
         time.sleep(0.4)
+
+    # ---- arms: the shoulder is anchored to the body, not carried by the gun --
+    # The reload used to slide the whole arm after the fist and the sprint
+    # swung both arms out sideways with the gun (user report 2026-08-19); the
+    # IK in js/hands.js fixed that, and these two invariants are what it buys.
+    # Both are geometric, because a dark glove on a dark arena cannot be
+    # judged from a screenshot.
+    page.evaluate("""(() => {
+      window.__armProbe = () => {
+        const rig = viewmodels[currentWeapon].userData.arms, out = {};
+        for (const k of ['L', 'R']) {
+          const h = rig[k];
+          const s = new THREE.Vector3();
+          h.bones.upper.getWorldPosition(s);
+          const g = new THREE.Vector3(); gripAnchor(h, g);
+          out[k] = { sh: camera.worldToLocal(s).toArray(), grip: g.toArray() };
+        }
+        return out;
+      };
+      // hold the reload clock so a frame can be sampled mid-animation
+      window.__freeze = null;
+      const orig = updateViewmodel;
+      updateViewmodel = function (dt) {
+        if (window.__sprint) player.sprinting = true;
+        if (window.__freeze !== null && reloading && relPlan) {
+          reloadTimer = reloadDuration * (1 - window.__freeze);
+        }
+        orig(dt);
+      };
+    })()""")
+    page.evaluate("switchWeapon(0)")
+    time.sleep(0.6)
+    rest = page.evaluate("__armProbe()")
+
+    def report(name, now, moved_hand):
+        bad = []
+        for k in ("L", "R"):
+            d = max(abs(a - b) for a, b in zip(rest[k]["sh"], now[k]["sh"]))
+            if d > 0.16:                      # the give, plus the lean assist
+                bad.append(f"{k} shoulder drifted {d:.3f}")
+            if k != moved_hand:
+                g = max(abs(a - b) for a, b in zip(rest[k]["grip"], now[k]["grip"]))
+                if g > 0.004:
+                    bad.append(f"{k} hand came off the grip by {g:.3f}")
+        print(f"{name:28s} {'OK' if not bad else '  << ' + '; '.join(bad)}")
+
+    for t in (0.16, 0.32, 0.58, 0.75):
+        page.evaluate(f"""(() => {{
+          const w = WEAPONS[0]; w.mag = 0; w.reserve = 60;
+          reloading = false; relPlan = null;
+          window.__freeze = {t}; startReload();
+        }})()""")
+        time.sleep(0.5)
+        report(f"reload t={t}", page.evaluate("__armProbe()"), "L")
+    page.evaluate("window.__freeze = null; reloading = false; relPlan = null; resetWeaponFx()")
+    time.sleep(0.4)
+    # The run keeps BOTH hands on the gun (user call 2026-08-19), so neither
+    # may slide off it while the shoulders stay with the body - and this one
+    # runs on EVERY weapon, because the carry that was rejected before was the
+    # one that read fine on the pistol and wrong on the long guns.
+    for i, wid in enumerate(["pistol", "smg", "shotgun", "rifle", "sniper"]):
+        page.evaluate(f"window.__sprint = false; switchWeapon({i})")
+        time.sleep(0.7)
+        rest = page.evaluate("__armProbe()")
+        page.evaluate("window.__sprint = true")
+        time.sleep(1.4)
+        report(f"sprint carry {wid}", page.evaluate("__armProbe()"), None)
+    page.evaluate("window.__sprint = false")
+
     print("pageerrors:", errs[:5])
     b.close()
