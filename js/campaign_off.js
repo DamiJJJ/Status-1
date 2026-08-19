@@ -82,7 +82,7 @@ function backToMenu() {
 
 function renderMenuMeta() {
   // the endless arena is cut (2026-08-18) - the range is the only mode
-  el("menu-progress").textContent = "Wersja 0.1.0";
+  el("menu-progress").textContent = "DEV 0.1.0";
 }
 
 function openStats() {

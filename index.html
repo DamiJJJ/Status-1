@@ -70,52 +70,52 @@
   <div id="obj-bar"><div id="obj-fill"></div></div>
 </div>
 
-<div id="hud-top-left" class="hud hud-panel">
-  <div class="stat" id="hud-score">
-    <div class="label"><span class="icon" data-icon="score"></span>Wynik</div>
-    <div class="value" id="score-value">0</div>
-  </div>
-  <div class="stat" id="hud-wave">
-    <div class="label"><span class="icon" data-icon="wave"></span>Fala</div>
-    <div class="value" id="wave-value">–</div>
-  </div>
-  <div class="stat" id="hud-enemies">
-    <div class="label"><span class="icon" data-icon="enemies"></span>Wrogowie</div>
-    <div class="value" id="enemies-value">0</div>
-  </div>
-  <div class="stat" id="hud-credits">
-    <div class="label"><span class="icon" data-icon="credits"></span>Kredyty</div>
-    <div class="value" id="credits-value">0</div>
-  </div>
+<!-- top centre: one line of run state, no panel (HUD direction D) -->
+<div id="hud-top" class="hud">
+  <span class="ht ht-wave">Fala <b id="wave-value">–</b></span>
+  <span class="ht-dot"></span>
+  <span class="ht ht-enemies">Cele <b id="enemies-value">0</b></span>
+  <span class="ht-dot"></span>
+  <span class="ht ht-score"><b id="score-value">0</b></span>
 </div>
 
-<img id="hud-logo" class="hud" src="assets/logo-mark.png" alt="" draggable="false">
+<div id="hud-brand" class="hud">
+  <div id="hud-credits">
+    <span class="icon" data-icon="credits"></span>
+    <span id="credits-value">0</span>
+  </div>
+  <img id="hud-logo" src="assets/logo-mark.png" alt="" draggable="false">
+</div>
 
-<div id="hud-hp" class="hud hud-panel">
+<div id="hud-hp" class="hud">
   <div id="hp-row">
     <span id="hp-value">100</span>
-    <span id="hp-label">Zdrowie</span>
+    <span id="hp-label">Integralność</span>
   </div>
+  <!-- the segments are a CSS mask over the bar, so #hp-fill stays one width-driven
+       element and updateHpHud() needs no knowledge of them -->
   <div id="hp-bar"><div id="hp-fill"></div></div>
 </div>
 
-<div id="hud-weapon" class="hud hud-panel">
-  <div id="weapon-name">Pistolet</div>
+<div id="hud-weapon" class="hud">
   <div id="ammo-row">
+    <span id="weapon-name">Pistolet</span>
     <span id="ammo-mag">12</span>
-    <span id="ammo-reserve">/ 72</span>
+    <span id="ammo-reserve">72</span>
   </div>
-  <div id="hud-grenade" title="Granaty (G)">
-    <span class="icon" data-icon="grenade"></span>
-    <span id="grenade-count">×2</span>
-    <b>G</b>
-  </div>
-  <div id="weapon-slots">
-    <div class="wslot active" id="wslot-1" title="Pistolet"><b>1</b><span class="icon" data-icon="pistol"></span></div>
-    <div class="wslot" id="wslot-2" title="SMG"><b>2</b><span class="icon" data-icon="smg"></span></div>
-    <div class="wslot" id="wslot-3" title="Strzelba"><b>3</b><span class="icon" data-icon="shotgun"></span></div>
-    <div class="wslot" id="wslot-4" title="Karabin"><b>4</b><span class="icon" data-icon="rifle"></span></div>
-    <div class="wslot" id="wslot-5" title="Snajperka"><b>5</b><span class="icon" data-icon="sniper"></span></div>
+  <div id="weapon-row">
+    <div id="hud-grenade" title="Granaty (G)">
+      <span class="icon" data-icon="grenade"></span>
+      <span id="grenade-count">×2</span>
+      <b>G</b>
+    </div>
+    <div id="weapon-slots">
+      <div class="wslot active" id="wslot-1" title="Pistolet"><span class="icon" data-icon="pistol"></span><b>1</b></div>
+      <div class="wslot" id="wslot-2" title="SMG"><span class="icon" data-icon="smg"></span><b>2</b></div>
+      <div class="wslot" id="wslot-3" title="Strzelba"><span class="icon" data-icon="shotgun"></span><b>3</b></div>
+      <div class="wslot" id="wslot-4" title="Karabin"><span class="icon" data-icon="rifle"></span><b>4</b></div>
+      <div class="wslot" id="wslot-5" title="Snajperka"><span class="icon" data-icon="sniper"></span><b>5</b></div>
+    </div>
   </div>
 </div>
 
@@ -343,11 +343,13 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, UnrealBloomPass, OutputPass });
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+Object.assign(window, { THREE, PointerLockControls, EffectComposer, RenderPass, UnrealBloomPass, OutputPass, ShaderPass });
 </script>
 <script defer src="js/config.js"></script>
 <script defer src="js/audio.js"></script>
 <script defer src="js/renderer.js"></script>
+<script defer src="js/badge.js"></script>
 <script defer src="js/textures.js"></script>
 <script defer src="js/models.js"></script>
 <script defer src="js/modelkit.js"></script>

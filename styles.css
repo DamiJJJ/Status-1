@@ -123,22 +123,6 @@ html, body {
 /* ---------- HUD ---------- */
 .hud { position: fixed; z-index: 15; pointer-events: none; }
 
-.hud-panel {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  padding: 10px 16px;
-  backdrop-filter: blur(2px);
-}
-
-/* prawy górny: dyskretny znak marki (nie może odciągać uwagi od gry) */
-#hud-logo {
-  right: 18px; top: 18px;
-  width: 46px; height: auto;
-  opacity: 0.38;
-  filter: drop-shadow(0 0 10px rgba(0, 235, 199, 0.35));
-}
-
 /* ---------- ikony inline SVG (js/icons.js wypełnia [data-icon]) ---------- */
 .icon { display: inline-flex; flex: none; }
 .icon svg { display: block; width: 100%; height: 100%; }
@@ -158,85 +142,119 @@ html, body {
 .pickup-marker.expiring { animation: markerBlink 0.5s steps(2, end) infinite; }
 @keyframes markerBlink { 50% { opacity: 0.12; } }
 
-/* lewy górny: wynik / fala / wrogowie */
-#hud-top-left { left: 18px; top: 18px; display: flex; gap: 10px; }
-#hud-top-left .stat { text-align: left; min-width: 92px; }
-.stat .label {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 10px; letter-spacing: 2px;
+/* ---------- top centre: wave / targets / score ---------- */
+#hud-top {
+  left: 50%; top: 22px;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px;
+  font-size: 13px; letter-spacing: 3px; text-transform: uppercase;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+#hud-top .ht { font-weight: 700; }
+#hud-top .ht b { font-weight: inherit; }
+#hud-top .ht-wave { color: var(--orange); }
+#hud-top .ht-enemies { color: var(--red); }
+#hud-top .ht-score { color: rgba(238, 240, 255, 0.72); font-weight: 500; }
+#hud-top .ht-dot {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* ---------- top right: credits + brand mark ---------- */
+#hud-brand { right: 22px; top: 20px; display: flex; align-items: center; gap: 11px; }
+#hud-credits {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 15px; font-weight: 700; color: #ffd166;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+#hud-credits .icon { width: 14px; height: 14px; }
+#hud-logo {
+  width: 34px; height: auto;
+  opacity: 0.3;
+  filter: drop-shadow(0 0 10px rgba(0, 235, 199, 0.35));
+}
+
+/* ---------- bottom left: HP as ten segments ---------- */
+#hud-hp { left: 22px; bottom: 22px; width: 328px; }
+#hp-row {
+  display: flex; align-items: baseline; gap: 9px;
+  margin-bottom: 7px;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+#hp-value { font-size: 34px; font-weight: 700; color: var(--teal); line-height: 1; }
+#hp-value.low { color: var(--red); animation: pulse 0.8s infinite; }
+#hp-label {
+  font-size: 10px; letter-spacing: 3px;
   color: var(--text-dim); text-transform: uppercase;
 }
-.stat .label .icon { width: 12px; height: 12px; opacity: 0.85; }
-.stat .value { font-size: 24px; font-weight: 700; color: var(--text); }
-#hud-wave .value { color: var(--orange); }
-#hud-enemies .value { color: var(--red); }
-#hud-credits .value { color: #ffd166; }
-
-/* lewy dolny: HP */
-#hud-hp { left: 18px; bottom: 18px; width: 300px; }
-#hp-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-#hp-value { font-size: 30px; font-weight: 800; color: var(--teal); }
-#hp-value.low { color: var(--red); animation: pulse 0.8s infinite; }
-#hp-label { font-size: 11px; letter-spacing: 2px; color: var(--text-dim); }
+/* The ten segments are a mask, not ten elements: it cuts a 3px gap out of every
+   tenth of the bar, track and fill in one pass, so #hp-fill stays a single
+   width-driven div and updateHpHud() is unchanged. */
 #hp-bar {
-  height: 10px; border-radius: 5px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 7px;
+  background: rgba(0, 0, 0, 0.4);
   overflow: hidden;
+  -webkit-mask-image: repeating-linear-gradient(90deg,
+    #000 0 calc(10% - 3px), transparent calc(10% - 3px) 10%);
+  mask-image: repeating-linear-gradient(90deg,
+    #000 0 calc(10% - 3px), transparent calc(10% - 3px) 10%);
 }
 #hp-fill {
   height: 100%; width: 100%;
-  border-radius: 5px;
-  background: linear-gradient(90deg, #00b89c, var(--teal));
+  background: var(--teal);
   transition: width 0.15s ease-out;
 }
-#hp-fill.low { background: linear-gradient(90deg, #c2314d, var(--red)); }
+#hp-fill.low { background: var(--red); }
 @keyframes pulse { 50% { opacity: 0.45; } }
 
-/* prawy dolny: broń i amunicja */
-#hud-weapon { right: 18px; bottom: 18px; text-align: right; }
-#hud-grenade {
-  display: flex; align-items: center; gap: 6px;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-  font-size: 14px; font-weight: 700;
-  color: var(--orange);
+/* ---------- bottom right: weapon, ammo, grenades ---------- */
+#hud-weapon { right: 22px; bottom: 22px; text-align: right; }
+#ammo-row {
+  display: flex; align-items: baseline; justify-content: flex-end; gap: 10px;
+  margin: 0 0 8px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
 }
-#hud-grenade .icon { width: 16px; height: 16px; }
-#hud-grenade b {
-  font-size: 10px; font-weight: 600; letter-spacing: 1px;
-  color: var(--text-dim);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 4px;
-  padding: 1px 5px;
-}
-#hud-grenade.empty { color: var(--text-dim); opacity: 0.55; }
 #weapon-name {
-  font-size: 13px; letter-spacing: 3px;
+  font-size: 11px; letter-spacing: 3px;
   color: var(--orange); text-transform: uppercase; font-weight: 600;
 }
-#ammo-row { font-weight: 800; margin: 2px 0 8px; }
-#ammo-mag { font-size: 38px; color: var(--text); }
-#ammo-reserve { font-size: 20px; color: var(--text-dim); }
+#ammo-mag { font-size: 44px; font-weight: 700; color: var(--text); line-height: 0.9; }
+#ammo-reserve { font-size: 17px; font-weight: 500; color: var(--text-dim); }
 #ammo-row.empty #ammo-mag { color: var(--red); }
-#weapon-slots { display: flex; gap: 6px; justify-content: flex-end; }
-.wslot {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 9px;
-  font-size: 11px; letter-spacing: 1px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 5px;
+
+#weapon-row { display: flex; align-items: center; justify-content: flex-end; gap: 16px; }
+#hud-grenade {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 13px; font-weight: 700; color: var(--orange);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+#hud-grenade .icon { width: 15px; height: 15px; }
+#hud-grenade b {
+  font-size: 9px; font-weight: 600; letter-spacing: 1px;
   color: var(--text-dim);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 1px 4px;
 }
-.wslot .icon { width: 22px; height: 15px; }
-.wslot.active .icon { filter: drop-shadow(0 0 4px rgba(0, 235, 199, 0.7)); }
+#hud-grenade.empty { color: var(--text-dim); opacity: 0.55; }
+
+#weapon-slots { display: flex; gap: 4px; justify-content: flex-end; }
+.wslot {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  width: 44px; padding: 5px 0 4px;
+  border-top: 2px solid rgba(255, 255, 255, 0.16);
+  background: rgba(13, 16, 38, 0.72);
+  color: var(--text-dim);
+  font-size: 9px; letter-spacing: 1px;
+}
+.wslot .icon { width: 22px; height: 14px; }
+.wslot b { font-weight: 600; color: inherit; }
 .wslot.active {
-  border-color: var(--teal);
+  border-top-color: var(--teal);
+  background: rgba(0, 235, 199, 0.12);
   color: var(--teal);
-  background: rgba(0, 235, 199, 0.1);
 }
-.wslot.locked { opacity: 0.3; }
-.wslot b { margin-right: 5px; color: inherit; }
+.wslot.active .icon { filter: drop-shadow(0 0 4px rgba(0, 235, 199, 0.7)); }
+.wslot.locked { opacity: 0.32; }
 
 /* komunikat centralny */
 #center-msg {
@@ -548,7 +566,7 @@ body.menu-bg #vignette { display: none !important; } /* beats the id-level displ
 /* ---------- HUD celu (kampania): jedna trwała linia, top-center ---------- */
 #hud-objective {
   display: none;
-  top: 16px; left: 50%;
+  top: 52px; left: 50%;
   transform: translateX(-50%);
   min-width: 240px; max-width: 420px;
   background: var(--panel);

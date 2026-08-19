@@ -33,7 +33,7 @@ function updateWeaponHud() {
   const w = WEAPONS[currentWeapon];
   weaponNameEl.textContent = w.name;
   ammoMagEl.textContent = w.mag;
-  ammoReserveEl.textContent = `/ ${w.reserve}`;
+  ammoReserveEl.textContent = `${w.reserve}`;
   ammoRowEl.classList.toggle('empty', w.mag === 0);
   for (let i = 1; i <= WEAPONS.length; i++) {
     el(`wslot-${i}`).classList.toggle('active', i - 1 === currentWeapon);
