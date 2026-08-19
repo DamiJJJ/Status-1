@@ -67,62 +67,38 @@ function buildEnemyModel(type) {
   const g = new THREE.Group();
   const matBody = enemyMat(t.body);
   const matBodyDim = enemyMat(new THREE.Color(t.body).multiplyScalar(0.72).getHex());
-  const matDark = enemyMat(0x1e2138);
   const matEye  = enemyMat(0x1a0b00, t.accent, 0.9);
 
-  /* --- SENTINEL chassis: one shared humanoid mesh for every ground type
+  /* --- SENTINEL chassis: one shared humanoid SKIN for every ground type
      (CC-BY geometry baked by tools/gen_models.py, materials ours). Types read
-     apart by livery colour, silhouette size, shoulder bulk and head decor -
-     the old "one head shape per type" rule is gone. --- */
-  const model = buildModel('sentinel', src => {
+     apart by livery colour, silhouette size and head decor - the old "one head
+     shape per type" rule is gone.
+
+     Since 2026-08-19 the rig ships as a real skin in its NEUTRAL BIND POSE:
+     nothing is baked, and nothing here poses it. Stance and animation are a
+     clean slate to be built on `model.bones` (keyed by source bone name:
+     'Upper body', 'head', 'upper_arm.R', 'thigh.L', ...). --- */
+  const model = buildSkinnedModel('sentinel', src => {
     if (src === 'Material.003') return matEye;   // glowing trim reads as the eye
     if (src === 'Material.002') return matBodyDim;  // secondary plates
     return matBody;                                 // main armour
   });
   const body = model.root;
   g.add(body);
-  const { head, armR, legL, legR } = model.parts;
-  // every mesh of the head group counts as a headshot (decor included)
-  head.traverse(o => { if (o.isMesh) o.userData.isHead = true; });
 
-  /* One-handed firing stance. The arm is one rigid part, so instead of guessing
-     Euler angles we swing it by the rotation that carries its bind-pose hand
-     onto a target point straight ahead - exact, and it keeps working if the
-     source model ever changes. The left arm stays in its bind pose. */
-  const poseArm = (part, socket, tx, ty, tz) => {
-    const from = model.sockets[socket].clone().sub(part.position).normalize();
-    const to = new THREE.Vector3(tx, ty, tz).sub(part.position).normalize();
-    const q = new THREE.Quaternion().setFromUnitVectors(from, to);
-    part.quaternion.copy(q);
-    return q;
-  };
-  const qR = poseArm(armR, 'handR', -0.13, 1.47, 0.62);
-
-  /* the gun rides in the right hand, but the barrel has to stay level: undo the
-     arm swing on the mount so everything inside is aligned with the chassis */
-  const gun = new THREE.Group();
-  gun.name = 'botGun';   // handle for debug/screenshot tooling
-  gun.position.copy(socketLocal(model, 'gripR', 'armR'));
-  gun.quaternion.copy(qR.clone().invert());
-  armR.add(gun);
-  /* PATROL carries no weapon model for now (user call, 2026-08-18): the baked
-     Glock never sat convincingly in the fist. The hand keeps the firing pose
-     and the tracer anchor, so re-adding a model is a four-line change:
-       const pistol = buildModel('glock', () => matDark);
-       pistol.root.rotation.y = Math.PI;  // model muzzle is -Z, bot faces +Z
-       pistol.root.scale.setScalar(0.85);
-       gun.add(pistol.root);
-     Guns for the units in _kosz sit in that folder too. */
+  /* Tracer origin. There is no firing stance yet (the rig is a clean slate),
+     so the muzzle anchor rides the chassis at chest height rather than a hand
+     bone - move it onto `model.bones['hand.R']` once an aiming pose exists. */
   const gunTip = new THREE.Object3D();     // tracer origin only, nothing to draw
-  gunTip.position.set(0, 0.05, 0.14);
-  gun.add(gunTip);
+  gunTip.position.set(0, 1.45, 0.35);
+  g.add(gunTip);
 
   // the chassis is 2.15 m tall; PATROL wears it a touch bigger
   g.scale.setScalar(t.scale * 1.05);
   g.traverse(o => {
     if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; }
   });
-  return { group: g, gunTip, legL, legR, rotors: null };
+  return { group: g, gunTip, bones: model.bones, rotors: null };
 }
 
 function spawnEnemy(type, { hpMul = 1, accMul = 1, dmgMul = 1, tag = null, at = null,
@@ -145,14 +121,14 @@ function spawnEnemy(type, { hpMul = 1, accMul = 1, dmgMul = 1, tag = null, at = 
   }
   const jitter = () => (Math.random() - 0.5) * (at ? 2.4 : 4);
   const t = ENEMY_TYPES[type];
-  const { group, gunTip, legL, legR, rotors } = buildEnemyModel(type);
+  const { group, gunTip, bones, rotors } = buildEnemyModel(type);
   if (scaleMul !== 1) group.scale.multiplyScalar(scaleMul);
   group.position.set(sx + jitter(), 0, sz + jitter());
   if (!passive) resolveCollisions(group.position, t.radius * scaleMul, t.fly ? 2.4 : 0);
 
   const enemy = {
     type: t, typeName: type,
-    group, gunTip, legL, legR, rotors,
+    group, gunTip, bones, rotors,
     hp: t.hp * hpMul, maxHp: t.hp * hpMul,
     accuracy: Math.min(0.85, t.accuracy * accMul),
     dmgMul, // difficulty/mission damage scale — never mutate shared ENEMY_TYPES
@@ -258,10 +234,6 @@ function updateEnemies(dt) {
       e.bobT += dt * 6;
       g.position.y = e.flyY ? e.flyY + Math.sin(e.bobT * 0.7) * 0.15
                             : Math.abs(Math.sin(e.bobT)) * 0.05;
-      if (e.legL) {
-        e.legL.rotation.x = Math.sin(e.bobT) * 0.45;
-        e.legR.rotation.x = -Math.sin(e.bobT) * 0.45;
-      }
       if (e.rotors) for (const r of e.rotors) r.rotation.y += dt * 45;
       const lim = arena.half + 2;
       if (Math.abs(g.position.x) > lim || Math.abs(g.position.z) > lim) {
@@ -349,9 +321,6 @@ function updateEnemies(dt) {
       if (e.rotors) for (const r of e.rotors) r.rotation.y += dt * 45;
     } else {
       g.position.y = Math.abs(Math.sin(e.bobT)) * 0.06 * walkFactor;
-      const legAmp = 0.5 * walkFactor;
-      e.legL.rotation.x = Math.sin(e.bobT) * legAmp;
-      e.legR.rotation.x = -Math.sin(e.bobT) * legAmp;
     }
 
     // --- strzelanie (pistolet / strzelba / seria z karabinu) ---

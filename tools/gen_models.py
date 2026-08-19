@@ -270,8 +270,11 @@ def extract(g, binc, cfg, pose=None):
                         N[k] = xf_dir(bind_nms[best], nor[k])
                     pm = pose.get(name) if pose else None
                     if pm:
-                        P[k] = xf_point(pm, pos[k])
-                        N[k] = xf_dir(pm, nor[k])
+                        # curl poses COMPOSE with bindWorld (the arms rig);
+                        # without bindWorld they replace the raw position
+                        pmn = m_transpose(m_inv(pm))
+                        P[k] = xf_point(pm, P[k] if bindmats else pos[k])
+                        N[k] = xf_dir(pmn, N[k] if bindmats else nor[k])
             else:
                 vpart = None
                 P = [xf_point(M, p) for p in pos]
@@ -296,6 +299,30 @@ def extract(g, binc, cfg, pose=None):
                     out.append(remap[key])
                 p.tris.append((out[0], out[1], out[2], mname))
     return parts
+
+
+def build_curl(g, binc, cfg):
+    """Explicit finger curl for bindWorld rigs (the FPS arms): rotate each
+    bone chain about a given world axis through the bones' NODE-GRAPH pivots
+    (that is the space bindWorld vertices land in), composing down the chain.
+    Returns joint name -> 4x4, same contract as build_pose."""
+    spec = cfg.get('curl')
+    if not spec or 'skins' not in g:
+        return {}
+    wm = world_matrices(g)
+    skin = g['skins'][0]
+    piv = {}
+    for j in skin['joints']:
+        n = g['nodes'][j]
+        piv[n.get('name', '')] = (wm[j][12], wm[j][13], wm[j][14])
+    out = {}
+    for chain in spec:
+        axis = chain['axis']
+        M = m_ident()
+        for bone, deg in zip(chain['bones'], chain['deg']):
+            M = m_mul(M, m_pivot_rot(piv[bone], axis, deg))
+            out[bone] = M
+    return out
 
 
 def build_pose(g, binc, cfg):
@@ -353,14 +380,22 @@ def build_pose(g, binc, cfg):
 def joint_centroids(g, binc, cfg, groups, pose=None):
     """Centroid of the vertices a set of joints owns - the joint origin sits at
     the wrist, which is a poor place to hang a weapon; the palm is where the
-    geometry actually is."""
+    geometry actually is. Under cfg['bindWorld'] the vertices go through the
+    same jointWorld*IBM transform extract() uses, then the pose on top."""
     if 'skins' not in g or not groups:
         return {}
+    wm = world_matrices(g) if cfg.get('bindWorld') else None
     out = {}
     for ni, node in enumerate(g['nodes']):
         if 'mesh' not in node or 'skin' not in node:
             continue
-        jnames = [g['nodes'][j].get('name', '') for j in g['skins'][node['skin']]['joints']]
+        skin = g['skins'][node['skin']]
+        jnames = [g['nodes'][j].get('name', '') for j in skin['joints']]
+        bindmats = None
+        if wm:
+            ibm = accessor(g, binc, skin['inverseBindMatrices'])
+            bindmats = [m_mul(wm[j], list(ibm[k]))
+                        for k, j in enumerate(skin['joints'])]
         for prim in g['meshes'][node['mesh']]['primitives']:
             att = prim['attributes']
             pos = accessor(g, binc, att['POSITION'])
@@ -373,6 +408,8 @@ def joint_centroids(g, binc, cfg, groups, pose=None):
                         bw, best = we[k][c], jo[k][c]
                 name = jnames[best]
                 v = pos[k]
+                if bindmats:
+                    v = xf_point(bindmats[best], v)
                 if pose and name in pose:
                     v = xf_point(pose[name], v)
                 for sock, wanted in groups.items():
@@ -461,63 +498,268 @@ def pack(parts, order):
     return out
 
 
+def build_skinned(key, cfg):
+    """Bake a REAL skin: one mesh plus the bone tree, instead of splitting the
+    geometry into rigid parts.
+
+    Rigid splitting (build() above) assigns every triangle to its dominant
+    joint, so the mesh CRACKS along every seam as soon as two parts rotate
+    apart - visible as holes in the fingers and a hollow, open cross-section
+    wherever a joint was dropped. A skinned mesh has neither problem: the
+    vertices follow the bones by weight, and nothing has to be cut away.
+
+    Output keeps the vertices in the source mesh node's space; the runtime
+    hangs the whole rig under a group carrying `xform` (orientation + the
+    scale that normalizes `normPair` to `length`).
+    """
+    g, binc = read_glb(os.path.join(SRC, cfg['file']))
+    skin = g['skins'][0]
+    joints = skin['joints']
+    jname = [g['nodes'][j].get('name', '') for j in joints]
+    jindex = {n: k for k, n in enumerate(jname)}
+    ibm = accessor(g, binc, skin['inverseBindMatrices'])
+
+    # bone tree, in skin-joint order (the index space JOINTS_0 refers to)
+    parent_of = {}
+    for i, n in enumerate(g['nodes']):
+        for c in n.get('children', []):
+            parent_of[c] = i
+    bones = []
+    for k, j in enumerate(joints):
+        n = g['nodes'][j]
+        pj = parent_of.get(j)
+        # -1 for a chain root: the arm roots hang off 'Armature', which is a
+        # plain node, NOT a joint - a null here reads as 0 in JS and reparents
+        # both arms onto the first bone
+        pn = g['nodes'][pj].get('name', '') if pj is not None else None
+        bones.append({
+            'name': jname[k],
+            'parent': jindex.get(pn, -1) if pn is not None else -1,
+            'pos': [round(v, 6) for v in n.get('translation', [0, 0, 0])],
+            'rot': [round(v, 6) for v in n.get('rotation', [0, 0, 0, 1])],
+            'scl': [round(v, 6) for v in n.get('scale', [1, 1, 1])],
+        })
+
+    wm = world_matrices(g)
+    mesh_node = next(i for i, n in enumerate(g['nodes']) if n.get('skin') is not None)
+    # bindMatrix stays IDENTITY on purpose. Verified against this file:
+    # jointWorld * IBM * v already lands a raw POSITION in scene space, i.e.
+    # the skin matrices carry the mesh node's own transform (which glTF says
+    # to ignore for skinned meshes). Feeding the node matrix in as the bind
+    # matrix applies that transform a second time and collapses the mesh.
+
+    verts, norms, jidx, jwgt, tris = [], [], [], [], []
+    for prim in g['meshes'][g['nodes'][mesh_node]['mesh']]['primitives']:
+        at = prim['attributes']
+        pos = accessor(g, binc, at['POSITION'])
+        nor = accessor(g, binc, at['NORMAL']) if 'NORMAL' in at else [(0, 1, 0)] * len(pos)
+        ji = accessor(g, binc, at['JOINTS_0'])
+        jw = accessor(g, binc, at['WEIGHTS_0'])
+        mat = g['materials'][prim['material']].get('name', 'mat')
+        base = len(verts)
+        verts.extend(pos)
+        norms.extend(nor)
+        jidx.extend(ji)
+        jwgt.extend(jw)
+        ind = [i[0] for i in accessor(g, binc, prim['indices'])]
+        for t in range(0, len(ind), 3):
+            tris.append((base + ind[t], base + ind[t + 1], base + ind[t + 2], mat))
+
+    # Bind pose in scene space, computed the way the GPU will: sum the skin
+    # matrices (jointWorld * IBM) by weight and apply them to the raw POSITION.
+    # Do NOT assume the raw positions are already scene space - that holds for
+    # the FPS arms (their IBMs cancel against the node graph) but NOT for the
+    # Ross rig, whose positions sit in the mesh node's own space, a factor ~100
+    # off. Measuring the bbox on raw positions made the drone ~100x too tall.
+    skinmat = []
+    for k, j in enumerate(joints):
+        skinmat.append(m_mul(wm[j], list(ibm[k])))
+    bindv = []
+    for v, ji, jw in zip(verts, jidx, jwgt):
+        acc = [0.0, 0.0, 0.0]
+        tot = 0.0
+        for c in range(4):
+            w = jw[c]
+            if w != w or w <= 0:
+                continue
+            q = xf_point(skinmat[int(ji[c])], v)
+            acc = [acc[i] + q[i] * w for i in range(3)]
+            tot += w
+        bindv.append(tuple(a / tot for a in acc) if tot > 0
+                     else xf_point(skinmat[int(ji[0])], v))
+
+    R = m_ident()
+    for axis, deg in cfg.get('rot', []):
+        R = m_mul({'x': m_rot_x, 'y': m_rot_y, 'z': m_rot_z}[axis](deg), R)
+    rv = [xf_point(R, v) for v in bindv]
+    blo = [min(v[c] for v in rv) for c in range(3)]
+    bhi = [max(v[c] for v in rv) for c in range(3)]
+
+    if 'normPair' in cfg:
+        # scale by the distance between two bind-pose joint origins, for rigs
+        # where the bbox lies: the FPS arms ship the shoulder, which never
+        # reaches the screen, so a bbox would shrink what actually does
+        a, b = cfg['normPair']
+        pa = wm[joints[jindex[a]]]
+        pb = wm[joints[jindex[b]]]
+        d = math.sqrt(sum((pa[12 + c] - pb[12 + c]) ** 2 for c in range(3)))
+        s = cfg['length'] / d
+    elif 'height' in cfg:
+        s = cfg['height'] / (bhi[1] - blo[1])
+    elif 'length' in cfg:
+        s = cfg['length'] / (bhi[2] - blo[2])
+    else:
+        s = 1.0
+
+    G = m_mul(m_scale(s), R)
+    if cfg.get('ground'):
+        G = m_mul(m_translate([0, -blo[1] * s, 0]), G)
+    elif cfg.get('center'):
+        G = m_mul(m_translate([-(blo[c] + bhi[c]) / 2 * s for c in range(3)]), G)
+    # The chain roots hang off 'Armature', a plain node that carries the rig's
+    # own scale (188 here). Only the joints ship, so that transform has to be
+    # folded into the group the runtime hangs the skeleton under - without it
+    # every bone translation collapses to a fraction of its real length.
+    root_j = next(k for k, b in enumerate(bones) if b['parent'] < 0)
+    pj = parent_of.get(joints[root_j])
+    G = m_mul(G, wm[pj] if pj is not None else m_ident())
+
+    # quantize over the whole mesh (one part, so one range)
+    lo = [min(v[c] for v in verts) for c in range(3)]
+    hi = [max(v[c] for v in verts) for c in range(3)]
+    span = max(hi[c] - lo[c] for c in range(3)) or 1e-6
+    qs = span / 32000.0
+    qpos = []
+    for v in verts:
+        for c in range(3):
+            qpos.append(max(-32768, min(32767, int(round((v[c] - lo[c]) / qs)) - 16000)))
+    qnor = []
+    for n in norms:
+        L = math.sqrt(sum(c * c for c in n)) or 1.0
+        for c in range(3):
+            qnor.append(max(-127, min(127, int(round(n[c] / L * 127)))))
+    # FBX2glTF leaves unweighted vertices as NaN (180 of them in the Ross rig,
+    # all pointing at joint slot 0). NaN survives normalization and poisons the
+    # quantizer, so those fall back to full weight on their first joint.
+    qji, qjw = [], []
+    for ji, jw in zip(jidx, jwgt):
+        jw = [w if w == w else 0.0 for w in jw]
+        tot = sum(jw)
+        if tot <= 0:
+            jw, tot = [1.0, 0.0, 0.0, 0.0], 1.0
+        for c in range(4):
+            qji.append(int(ji[c]))
+            qjw.append(max(0, min(255, int(round(jw[c] / tot * 255)))))
+
+    # Headshot zone. A skin is ONE mesh, so the old per-mesh `userData.isHead`
+    # flag has nothing to hang on: instead every triangle is classified by the
+    # bone carrying most of its weight, head triangles are sorted to the end of
+    # their material group, and the runtime gets the face ranges (a handful of
+    # them) to test a raycast's faceIndex against.
+    hb = {jindex[n] for n in cfg.get('headBones', []) if n in jindex}
+    def is_head(t):
+        if not hb:
+            return 0
+        acc = {}
+        for vi in t[:3]:
+            for j, w in zip(jidx[vi], jwgt[vi]):
+                acc[int(j)] = acc.get(int(j), 0.0) + (w if w == w else 0.0)
+        return 1 if max(acc, key=acc.get) in hb else 0
+
+    tris = [(t[0], t[1], t[2], t[3], is_head(t)) for t in tris]
+    tris.sort(key=lambda t: (t[3], t[4]))
+    idx, groups, cur, start = [], [], None, 0
+    for t in tris:
+        if t[3] != cur:
+            if cur is not None:
+                groups.append({'mat': cur, 'start': start, 'count': len(idx) - start})
+            cur, start = t[3], len(idx)
+        idx.extend(t[:3])
+    groups.append({'mat': cur, 'start': start, 'count': len(idx) - start})
+    # head triangles now form one contiguous run per material group
+    head, run = [], None
+    for f, t in enumerate(tris):
+        if t[4] and run is None:
+            run = f
+        elif not t[4] and run is not None:
+            head.append([run, f - run]); run = None
+    if run is not None:
+        head.append([run, len(tris) - run])
+    big = len(verts) > 65535
+
+    return {'credit': cfg['credit'], 'skin': {
+        'qo': [round(lo[c] + 16000 * qs, 6) for c in range(3)],
+        'qs': qs,
+        'nv': len(verts),
+        'pos': b64('h', qpos),
+        'nor': b64('b', qnor),
+        'ji': b64('B', qji),
+        'jw': b64('B', qjw),
+        'idx': b64('I' if big else 'H', idx),
+        'i32': big,
+        'groups': groups,
+        'head': head,
+        'bones': bones,
+        'ibm': [round(v, 6) for m in ibm for v in m],
+        'xform': [round(v, 6) for v in G],
+    }}
+
+
+def probe_skinned(key, cfg):
+    """--probe for a skinned bake: bone tree, span and bind-pose extents."""
+    d = build_skinned(key, cfg)['skin']
+    print('-- %s (skinned) verts %d  tris %d' % (
+        key, d['nv'], sum(g['count'] for g in d['groups']) // 3))
+    print('   materials:', sorted({g['mat'] for g in d['groups']}))
+    x = d['xform']
+    sc = math.sqrt(x[0] ** 2 + x[1] ** 2 + x[2] ** 2)
+    print('   xform scale %.5f' % sc)
+    for i, b in enumerate(d['bones']):
+        print('   %2d %-28s parent %s' % (i, b['name'], b['parent']))
+    # Bind-pose joint origins in FINAL space (metres), so the numbers match the
+    # units the game poses in. The skeleton hangs under `xform`, but the source
+    # joint world matrices include the Armature node that `xform` also carries -
+    # divide it back out or every origin comes back scaled by the rig's ~350x.
+    g, binc = read_glb(os.path.join(SRC, cfg['file']))
+    wm = world_matrices(g)
+    skin = g['skins'][0]
+    parent_of = {}
+    for i, n in enumerate(g['nodes']):
+        for c in n.get('children', []):
+            parent_of[c] = i
+    root_j = next(j for j in skin['joints']
+                  if g['nodes'][parent_of[j]].get('name', '') not in
+                  {g['nodes'][x].get('name', '') for x in skin['joints']})
+    A = wm[parent_of[root_j]]
+    M = m_mul(d['xform'], m_inv(A))
+    print('   bind-pose joint origins (final space, metres):')
+    for k, j in enumerate(skin['joints']):
+        w = wm[j]
+        p = xf_point(M, (w[12], w[13], w[14]))
+        print('     %-28s [%+.4f %+.4f %+.4f]' % (
+            g['nodes'][j].get('name', '?'), p[0], p[1], p[2]))
+
+
 # --------------------------------------------------------------------- models
 
 MODELS = {
-    # LSPD drone body - humanoid rig split into animatable parts
+    # LSPD drone body (PATROL). Baked as a REAL SKIN, not as rigid parts
+    # (2026-08-19, user call): the rigid split cracked open at every seam once
+    # two limbs rotated apart, and the baked-in finger curl froze one pose into
+    # the geometry. A skin deforms with the bones and stays closed, and the
+    # rig ships in its NEUTRAL BIND POSE - every stance and animation is now
+    # runtime work (js/enemies.js), nothing is baked.
     'sentinel': {
         'file': 'Ross by joney_lol - mNvWmEA4O4.glb',
         'credit': 'Ross by joney_lol [CC-BY] via Poly Pizza',
-        'fallback': 'torso',
-        'joints': {
-            'lower body': 'torso', 'Upper body': 'torso', 'neck': 'torso',
-            'head': 'head',
-            'upper_arm.L': 'armL', 'forearm.L': 'armL', 'hand.L': 'armL',
-            'thumb.01.L': 'armL', 'thumb.02.L': 'armL', 'f_middle.01.L': 'armL',
-            'f_middle.02.L': 'armL', 'f_ring.01.L': 'armL', 'f_ring.02.L': 'armL',
-            'upper_arm.R': 'armR', 'forearm.R': 'armR', 'hand.R': 'armR',
-            'thumb.01.R': 'armR', 'thumb.02.R': 'armR', 'f_middle.01.R': 'armR',
-            'f_middle.02.R': 'armR', 'f_ring.01.R': 'armR', 'f_ring.02.R': 'armR',
-            'thigh.L': 'legL', 'shin.L': 'legL', 'foot.L': 'legL',
-            'toe.L': 'legL', 'heel.02.L': 'legL',
-            'thigh.R': 'legR', 'shin.R': 'legR', 'foot.R': 'legR',
-            'toe.R': 'legR', 'heel.02.R': 'legR',
-        },
-        # baked finger curl: the right hand closes on a grip, the left rests
-        'pose': [
-            {'axis': ['f_middle.01.R', 'f_ring.01.R'], 'chains': [
-                {'bones': ['f_middle.01.R', 'f_middle.02.R'], 'angles': [58, 66],
-                 'toward': 'Upper body'},
-                {'bones': ['f_ring.01.R', 'f_ring.02.R'], 'angles': [58, 66],
-                 'toward': 'Upper body'},
-                {'bones': ['thumb.01.R', 'thumb.02.R'], 'angles': [30, 34],
-                 'toward': 'Upper body'},
-            ]},
-            {'axis': ['f_middle.01.L', 'f_ring.01.L'], 'chains': [
-                {'bones': ['f_middle.01.L', 'f_middle.02.L'], 'angles': [34, 40],
-                 'toward': 'Upper body'},
-                {'bones': ['f_ring.01.L', 'f_ring.02.L'], 'angles': [34, 40],
-                 'toward': 'Upper body'},
-                {'bones': ['thumb.01.L', 'thumb.02.L'], 'angles': [20, 24],
-                 'toward': 'Upper body'},
-            ]},
-        ],
-        # source is Z-up facing -Y; the game wants Y-up facing +Z
-        'rot': [('x', -90)],
+        'skin': True,
+        # no 'rot': unlike the weapon meshes, this rig's own mesh node already
+        # carries the Z-up -> Y-up conversion, and the bake now measures the
+        # real bind pose (skin matrices applied), which comes out Y-up already
         'height': 2.15,           # total height in metres after scaling
         'ground': True,           # drop feet to y = 0
-        'order': ['torso', 'head', 'armL', 'armR', 'legL', 'legR'],
-        'sockets': {'handR': 'hand.R', 'handL': 'hand.L', 'neck': 'neck',
-                    'chest': 'Upper body'},
-        # palm anchors: the wrist joint sits behind and above the grip
-        'vertexSockets': {
-            # fingers only: with the curl baked in, their centroid lands in the
-            # hole the fist makes - which is exactly where a grip belongs
-            'gripR': ['thumb.02.R', 'f_middle.01.R', 'f_middle.02.R',
-                      'f_ring.01.R', 'f_ring.02.R'],
-            'gripL': ['thumb.02.L', 'f_middle.01.L', 'f_middle.02.L',
-                      'f_ring.01.L', 'f_ring.02.L'],
-        },
+        # a skin is one mesh, so headshots ride on baked triangle ranges
+        'headBones': ['head'],
     },
     # service pistol
     'glock': {
@@ -576,12 +818,42 @@ MODELS = {
         'center': True,
         'order': ['body'],
     },
+    # first-person arms for the player viewmodels (BRON-2); one skinned mesh
+    # with both arms. Split into ANIMATABLE parts: forearm+palm per side plus
+    # every finger segment as its own part with a knuckle pivot - the finger
+    # CURL is applied at RUNTIME per weapon (js/hands.js), because every gun is
+    # held differently (pistol grip vs pump vs handguard vs trigger finger).
+    # The UPPER arms are cut (mapped to a part outside 'order'): a viewmodel
+    # arm ends mid-forearm off-frame like every FPS - the shoulder mass would
+    # fill half the screen from this close.
+    # bindWorld: the armature carries scale 188 vs the mesh node's 56, so the
+    # IBMs do not cancel against the node graph (same story as the Mossberg).
+    # first-person arms for the player viewmodels (BRON-2); one skinned mesh
+    # with both arms. Baked as a REAL SKIN (bones + weights), not as rigid
+    # parts: splitting a skinned mesh by dominant joint cracks open along every
+    # seam the moment two parts rotate apart, and dropping the upper arm left a
+    # hollow, open cross-section at the elbow. Both were visible as holes.
+    # The whole arm ships, shoulder included - the near plane clips whatever
+    # ends up behind the camera, which is how first-person arms are meant to
+    # work anyway.
+    'arms': {
+        'file': 'Rigged Fps Arms by J-Toastie - XdHWM8uSAO.glb',
+        'credit': 'Rigged FPS Arms by J-Toastie [CC-BY] via Poly Pizza',
+        'skin': True,
+        # source arms run along +X; the game wants fingers down -Z (barrel axis)
+        'rot': [('y', 90)],
+        # scale by a BONE SPAN, not the bbox: the shoulder now ships, so a bbox
+        # would shrink the part that is actually on screen
+        'normPair': ('LowerArm.R.001', 'IndexTip.R.001'),
+        'length': 0.42,           # elbow -> index fingertip joint
+    },
 }
 
 
 def build(key, cfg, probe=False):
     g, binc = read_glb(os.path.join(SRC, cfg['file']))
     pose = build_pose(g, binc, cfg)
+    pose.update(build_curl(g, binc, cfg))
     parts = extract(g, binc, cfg, pose)
     piv = joint_pivots(g, binc, cfg)
     sock_tbl = {j: s for s, j in cfg.get('sockets', {}).items()}
@@ -591,7 +863,12 @@ def build(key, cfg, probe=False):
     G = m_ident()
     for axis, deg in cfg.get('rot', []):
         G = m_mul({'x': m_rot_x, 'y': m_rot_y, 'z': m_rot_z}[axis](deg), G)
-    allv = [xf_point(G, v) for p in parts.values() for v in p.verts]
+    # bbox over the parts that are actually SHIPPED (cfg['order']) - a part
+    # mapped outside 'order' is dropped by pack(), so letting it size the
+    # model normalizes 'length'/'height' against geometry nobody ever sees
+    # (the arms rig: 'cut' upper arms made the visible forearm ~2x too big)
+    shipped = [parts[n] for n in cfg['order'] if n in parts]
+    allv = [xf_point(G, v) for p in shipped for v in p.verts]
     lo = [min(v[c] for v in allv) for c in range(3)]
     hi = [max(v[c] for v in allv) for c in range(3)]
     if 'height' in cfg:
@@ -650,6 +927,12 @@ def main():
     probe = '--probe' in sys.argv
     out = {}
     for key, cfg in MODELS.items():
+        if cfg.get('skin'):
+            if probe:
+                probe_skinned(key, cfg)
+                continue
+            out[key] = build_skinned(key, cfg)
+            continue
         r = build(key, cfg, probe)
         if r:
             out[key] = r

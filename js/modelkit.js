@@ -80,3 +80,109 @@ function socketLocal(model, socketName, partName) {
   const p = model.parts[partName];
   return new THREE.Vector3(s.x - p.position.x, s.y - p.position.y, s.z - p.position.z);
 }
+
+/* ==================== skinned models ==================== */
+
+/* Some rigs must not be cut into rigid parts: the FPS arms crack open along
+   every seam as soon as two parts rotate apart, and any joint left out leaves
+   a hollow cross-section. Those are baked as a real skin instead (bones +
+   weights, see build_skinned in tools/gen_models.py) and driven here as a
+   THREE.SkinnedMesh, so the geometry deforms with the bones and stays closed.
+
+   Geometry is shared like the rigid path; the skeleton is per instance,
+   because posing is what every instance does differently. */
+const _skinGeoCache = new Map();
+
+function skinnedGeo(name) {
+  let hit = _skinGeoCache.get(name);
+  if (hit) return hit;
+  const d = MODEL_DATA[name].skin;
+  const q = new Int16Array(_b64buf(d.pos));
+  const pos = new Float32Array(q.length);
+  const qo = d.qo, qs = d.qs;
+  for (let i = 0; i < q.length; i += 3) {
+    pos[i] = qo[0] + q[i] * qs;
+    pos[i + 1] = qo[1] + q[i + 1] * qs;
+    pos[i + 2] = qo[2] + q[i + 2] * qs;
+  }
+  const qn = new Int8Array(_b64buf(d.nor));
+  const nor = new Float32Array(qn.length);
+  for (let i = 0; i < qn.length; i++) nor[i] = qn[i] / 127;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('skinIndex',
+    new THREE.BufferAttribute(new Uint8Array(_b64buf(d.ji)), 4));
+  // weights ride as normalized bytes - 1/255 is far finer than the eye needs
+  geo.setAttribute('skinWeight',
+    new THREE.BufferAttribute(new Uint8Array(_b64buf(d.jw)), 4, true));
+  geo.setIndex(new THREE.BufferAttribute(
+    d.i32 ? new Uint32Array(_b64buf(d.idx)) : new Uint16Array(_b64buf(d.idx)), 1));
+  const mats = [];
+  d.groups.forEach((gr, i) => { geo.addGroup(gr.start, gr.count, i); mats.push(gr.mat); });
+  geo.computeBoundingSphere();
+  hit = { geo, mats };
+  _skinGeoCache.set(name, hit);
+  return hit;
+}
+
+const _skinV = new THREE.Vector3();
+const _skinQ = new THREE.Quaternion();
+const _skinS = new THREE.Vector3();
+
+/* Build one skinned instance. Returns { root, mesh, skeleton, bones } where
+   `bones` is keyed by the SOURCE bone name - posing means writing to
+   bones['Hand.R.001'].quaternion and friends. */
+function buildSkinnedModel(name, matFor) {
+  const d = MODEL_DATA[name].skin;
+  const { geo, mats } = skinnedGeo(name);
+  const list = d.bones.map(b => {
+    const bone = new THREE.Bone();
+    bone.name = b.name;
+    bone.position.fromArray(b.pos);
+    bone.quaternion.fromArray(b.rot);
+    bone.scale.fromArray(b.scl);
+    return bone;
+  });
+  const bones = {};
+  d.bones.forEach((b, i) => {
+    bones[b.name] = list[i];
+    if (b.parent >= 0) list[b.parent].add(list[i]);
+  });
+  const inverses = [];
+  for (let i = 0; i < list.length; i++) {
+    inverses.push(new THREE.Matrix4().fromArray(d.ibm, i * 16));
+  }
+  const mesh = new THREE.SkinnedMesh(geo, mats.map(m => matFor(m)));
+  mesh.frustumCulled = false;   // the bones move; a baked sphere would pop it
+  // A skin is one mesh, so `userData.isHead` has nothing to hang on. The bake
+  // sorts head triangles into contiguous runs and ships their face ranges;
+  // hitFaceIsHead() below turns a raycast faceIndex back into a headshot.
+  if (d.head && d.head.length) mesh.userData.headFaces = d.head;
+  const root = new THREE.Group();
+  // the bake leaves vertices in source space and hands the orientation+scale
+  // over as one matrix; decompose it so the group stays a normal transform
+  new THREE.Matrix4().fromArray(d.xform).decompose(_skinV, _skinQ, _skinS);
+  root.position.copy(_skinV);
+  root.quaternion.copy(_skinQ);
+  root.scale.copy(_skinS);
+  d.bones.forEach((b, i) => { if (b.parent < 0) root.add(list[i]); });
+  root.add(mesh);
+  // identity bind matrix - the baked inverse-bind matrices already carry the
+  // source mesh node's transform (see build_skinned in tools/gen_models.py)
+  mesh.bind(new THREE.Skeleton(list, inverses), new THREE.Matrix4());
+  return { root, mesh, skeleton: mesh.skeleton, bones };
+}
+
+/* Headshot test for a raycast hit. Rigid models flag the whole head mesh;
+   skinned ones carry baked face ranges instead (see buildSkinnedModel). */
+function hitFaceIsHead(hit) {
+  const o = hit.object;
+  if (o.userData.isHead) return true;
+  const r = o.userData.headFaces;
+  if (!r || hit.faceIndex == null) return false;
+  for (let i = 0; i < r.length; i++) {
+    if (hit.faceIndex >= r[i][0] && hit.faceIndex < r[i][0] + r[i][1]) return true;
+  }
+  return false;
+}
