@@ -101,16 +101,9 @@ const Bestiary = (() => {
       if (m.rotors) for (const r of m.rotors) r.rotation.y += dt * 45;
       if (ENEMY_TYPES[BESTIARY[idx].type].fly) m.group.position.y = 1.15 + Math.sin(t * 1.4) * 0.06;
     }
-    // updateEnemies is not running on menu screens, so the shared strobe
-    // materials have to be driven from here
-    if (SETTINGS.strobe) {
-      const on = (t % 1) < 0.5;
-      matStrobeR.emissiveIntensity = on ? 2.6 : 0.35;
-      matStrobeB.emissiveIntensity = on ? 0.35 : 2.6;
-    } else {
-      matStrobeR.emissiveIntensity = 1.3;
-      matStrobeB.emissiveIntensity = 1.3;
-    }
+    // updateEnemies is not running on menu screens, so the shared animated
+    // materials (strobes, shoulder sirens) have to be driven from here
+    updateBotLights(dt);
   }
 
   return { scene, camera, build, show, update, index: () => idx };

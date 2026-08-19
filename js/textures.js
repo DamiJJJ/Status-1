@@ -511,5 +511,115 @@ const TexGen = (() => {
     return geom;
   }
 
-  return { makeFloorSet, makeWallSet, makeCrateSet, makeHologramTexture, makeLogTexture, makeCityWindows, applyBoxUV };
+  /* ---------- police livery decals (markings painted on a bot) ----------
+     These are NOT plates: the game projects them onto the real armour (see
+     projectBotDecal in js/enemies.js), so the canvas here has a TRANSPARENT
+     background and carries nothing but the marking itself. Hard alpha only -
+     the materials run on alphaTest, which keeps them out of the transparency
+     sort and lets them z-test against the body like ordinary geometry.
+
+     The LSPD badge is the one real bitmap in the game, baked into js/badge.js
+     as a data: URI by tools/gen_badge.py. It has to be a data URI - a PNG read
+     from disk is cross-origin under file:// and would throw inside
+     texImage2D. It decodes asynchronously, so the texture is handed back
+     immediately and refreshed (needsUpdate) once the badge lands. */
+
+  function decalTexture(c) {
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    return t;
+  }
+
+  /* Stencilled lettering, stretched to fill the canvas width: the marking has
+     to span the panel it is sprayed on, and which condensed face the machine
+     actually has is not something a canvas can count on. Bare letters, no
+     outline (user call 2026-08-19) - contrast comes from where the marking is
+     sprayed, which is why LSPD sits on the blue chest panel. */
+  function makeBotText(text, { color = '#f4f7ff' } = {}) {
+    const W = 512, H = 128;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = 'bold ' + Math.round(H * 0.8) + 'px "Arial Narrow", "Helvetica Neue", Arial, sans-serif';
+    const m = g.measureText(text).width || 1;
+    g.translate(W / 2, H * 0.54);
+    g.scale(W * 0.94 / m, 1);
+    g.fillStyle = color;
+    g.fillText(text, 0, 0);
+    return decalTexture(c);
+  }
+
+  /* ---------- reflection probe for the drone armour ----------
+     A MeshStandardMaterial only looks like metal if it has something to
+     reflect: raise metalness with no environment and the surface goes dark,
+     because a metal has no diffuse term. The arena has no env map (the sky is
+     a shader dome, and scene.environment would change every material in the
+     game), so the bots get their OWN probe - a tiny gradient dome plus a warm
+     sun blob, prefiltered by PMREMGenerator.
+
+     It is deliberately brighter than the real sky: this is a stylised game and
+     the point is a bright rim along the panel edges, not a physically honest
+     reflection of a dark arena. */
+  function makeBotEnv() {
+    const envScene = new THREE.Scene();
+    const mat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      uniforms: {
+        top:     { value: new THREE.Color(0x39406b) },
+        horizon: { value: new THREE.Color(0x9fb0d8) },
+        ground:  { value: new THREE.Color(0x2b3152) },
+        sunDir:  { value: new THREE.Vector3(0.45, 0.72, 0.53).normalize() },
+        sunCol:  { value: new THREE.Color(0xfff0d8) },
+      },
+      vertexShader: `
+        varying vec3 vDir;
+        void main() {
+          vDir = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        uniform vec3 top; uniform vec3 horizon; uniform vec3 ground;
+        uniform vec3 sunDir; uniform vec3 sunCol;
+        varying vec3 vDir;
+        void main() {
+          vec3 d = normalize(vDir);
+          // tight band at the horizon: that is the highlight that runs along
+          // a faceted panel and sells the metal
+          float band = pow(1.0 - abs(d.y), 4.0);
+          vec3 col = mix(ground, top, smoothstep(-0.25, 0.35, d.y));
+          col = mix(col, horizon, band * 0.55);
+          col += sunCol * pow(max(dot(d, sunDir), 0.0), 16.0) * 1.3;
+          gl_FragColor = vec4(col, 1.0);
+        }`,
+    });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(8, 24, 16), mat);
+    envScene.add(dome);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const rt = pmrem.fromScene(envScene, 0, 0.1, 40);
+    pmrem.dispose();
+    dome.geometry.dispose();
+    mat.dispose();
+    return rt.texture;
+  }
+
+  function makeBotBadge() {
+    // canvas matches the baked badge, so the decal keeps its aspect ratio
+    const c = document.createElement('canvas');
+    c.width = LSPD_BADGE_W; c.height = LSPD_BADGE_H;
+    const g = c.getContext('2d');
+    const t = decalTexture(c);
+    const img = new Image();
+    img.onload = () => {
+      g.drawImage(img, 0, 0, c.width, c.height);
+      t.needsUpdate = true;
+    };
+    img.src = LSPD_BADGE_PNG;
+    return t;
+  }
+
+  return { makeFloorSet, makeWallSet, makeCrateSet, makeHologramTexture, makeLogTexture,
+           makeCityWindows, makeBotText, makeBotBadge, makeBotEnv, applyBoxUV };
 })();

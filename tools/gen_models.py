@@ -620,6 +620,9 @@ def build_skinned(key, cfg):
     # own scale (188 here). Only the joints ship, so that transform has to be
     # folded into the group the runtime hangs the skeleton under - without it
     # every bone translation collapses to a fraction of its real length.
+    # bind pose in FINAL game units (metres, feet at y = 0, front at +Z) - the
+    # space the paint rules below are written in, and the one --probe prints
+    scenev = [xf_point(G, v) for v in bindv]
     root_j = next(k for k, b in enumerate(bones) if b['parent'] < 0)
     pj = parent_of.get(joints[root_j])
     G = m_mul(G, wm[pj] if pj is not None else m_ident())
@@ -656,17 +659,46 @@ def build_skinned(key, cfg):
     # bone carrying most of its weight, head triangles are sorted to the end of
     # their material group, and the runtime gets the face ranges (a handful of
     # them) to test a raycast's faceIndex against.
-    hb = {jindex[n] for n in cfg.get('headBones', []) if n in jindex}
-    def is_head(t):
-        if not hb:
-            return 0
+    def dominant(t):
+        """Name of the bone carrying most of a triangle's weight."""
         acc = {}
         for vi in t[:3]:
             for j, w in zip(jidx[vi], jwgt[vi]):
                 acc[int(j)] = acc.get(int(j), 0.0) + (w if w == w else 0.0)
-        return 1 if max(acc, key=acc.get) in hb else 0
+        return jname[max(acc, key=acc.get)]
 
-    tris = [(t[0], t[1], t[2], t[3], is_head(t)) for t in tris]
+    hb = set(cfg.get('headBones', []))
+    def is_head(t):
+        return 1 if hb and dominant(t) in hb else 0
+
+    # ---- livery paint: move triangles into extra material groups ----
+    # The rig ships three source materials, which is not enough to letter a
+    # police unit: the blue panels have to cover PART of a limb, not all of it.
+    # Rather than hang extra meshes off the bones (they float and crack on a
+    # skin), each rule re-labels the triangles it matches, so the paint IS the
+    # mesh and the runtime only has to hand out one more material.
+    # A rule matches on the dominant bone plus a bind-pose box in metres; the
+    # whole triangle takes the new material, so keep the boxes on facet edges.
+    def painted(t):
+        rules = cfg.get('paint')
+        if not rules:
+            return t[3]
+        bone = dominant(t)
+        cx, cy, cz = (sum(scenev[vi][c] for vi in t[:3]) / 3 for c in range(3))
+        for r in rules:
+            if r.get('src') and t[3] not in r['src']:
+                continue
+            if r.get('bones') and bone not in r['bones']:
+                continue
+            for axis, c in (('x', cx), ('y', cy), ('z', cz)):
+                lo, hi = r.get(axis, (-9e9, 9e9))
+                if not lo <= c <= hi:
+                    break
+            else:
+                return r['mat']
+        return t[3]
+
+    tris = [(t[0], t[1], t[2], painted(t), is_head(t)) for t in tris]
     tris.sort(key=lambda t: (t[3], t[4]))
     idx, groups, cur, start = [], [], None, 0
     for t in tris:
@@ -760,19 +792,38 @@ MODELS = {
         'ground': True,           # drop feet to y = 0
         # a skin is one mesh, so headshots ride on baked triangle ranges
         'headBones': ['head'],
+        # LSPD livery: extra material groups cut straight out of the mesh, so
+        # the blue covers PART of a limb without a single added triangle.
+        # Boxes are in metres of the bind pose (feet at 0, 2.15 m tall, front
+        # at +Z) - probe them with `--probe sentinel`.
+        'paint': [
+            # the eye disc becomes dark visor glass; the green pupil is a tiny
+            # emitter added in js/enemies.js, inside the socket
+            {'mat': 'Visor', 'src': ['Material.003'], 'bones': ['head']},
+            {'mat': 'Blue', 'bones': ['head'], 'y': (1.865, 9)},         # helmet crown
+            {'mat': 'Blue', 'bones': ['Upper body'], 'y': (1.55, 9)},    # collar
+            {'mat': 'Blue', 'bones': ['upper_arm.L', 'upper_arm.R'],
+             'y': (1.58, 9)},                                            # shoulder pads
+            {'mat': 'Blue', 'bones': ['forearm.L', 'forearm.R'],
+             'y': (0, 0.98)},                                            # forearm cuffs
+            {'mat': 'Blue', 'bones': ['thigh.L', 'thigh.R'], 'y': (1.03, 9)},  # hip armour
+            {'mat': 'Blue', 'bones': ['shin.L', 'shin.R'], 'y': (0.40, 9)},    # knee guards
+        ],
     },
     # service pistol
     'glock': {
         'file': 'Glock by J-Toastie - q3lsX3tSta.glb',
         'credit': 'Glock by J-Toastie [CC-BY] via Poly Pizza',
         'fallback': 'body',
-        'nodes': {'Body': 'body', 'Trigger': 'body', 'Mag': 'body',
+        # the magazine ships as its OWN part so the reload can drop it out of
+        # the well (its rounds ride with it - they are in the same node)
+        'nodes': {'Body': 'body', 'Trigger': 'body', 'Mag': 'mag',
                   'Chamber': 'body', 'Bullet': 'body',
                   'Slide': 'slide', 'Barrel': 'slide'},
         'rot': [('y', 90)],
         'length': 0.30,           # barrel axis runs along local -Z
         'center': True,
-        'order': ['body', 'slide'],
+        'order': ['body', 'slide', 'mag'],
     },
     # SMG (weapon slot 2); Quaternius guns pack, muzzle at +X
     'smg': {
