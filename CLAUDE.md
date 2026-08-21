@@ -62,7 +62,7 @@ więc formy męskie w kwestiach DO gracza są OK.
   identyczny hash po dowolnej liczbie przebudów).
 - **Kolejność `<script>` w `index.html` MA znaczenie.** Pliki w kolejności ładowania:
   `config.js` (konfig/paleta/parametry URL/diagnostyka `__test`) → `audio.js` (`AudioSys`:
-  szyna WebAudio, SFX, muzyka proceduralna, motyw menu z pliku, stingery celów,
+  szyna WebAudio, SFX (synteza + próbki z `js/sfx.js`), motyw menu z pliku, stingery celów,
   robo-głosy `voice(who)`) →
   `renderer.js` (renderer/kamera/postprocessing/światła/niebo) →
   `badge.js` (GENEROWANY przez `tools/gen_badge.py`: odznaka LSPD jako data URI) →
@@ -133,20 +133,39 @@ więc formy męskie w kwestiach DO gracza są OK.
     alfy, skaluje do 192 px i zapisuje `js/badge.js` z data URI. Źródło
     commitujemy razem z wynikiem. Nie rozszerzaj tego wyjątku na inne tekstury.
 
-  **Zabronione: gotowe TEKSTURY i dźwięki z zewnątrz** (stock, paczki assetów,
-  biblioteki tekstur) — licencje i spójność stylu. Modele z zewnątrz wolno brać
-  wyłącznie na warunkach wyżej (CC0/CC-BY, sama geometria). **Dźwięk ROZGRYWKI zostaje w 100%
-  syntetyczny (WebAudio)** — żadnych plików, nawet własnych i nawet generowanych AI.
-  Powód nie jest tylko licencyjny — przy `file://` gotowy plik da się odtworzyć
-  wyłącznie przez `<audio>`, bo `fetch` + `decodeAudioData` jest blokowane przez CORS,
-  a `MediaElementSource` z dysku taintuje graf. Taka ścieżka wypada **poza graf
-  WebAudio**: koniec z sidechainem, ściszaniem pod SFX i reakcją na gęstość walki
-  (patrz `moodBlend` w Konwencjach).
-  **Jedyny wyjątek (decyzja użytkownika, 2026-08-14): motyw menu**
-  `assets/Rain Over Neon Spires.mp3` — gra w pętli na warstwie nawigacji, właśnie
-  przez `<audio id="menu-music">` poza grafem. Tam ta cena nic nie kosztuje: w menu
-  nie ma walki, pod którą trzeba by się ściszać. Nie rozszerzaj tego wyjątku na
-  dźwięki i muzykę w misjach — one zostają proceduralne.
+  - **próbki dźwiękowe royalty-free / CC0** (decyzja użytkownika, 2026-08-21):
+    zasada „dźwięk rozgrywki w 100% syntetyczny" ZOSTAŁA ZNIESIONA dla SFX.
+    Powstała z dwóch powodów i oba padły: licencyjny (są banki royalty-free,
+    m.in. doroczny Sonniss GDC Game Audio Bundle - użycie komercyjne bez
+    atrybucji) oraz techniczny (rzekomy brak drogi do grafu WebAudio przy
+    `file://`). **Ten drugi był po prostu błędny**: `fetch` faktycznie jest
+    blokowany, ale próbka wklejona jako base64 w pliku JS dekoduje się bez
+    niego - `atob` → `Uint8Array` → `ctx.decodeAudioData(buf.buffer)` - i wraca
+    zwykłym `AudioBuffer`. To jest PEŁNOPRAWNY węzeł grafu: `BufferSourceNode`
+    wpina się w `sfxBus`, ma `send` do konwolwera, `spatial()`, `duckFilter`,
+    limiter i `jitter` przez `playbackRate`. Żadnej ceny `<audio>` (patrz motyw
+    menu niżej) się nie płaci.
+    Pipeline jak wszędzie: `assets_src/sfx/*.wav` → `tools/gen_sfx.py` →
+    `js/sfx.js` (base64), źródło i skrypt commitowane razem z wynikiem, autorzy
+    w README. **Koduj do Ogg/Opus, nie WAV** (WAV w base64 jest ~10× większy);
+    mono, 22-32 kHz w zupełności wystarczy na strzał.
+    ⚠️ Realizm strzału bierze się z WARSTW, nie z jednego pliku: mechanika
+    (spust/zamek) + wystrzał + osobny OGON, plus 2-3 warianty samego wystrzału
+    losowane naprzemiennie. Jeden sample na broń dalej będzie brzmiał jak
+    stempel - dokładnie ta sama wada, przed którą chroni `jitter`.
+
+  **Zabronione: gotowe TEKSTURY z zewnątrz** (stock, paczki assetów, biblioteki
+  tekstur) — licencje i spójność stylu. Modele z zewnątrz wolno brać wyłącznie
+  na warunkach wyżej (CC0/CC-BY, sama geometria), próbki dźwiękowe na warunkach
+  wyżej (royalty-free/CC0, przez base64 do grafu WebAudio).
+  **MUZYKA rozgrywki zostaje proceduralna** — sekwencer reaguje na stan walki
+  (`moodBlend`, intensywność z fali i liczby żywych botów), czego pętla z pliku
+  nie umie; nie zastępuj go nagraniem.
+  **Motyw menu** `assets/Rain Over Neon Spires.mp3` jest jedynym dźwiękiem
+  granym POZA grafem (`<audio id="menu-music">`, decyzja użytkownika
+  2026-08-14). Tam ta cena nic nie kosztuje: w menu nie ma walki, pod którą
+  trzeba by się ściszać. Nowych dźwięków tą drogą NIE dodawaj — od tego jest
+  base64 + `decodeAudioData` (wyżej), które zostaje w grafie.
 - ⚠️ **Tekstury do sceny 3D NIE mogą być plikami PNG w `assets/`.** Przy `file://` Chrome
   uznaje obrazy z dysku za cross-origin i `texImage2D` rzuca wyjątkiem („The image element
   contains cross-origin data") — scena psułaby się po dwukliku, choć na serwerze działa.
@@ -232,6 +251,16 @@ więc formy męskie w kwestiach DO gracza są OK.
   jointu, a piwoty z grafu węzłów. Nowy model = wpis w `MODELS` w skrypcie
   (mapowanie jointów/węzłów, `rot`, `height`/`length`), `--probe` do sprawdzenia
   orientacji i granic, potem przegenerowanie pliku i kredyt w README.
+  **`split` (2026-08-21)** wycina RUCHOMĄ część z bryły, która przyjechała
+  jako jeden węzeł. Glock nazywa swój magazynek (`nodes`), ale bronie
+  Quaterniusa to jeden mesh w jednym węźle, więc części do animacji nie da
+  się wybrać po nazwie - tylko po tym, GDZIE leży (pudełko w METRACH
+  finalnej przestrzeni modelu, te same liczby, które drukuje `--probe`) albo
+  po materiale, który ma wyłącznie na własność (`src`). Cały trójkąt idzie
+  do nowej części, więc granice stawiaj na krawędziach fasetek, a nową część
+  dopisz do `order`. Po zmianie `length` przelicz pudełka - są w metrach.
+  Tak jedzie magazynek SMG (`mag`, x ±0,0155 y[-0,160 0,055] z[-0,168 -0,104])
+  i jego płyta zamka (`bolt` = cały materiał `Grey`).
   **`paint` (2026-08-19)** dokłada modelowi materiały, których nie ma w źródle:
   lista reguł `{mat, src?, bones?, x/y/z: (lo, hi)}` przenosi trójkąty do nowej
   grupy materiałowej po dominującej kości i pudełku w METRACH pozy bind
@@ -245,8 +274,8 @@ więc formy męskie w kwestiach DO gracza są OK.
   rozmiar (ręce: ucięte ramię `cut` zawyżało bbox, patrz `--probe`, wiersz
   `!! parts not in order`).
   Konwencja broni: lufa wzdłuż **lokalnego −Z**, `length` = długość całkowita,
-  `center: True`; wypieczone są `glock`, `mp5`, `mossberg` (części
-  body+pump), `rifle`, `sniper`.
+  `center: True`; wypieczone są `glock`, `smg`, `shotgun` (Mossberg 590A1,
+  części body+pump), `rifle`, `sniper`.
 - **Kucanie** (Ctrl/C, trzymane): `player.crouching` + `player.eyeH` (płynny lerp
   `PLAYER_EYE`↔`CROUCH_EYE`; podłoga to `pos.y <= eyeH` — stojąc na ziemi oko podąża
   za lerpem wprost, bez grawitacji, żeby zejście w kucki nie brzmiało jak upadek).
@@ -423,8 +452,9 @@ więc formy męskie w kwestiach DO gracza są OK.
   w sklepie, slot na HUD (`wslot-N` w index.html + pętla czyta
   `WEAPONS.length`), klawisz `Digit-N` w input.js i w `GAME_KEYS`, dźwięk
   w `AudioSys.shot(id)` i waga w `switch_`.
-- **Audio (`AudioSys` w `js/audio.js`) — cały dźwięk syntetyzowany w WebAudio.**
-  - **Szyna (nie omijaj jej):** głosy → `sfxBus`/`musicGain` → `master` → `duckFilter`
+- **Audio (`AudioSys` w `js/audio.js`) — synteza WebAudio plus próbki wklejone
+  base64 (patrz Architektura → Zasoby); jedno i drugie idzie tą samą szyną.**
+  - **Szyna (nie omijaj jej):** głosy → `sfxBus` → `master` → `duckFilter`
     (lowpass całego miksu) → `compressor` (limiter) → `destination`. Równolegle **pogłos**:
     `ConvolverNode` z impulsem generowanym w kodzie (`makeImpulse` — zanikający szum
     stereo z ciemniejącym ogonem), zasilany per-głos parametrem `send`. Nowe dźwięki
@@ -438,32 +468,165 @@ więc formy męskie w kwestiach DO gracza są OK.
     nowe częste dźwięki botów też przez niego przepuszczaj.
   - **`jitter`** (mikro-wariacja pitchu) na każdym powtarzalnym dźwięku — bez niego seria
     z SMG brzmi jak stempel jednej próbki.
+  - **Próbki (`sample()` + `js/sfx.js`, 2026-08-21):** nagrania wchodzą do gry
+    jako base64 Opus wypieczone przez `tools/gen_sfx.py` (źródła w
+    `assets_src/sfx/`, punkty cięcia z `--probe`, nie ze słuchu). `loadSamples()`
+    dekoduje je w `init()` przez `atob` → `Uint8Array` → `decodeAudioData`, czyli
+    BEZ `fetch` - dlatego działa też z `file://` (zweryfikowane). `sample(key)`
+    zwraca `false`, gdy klip jeszcze się dekoduje albo klucza nie ma, więc
+    **każde wywołanie musi mieć fallback na syntezę** - to samo trzyma grę
+    słyszalną, gdyby `js/sfx.js` zniknął.
+    ⚠️ Klucz trzyma TABLICĘ wariantów i losuje jeden na strzał; `jitter` jedzie
+    przez `playbackRate` (zmienia wysokość I długość naraz, jak prawdziwe
+    powtórzenie). Jeden klip na broń brzmi jak stempel - to ta sama wada,
+    przed którą chroni `jitter` w syntezie.
+    ⚠️ **`-vn` w wypieku nie jest ozdobą**: część źródłowych WAV-ów niesie
+    osadzoną grafikę, a bez tego ffmpeg wesoło zakodowuje ją do Ogg jako
+    **strumień wideo THEORA** - zmierzone: 5250 B na ćwierćsekundowy krok,
+    z czego audio to 1230 B. Bitrate jest per klucz z nadpisaniem per klip
+    (`kbps`), bo szum szerokopasmowy (but dzwoniący na metalu, szur tkaniny)
+    kosztuje w Opusie znacznie więcej niż transjent wystrzału.
+    ⚠️ Do strzałów bierz takty **ISOLATED (suche)**, nie „Full Sound": ogon
+    daje NASZ konwolwer przez `send`, więc jedzie za akustyką areny. Nagranie
+    z własnym pogłosem nałożyłoby dwa pomieszczenia na siebie.
+    Dostrojone są **wszystkie pięć broni** (strzał ×3 warianty + mechanika).
+    Kalibry: Glock i SMG 9 mm, strzelba 20 gauge, karabin 5.56, snajperka
+    7.62x54R.
+    ⚠️ Obie bronie strzelają tym samym nabojem (9 mm), więc rozróżnia je
+    RODZAJ taktu, nie efekt: Glock jedzie na strzałach pojedynczych, SMG na
+    trzech strzałach z serii (szybki strzał ma krótszy, twardszy korpus).
+    Resztę różnicy - dłuższa lufa siedzi niżej - dokłada `rate: 0.93`
+    w `shot('smg')`. Głębiej zaczyna brzmieć jak karabin.
+    Magazynek SMG to skrzynka w gnieździe, nie rączka pistoletu, więc
+    przeładowanie idzie z taktów AR, a nie z pistoletowych.
+    Strzelba jedzie stylem `shell`, więc zamiast magazynka ma `_shell`
+    (nabój do rurki) i `_pump` (pełny cykl pompy w JEDNYM klipie, takt
+    „Fast" - wolniejszy ma 0,27 s przerwy między suwami i nie nadąża za
+    animacją). `pump(id, {vol, delay})` gra w DWÓCH miejscach: raz w
+    przeładowaniu (pełna głośność) i raz **po każdym strzale**, razem
+    z animacją `pumpT` w `tryFire` - ciszej (0.38) i z opóźnieniem 0,1 s,
+    bo puszczony na t=0 wpada w huk wystrzału i po prostu go nie słychać.
+    ⚠️ Ten drugi jest pod warunkiem `w.mag > 0` (zgłoszenie użytkownika
+    2026-08-21): po OSTATNIM naboju łoże przejmuje przeładowanie
+    (`startReload` zeruje `pumpT`), więc suw nigdy się nie rysował, a sam
+    dźwięk i tak leciał - broń przeładowywała pustkę.
+    **Luneta** ma `scope_up`/`scope_down` (`AudioSys.scope(on)`, wołane
+    z `setScopeOverlay`). W paczkach NIE MA nagrania optyki i nie da się jej
+    uczciwie podrobić - to, co gracz naprawdę słyszy, to USTAWIANA BROŃ, więc
+    oba klipy to foley obsługi (takty bipoda: jedyne w paczkach czysto
+    metalowe ruchy bez naboju i magazynka). Cicho z rozmysłem - siedzą pod
+    wstrzymanym oddechem, a głośniejsze zamieniłyby każde zerknięcie przez
+    lunetę w wydarzenie.
+    ⚠️ **Dźwięk leci TYLKO wtedy, gdy lunetę opuszcza GRACZ.** `setAiming`
+    ma flagę `byPlayer` (ustawia ją jedynie puszczenie PPM w input.js),
+    a `setScopeOverlay(on, quiet)` flagę `quiet` dla przeładowania, zmiany
+    broni i resetów. Bez tego zmiana broni grała dwa dźwięki naraz, a każdy
+    reset stanu strzelał foleyem znikąd - `setAiming(false)` woła osiem
+    różnych miejsc.
+    **Zmiana broni** ma JEDEN współdzielony klip `draw` dla całego arsenału
+    (decyzja użytkownika 2026-08-21). Wersja ciężka jechała na puszczonej
+    rączce przeładowania i czytała się jak strzał z bicza, a nie jak wzięcie
+    broni do ręki; ciężar broni niesie i tak jej własny huk. Nie ma też
+    żadnego przestrajania `rate` per broń - o to chodzi, żeby zmiana brzmiała
+    tak samo, cokolwiek wchodzi do ręki.
+    ⚠️ **Snajperka jedzie na Mosinie** (7.62x54R + `Mosin Bolt Cycle` +
+    `Mosin Top Load`), bo to jedyna broń źródłowa z ZAMKIEM - a gra
+    przeładowuje ją stylem `shellBolt`, czyli pojedynczymi nabojami i zamkiem
+    na końcu. Takty .308 były alternatywą i odpadły: są półautomatyczne, więc
+    dałyby broni z zamkiem cudzy mechanizm.
+    ⚠️ **Karabin jedzie na taktach AK, nie AR** (AR ma SMG): obie bronie
+    karmią się skrzynkowym magazynkiem, więc wspólne nagrania zrobiłyby
+    z nich dla ucha jedną broń. Magazynek AK dodatkowo się ZAKOŁYSZE zamiast
+    wejść prosto - stąd te klipy są dłuższe (dwa zdarzenia na ruch).
+    ⚠️ Warianty strzelby to OSTATNI strzał każdego taktu - tylko tak da się
+    wziąć pełne wybrzmienie, bo w plikach wielostrzałowych następny nabój
+    pada 0,25 s później, a korpus strzelby biegnie znacznie dłużej.
+    Nowa broń = wpis w `MANIFEST` w `tools/gen_sfx.py` pod kluczami
+    `<id>_fire`/`_mag_out`/`_mag_in`/`_slide`/`_grab` (styl `mag`) albo
+    `<id>_shell`/`_pump` (styl `shell`) - `AudioSys` bierze je po `w.id` sam,
+    bez zmian w kodzie.
   - **Stan trwały:** `AudioSys.update(dt)` z `tick` prowadzi bicie serca (<25 HP)
     i oddech sprintu (flaga `BREATH_SFX`); `AudioSys.resetFx()` woła `resetGameState()`
     i zeruje te pętle oraz otwiera `duckFilter`. Nowy stanowy dźwięk = obsłuż go
     w obu tych miejscach.
   - **Obrażenia** (`hurt(dmg, fromPos)`) panoramują się w stronę napastnika i „duszą"
     cały miks przez `duckFilter` (efekt ogłuszenia) proporcjonalnie do obrażeń.
+    Od 2026-08-21 uderzenie niesie NAGRANIE ciała (`hurt_body` ×2) zamiast
+    dwóch szumów; niski ton i `duckMix` zostają.
+    ⚠️ To celowo **uderzenie TĘPE, nie metaliczne**: gracz nosi kamizelkę,
+    a metalowe takty to brzmienie DRONA - obu nie wolno pomylić, gdy dzieją
+    się naraz. Panorama jest CZĘŚCIOWA (0,7 pełnej), bo to dzieje się GRACZOWI,
+    a nie gdzieś w hali. `rate` spada z obrażeniami (mocniejszy cios niżej).
+  - **Trafienie bota** (`hit_bot` ×4, `hit_head` ×2, 2026-08-21): metal
+    o metal, bo z tego jest SENTINEL. Oba źródła to nagrania uderzanego
+    metalu; takt melee okazał się nieść CZTERY uderzenia z rzędu co 0,14 s -
+    dokładnie odstęp, jakiego potrzebuje seria - i różnią się ciężarem tak,
+    jak różnią się prawdziwe powtórzone uderzenia.
+    ⚠️ Klipy są KRÓTKIE z rozmysłu (0,13-0,22 s): pocisk na pancerzu kończy
+    się natychmiast, a to gra kilka razy na sekundę. Ucięte wybrzmienie wraca
+    konwolwerem areny przez `send`.
+    ⚠️ `hit()` **nie dostaje pozycji** - to głos hitmarkera, potwierdzenie
+    trafienia, i ma czytać się tak samo na 5 i na 40 m.
+    ⚠️ Przy headshocie **złoty ping FM ZOSTAJE** nad próbką: to nie faktura,
+    tylko gra MÓWIĄCA graczowi, co się stało. Sama próbka jest głębsza
+    i dzwoniąca - głowa to pusta skorupa i odpowiada inaczej niż tors.
+  - **Śmierć bota** (`kill_body` ×2, `kill_glitch` ×2, 2026-08-21): maszyna
+    przewracająca się, w dwóch warstwach - uderzony metal na kadłub i
+    wyładowanie martwej elektroniki na wierzchu. Tu wybrzmienie ZOSTAJE
+    (śmierć zdarza się raz na bota, nie pięć razy na sekundę jak trafienie).
+    ⚠️ Opadający ton „wyłączenia" **zostaje syntetyczny** - to w nim siedzi
+    charakter per typ (`heavy` nisko i długo, `scout` krótko i wysoko),
+    a żadne nagranie nie przeskalowałoby się tak przez cały bestiariusz.
+    Rozmiar niosą `rate` (heavy 0.86, scout 1.14) i ten ton.
+    ⚠️ W przeciwieństwie do `hit()` śmierć **JEST pozycjonowana** - to
+    informacja o polu walki i należy do miejsca, w którym się wydarzyła.
+    `killEnemy(e, true)` (ciche usuwanie z dev) dalej milczy.
   - **Kroki** jadą na cyklu head-bobu: `swayPhase` w `player.js`, jeden krok na pół
     okresu, wyzwalany w dnie kołysania — dzięki temu audio trafia w opad kamery.
     Jeśli ruszasz `swayPhase`, sprawdź `swayStepIdx`.
-  - **Muzyka:** sekwencer 16 kroków z lookaheadem przez `setInterval`; mood liczony
-    z `game.state`/`waveSystem.active` przy planowaniu kroku (bez ręcznego przełączania
-    przy zmianach stanu), ale wygładzany przez **`moodBlend`** — combat i spokój
-    przenikają się przez ~takt zamiast przeskakiwać. Intensywność = numer fali **+**
-    liczba żywych botów. Sekcje basu A/B co 4 takty (`musicBar`) z werblowym fillem
-    na szwie; bas/pady/dzwonki idą przez `musicDuck` (sidechain pod stopą). Wszystkie
-    obwiednie używają `exponentialRamp*`, więc **głośność nigdy nie może być 0** —
-    skaluj przez `cb`/`calm` tylko pod strażą `> 0.05`. Błąd w kroku nie zabija pętli,
-    ale ląduje w `__test.musicError`.
+    Od 2026-08-21 to **nagrane buty na metalu** (`step_metal`, 6 wariantów),
+    wycięte z 30-sekundowej PĘTLI marszu 110 fpm - paczka nie ma pojedynczych
+    stąpnięć, ale w pętli pada jedno co 0,545 s, więc jest z czego wybierać.
+    ⚠️ **Sześć wariantów to minimum, nie zbytek**: krok pada co pół cyklu
+    kołysania, czyli częściej niż jakikolwiek inny dźwięk w grze, a poniżej
+    sześciu ucho zaczyna słyszeć wzór. Sprint NIE ma osobnego nagrania - ten
+    sam but uderza mocniej i szybciej, więc jest głośniej i `rate` 1.07.
+    Metal jest właściwą powierzchnią (hala przemysłowa, metalowy przeciwnik);
+    paczka ma też drewno, dywan i japonki, gdyby doszedł materiał podłoża.
+  - **Skok NIE MA dźwięku** (decyzja użytkownika 2026-08-21): `AudioSys.jump()`
+    i jego wywołanie w `player.js` zostały USUNIĘTE, nie wyciszone. Oderwanie
+    się od ziemi jest ciche, słychać tylko powrót na nią. Próbowany szur
+    tkaniny odpadł i nie ma czym go zastąpić - w paczkach nie ma nagrania
+    skoku.
+  - **Lądowanie** jest HYBRYDĄ (2026-08-21).
+    ⚠️ **Ma DWIE warstwy dobierane prędkością upadku**, nie jedno
+    nagranie na dwóch głośnościach: `land_soft` (buty - najgłośniejsze
+    stąpnięcie z pętli marszu, czyli obie stopy naraz) leci zawsze, a
+    `land_hard` (ciało na podłodze) DOŁĄCZA dopiero powyżej `k` 0,45.
+    Zeskok ze skrzyni i upadek z galerii to dwa różne zdarzenia. `rate`
+    lądowania spada z siłą uderzenia - mocniejsze czyta się niżej.
+    `bhop()` celowo zostaje syntetyczny (mechanika do wycięcia).
+  - **Wślizg** (`slide`) jest HYBRYDĄ: próbka to tkanina ciągnięta po podłodze
+    i nie ma ŻADNEGO dołu, więc syntetyczny pomruk (`tone` 92→58 Hz) zostaje
+    pod nią. Próbka daje fakturę, ton daje ciężar gracza. Fallback na syntezę
+    podmienia tylko warstwę szumu, pomruk leci zawsze.
+    ⚠️ **JEDEN wariant, celowo** (decyzja użytkownika 2026-08-21): biblioteka
+    nazywa się „Cloths & Sponges" i drugi kandydat (`Cloth 61`) czytał się
+    jak przecieranie mokrej powierzchni szmatą. Wślizg jest krótki i zawsze
+    tym samym ruchem, więc jeden dobry takt bije dwa, z których jeden jest zły.
+  - **Muzyka w rozgrywce: NIE MA JEJ** (decyzja użytkownika, 2026-08-21).
+    Proceduralny sekwencer (16 kroków, sekcje A/B, `moodBlend`, sidechain pod
+    stopą) został USUNIĘTY z `audio.js` razem z `startMusic`, `musicGain`,
+    `musicDuck` i hookami `__test.musicSteps`/`musicRunning`/`musicError`.
+    Rozgrywka jedzie na samych SFX. Kod jest w historii gita, gdyby miał
+    wrócić. **Motyw menu zostaje** - i jest teraz JEDYNĄ muzyką w grze.
   - **Motyw menu** (jedyny plik dźwiękowy, patrz Architektura → Zasoby):
     `AudioSys.menuMusic(on)` woła `main.js` przy zmianie `menuBgActive()` — muzyka
     jedzie z panoramą, także przez wybór misji, statystyki i zbrojownię. Element
     `<audio id="menu-music" loop>` żyje POZA grafem, więc głośność liczy się ręcznie
     (`MENU_GAIN × volMaster × volMusic × menuFade`) i `setVolumes` musi go dotknąć
-    osobno. `menuFade` (1,6 s w / 0,45 s out, liczony w `update`) robi **crossfade
-    z sekwencerem**: `applyMusicGain()` to JEDYNY właściciel `musicGain.gain` i zbija
-    je do zera pod motywem menu — nigdy nie ustawiaj tego gainu wprost. Autoplay jest
+    osobno. `menuFade` (1,6 s w / 0,45 s out, liczony w `update`) wycisza go po
+    wyjściu z menu; crossfade z sekwencerem zniknął razem z sekwencerem. Autoplay jest
     odrzucany do pierwszego gestu, więc `menuMusicEl()` wiesza retry na
     `pointerdown`/`keydown` (faza capture — przed handlerami przycisków). Wyjście
     z menu **nie przewija** utworu (powrót z misji łapie go w tym samym miejscu).
@@ -474,6 +637,41 @@ więc formy męskie w kwestiach DO gracza są OK.
   efektach też używaj puli, nie twórz meshy w locie.
 - Viewmodel: dziecko kamery; w animacjach **nigdy nie przybliżaj broni do kamery**
   (near plane 0.08 — geometria „wybucha" na ekranie); odsuwaj (`z` bardziej ujemne).
+- **Chwyt z biodra** (`VM_BASE` w weapons.js, podniesiony i przysunięty
+  2026-08-21 na prośbę użytkownika, referencja: Ready Or Not):
+  `(0.22, -0.20, -0.46)`. Stare `(0.32, -0.28, -0.55)` parkowało broń
+  w prawym dolnym rogu, bez rąk w kadrze, a do przyrządów zostawało
+  0,15-0,20 m pionu - dlatego ADS czytało się jak przerzucenie broni przez pół
+  ekranu, a nie jak dociągnięcie jej do oka. Drugi krok tego samego dnia
+  („wszystkie bronie bliżej środka oraz przybliżmy do samej kamery") ściągnął
+  ją o kolejne 8 cm do środka i 9 cm do oka.
+  `adsPos` jest BEZWZGLĘDNE, więc pozycja celowania i wyrównanie przyrządów
+  nie zmieniły się ani o piksel (zmierzone: kropki dalej na osi kamery co do
+  0,001 NDC); skrócił się sam przejazd, a wsparte przedramię weszło na łoże.
+  ⚠️ **`z` to suwak ROZMIARU na ekranie, nie zasięgu**: kolby długich broni
+  i tak siedzą już za okiem przy biodrze (zbiera je near plane, jak w każdym
+  FPS), więc przysuwanie kupuje wielkość kątową, a płaci powierzchnią kadru
+  zajętą przez komorę. Zmierzone przy -0.40 lufa karabinu kładzie się na samym
+  celowniku - to już za daleko; -0.46 zostawia obraz czysty.
+  ⚠️ **`SPRINT_POS` i tabele przeładowania to DELTY na `VM_BASE`** - przy
+  zmianie chwytu trzeba je oddać z powrotem (sprint został oddany ręcznie,
+  poza biegu na ekranie jest niezmieniona).
+  ⚠️ **Sufitem podniesienia był UCIĘTY PRZEKRÓJ ramienia, nie near plane**:
+  ręce wiszą pod rootem broni, więc razem z nią jedzie bark i płaska ścianka
+  odcięcia wychodzi na dolną krawędź. Dlatego bark ma własne odniesienie
+  `ARM_CARRY_REST` - ten sam chwyt co `ARM_ADS_FOLLOW`, tyle że dla noszenia
+  z biodra: ciało nie jedzie za bronią w ogóle, a różnicę pochłaniają stawy.
+  Ramię ma na to zapas - każda pięść dalej ląduje na swojej kotwicy z `HANDS`
+  co do dziesiątej milimetra (zmierzone na strzelnicy, nie oceniane okiem).
+  ⚠️ **To odniesienie NIE jest już suwakiem od ucięcia** (2026-08-21): stoi
+  równo na `VM_BASE`, żeby gra odtwarzała pozę z DEVRIG (patrz „Poza rąk"
+  niżej). Kikut kadruje się teraz wyłącznie chwytami - `fore`/`upper` lewej
+  ręki w `HANDS`, czyli suwakami, które widać w edytorze. Historycznie ta
+  liczba jechała -0.28 → -0.52 właśnie po to i dawała 0,32 m darmowego
+  zapasu; tego zapasu nie ma.
+  ⚠️ `SHOULDER_LEAN_MAX` w hands.js zostaje na 0.22 (podniesione z 0.12, gdy
+  bark jeszcze zjeżdżał): przy krótkim rigu to margines na dosięgnięcie
+  chwytu i zdejmowanie go bez pomiaru zrywa dłoń z broni.
 - ADS (PPM, zmienna `aiming` + `adsBlend`): każdy viewmodel ma `userData.adsPos` —
   pozycję, w której **przyrządy trafiają w oś kamery** (x=0, y=−wysokość linii
   celowania). Od 2026-08-18 **wszystkie viewmodele są z wypieczonych modeli**
@@ -511,17 +709,96 @@ więc formy męskie w kwestiach DO gracza są OK.
   0.41 − połowa długości` stawia kolbę na stałym z −0.14 w hip pose
   (wyjątek: SMG i snajperka są przysunięte o 0.10 bliżej kamery - czytały się
   jako odsunięte; `adsPos.z` oddaje ten dystans z powrotem, więc pozycja ADS
-  zostaje ta sama). Wszystkie cztery długie bronie siedzą też **0.03 niżej
+  zostaje ta sama).
+  ⚠️ **Dystans ADS to osobna decyzja od kotwicy** (SMG 2026-08-21, decyzja
+  użytkownika „nie musimy widzieć tyle kolby"): SMG celuje z `adsPos.z`
+  −0.50 zamiast wspólnego −0.54, czyli BLIŻEJ oka niż reszta rodziny. Przy
+  −0.64 kolba siedziała 0,13 m od oka i cały jej tył czytał się jako ciemna
+  płyta pod przyrządami; przy −0.50 tył wypada 0,01 m ZA okiem, więc zbiera
+  go near plane. **Sam `z` nie psuje obrazu przyrządów** - kropka ma
+  `adsPos.x` 0 i `adsPos.y` dobrane tak, że siedzi na osi kamery, a punkt na
+  osi rzutuje się na środek ekranu z każdej odległości (zmierzone: NDC 0,0
+  dla −0.64, −0.56, −0.50 i −0.45). Wszystkie cztery długie bronie siedzą też **0.03 niżej
   niż pistolet** (`root.position.y`, decyzja użytkownika) - to samo
   `adsPos.y` kompensuje, więc rusza się tylko poza ADS, więc
   powiększenie modelu (length w gen_models.py; to JEDNOLITA SKALA całej
   bryły, normalizowana po długości) rośnie w ekranowy rozmiar chwytu zamiast
   uciekać w głąb; przy ADS ten sam luz daje `adsPos.z` −0.54 (kolba =
   adsPos.z + 0.41). Snajperka bez ADS: tylko ofset roota (−0.38).
-  Skale są CELOWO ponad wymiary rzeczywiste (length: SMG 1.00, strzelba 1.45,
+  Skale są CELOWO ponad wymiary rzeczywiste (length: SMG 0.84, strzelba 1.45,
   karabin 1.05, snajperka 1.58, Glock 0.30); po zmianie length przelicz
-  kropki/przechyły/adsPos (wszystko skaluje się liniowo).
-  **Cztery długie bronie to JEDNA rodzina - paczka broni Quaterniusa (CC0)**
+  kropki/przechyły/adsPos ORAZ kotwice z `HANDS` i punkt przyrządów w
+  `tests/shots_weapons.py` (wszystko skaluje się liniowo; przechył NIE - oba
+  przyrządy maleją tak samo, więc kąt między nimi zostaje, a 4 mm kropki to
+  wielkość ekranowa, nie część broni).
+  ⚠️ **Broń dopasowuje się do rąk, nigdy odwrotnie** (decyzja użytkownika
+  2026-08-21): ręce mają JEDNĄ skalę na wszystkich broniach (`HAND_SCALE`
+  w weapons.js), bo to ciało gracza. SMG zjechało z 1.00 na 0.84 właśnie
+  dlatego - przy 1.00 miało 95% długości karabinu i 0,381 m wysokości, czyli
+  było NAJWYŻSZĄ bronią w grze (karabin 0,364, snajperka 0,321, strzelba
+  0,238), a prawdziwy pistolet maszynowy ma ~80% długości karabinku.
+  **Strzelba wyszła z tej rodziny 2026-08-21** (zgłoszenie użytkownika:
+  „model shotguna bardziej wygląda jak karabin powtarzalny, nie ma pompki").
+  Strzelba Quaterniusa **nie miała łoża w ogóle** - rura magazynka biegła goła
+  do komory, więc sylwetka czytała się jak broń powtarzalna z rurą; pompki nie
+  dało się z niej wyciąć przez `split`, bo nie było czego. Zastąpił ją
+  **Mossberg 590A1 by J-Toastie [CC-BY]** - ten sam autor co Glock i ręce.
+  Jest RIGOWANY: łoże jedzie jako osobna kość (`FR`), więc pompka realnie
+  chodzi (`joints: {'FR': 'pump'}`, flaga `bindWorld` - węzeł mesha ma skalę
+  niejednorodną 50,2/33,2/50,2 przy armaturze 50,2, więc `jointWorld·IBM`
+  nie znosi się z grafem). Proporcjonalnie jest WYŻSZY od poprzednika
+  (wys/dł 0,203 vs 0,164), czyli przy tym samym `length` 1.45 daje 0,295 m
+  zamiast 0,238 - zarzut „za drobne" z 2026-08-18 dotyczył MP5SD, nie tego
+  modelu. Ma tylko dwa materiały: `shotgun_shade2` (kolba + łoże) idzie na
+  `vmMatMid`, reszta na `vmMatDark` - dwubarwnie wzdłuż części, która się
+  rusza. Przyrządy: **ghost ring**, więc kropka siedzi w ŚRODKU otworu
+  (środek apertury y 0,1357 @ z +0,148, promień wewnętrzny 4,3 mm - liczony
+  flood-fillem zamkniętej dziury, nie „na oko"), muszka 0,1379 @ z -0,699,
+  przechył -0,0050 rad wyrównuje je do 0,04 mm. Model jest przysunięty **0,34**
+  od wspólnej kotwicy tyłem (`root.z` +0.025, decyzja użytkownika 2026-08-21),
+  a `adsPos.z` -0.74 oddaje ten dystans z powrotem, więc rusza się tylko poza
+  biodra. ⚠️ **Miarą „za daleko" jest tu DŁOŃ, nie kolba**: po kolbie ta broń
+  siedziała dokładnie tam co SMG i snajperka (stopka 0,04 m przed okiem), ale
+  jest najdłuższa w grze i jako jedyna ma prawdziwe łoże, więc dłoń wsparcia
+  wypadała na z -0,543 w przestrzeni viewmodelu - 0,07 głębiej niż snajperka
+  (-0,477) i 0,28 głębiej niż karabin (-0,265). To ta głębokość wypycha
+  UCIĘTY koniec lewego ramienia w kadr. Sam dystans ADS jest i tak bliższy niż
+  wspólne -0.54 (netto -0.40, ta sama decyzja co przy SMG): kolba jest tu litą
+  płytą, a przy -0.54 siedziała 0,13 m od oka i wypełniała prawą połowę
+  ekranu.
+  ⚠️ Przysunięcie biodra **wydłuża realny przejazd broni do oka**, a bark
+  jedzie za tym przejazdem (`ARM_ADS_FOLLOW`), więc kadrowanie czapy przy ADS
+  się o to pogarsza. Zmierzone przy tym ruchu: biodro 0,69 → 1,02 (wychodzi
+  z kadru), ADS 0,92 → 0,85. Reszty NIE nadrabiaj dystansem: przy identycznej
+  pozycji dłoni poprzednia ramka chwytu dawała 1,07 / 1,26, a bieżąca 0,69 /
+  0,92 - decyduje chwyt, nie odległość.
+  ⚠️ **Gra odtwarza pozę z DEVRIG kość w kość** (2026-08-21, decyzja
+  użytkownika): `ARM_CARRY_REST` to teraz `VM_BASE`, więc `armBodyFix` przy
+  biodrze jest JEDNOSTKĄ i solver IK wychodzi dokładnie na pozie spoczynkowej,
+  którą pokazuje edytor. Wcześniej odniesienie stało 0,35 m pod chwytem
+  i różnicę brały stawy - wyrenderowane przedramię wypadało 9-16°, a ramię
+  0-12° od kierunku ustawionego suwakiem, przez co dostrojenie chwytu
+  w edytorze dawało w grze coś innego (zgłoszenie użytkownika: „w DEVRIG
+  ładnie poustawiałem, a bronie są rozpierdolone").
+  ⚠️ **Ceną jest to, że kikut kadruje się już TYLKO chwytami.** Zjazd ciała
+  dawał 0,32 m darmowego zapasu i tego zapasu nie ma: po przeniesieniu
+  kotwicy strzelba i karabin miały pierścień odcięcia w kadrze pod ADS,
+  a snajperka przy biodrze (wszystkie 20 wierzchołków, |ndc y| 0,43 - ta
+  blada rura wisząca w powietrzu). Po każdym przestrojeniu `HANDS` **trzeba
+  przemierzyć kadrowanie**, i to w OBU pozach: `tests/shots_weapons.py`
+  liczy kikut wyłącznie pod ADS, biodro trzeba zmierzyć osobno tym samym
+  probem (`__capProbe` po `switchWeapon`).
+  ⚠️ **`fore`/`upper` ręki wsparcia dostraja się z WIDOKU GRACZA** (strzelba,
+  karabin, snajperka przestrojone 2026-08-21 po zgłoszeniu „wyglądają
+  tragicznie"). Wcześniejsze wartości szły z geometrii łoża i celowały
+  przedramieniem WZDŁUŻ broni - to wyrzuca łokieć w bok i kładzie całe
+  przedramię w poprzek środka kadru jako bladą płytę. Działa odwrotnie: oba
+  kierunki mają iść **w GÓRĘ i lekko w LEWO od broni** (dziś ok. [-0.10,
+  0.60..0.80, -0.59..-0.79]), bo wtedy łokieć siada pod nadgarstkiem, bark
+  pod łokciem i kończyna wchodzi w kadr jako kolumna schowana pod bronią.
+  Przy okazji to samo wypycha kikut dalej poza kadr (biodro 1,40-1,84
+  zamiast 1,06-1,15).
+  **Trzy pozostałe długie bronie to nadal JEDNA rodzina - paczka Quaterniusa (CC0)**
   (decyzja użytkownika 2026-08-18: realistyczne, smukłe modele czytały się za
   drobno obok stylizowanych brył Quaterniusa, więc SMG i strzelba pojechały
   na jego odpowiedniki; pistolet ZOSTAJE Glockiem). Materiały całej rodziny
@@ -569,6 +846,27 @@ więc formy męskie w kwestiach DO gracza są OK.
     Skala idzie z **rozpiętości kości** (`normPair`: łokieć→czubek palca
     = `length` 0.42), nie z bboxa - bark już jedzie w komplecie, więc bbox
     zmniejszyłby to, co faktycznie widać.
+  - **Skala rąk jest WSPÓLNA dla wszystkich broni** (`HAND_SCALE` w weapons.js,
+    dziś 1.05; pole `scale` każdego wpisu `HANDS` tylko na nie wskazuje, żeby
+    zrzut JSON z DEVRIG dalej dało się wkleić w całości). Suwak „Skala" w DEVRIG
+    pisze do wszystkich pięciu wpisów naraz, a import JSON-a z rozjechanymi
+    wartościami zrównuje je do pierwszej broni. Rękawica, która rośnie przy
+    jednej broni i maleje przy drugiej, czyta się jak dwie różne postacie -
+    broń za dużą naprawia się jej własnym `length`, nie skalą dłoni.
+  - **Wszystkie pięć broni ma dostrojony chwyt bojowy** (2026-08-21;
+    wcześniej strzelba, karabin i snajperka jechały na wartościach NEUTRAL,
+    czyli z płaską dłonią, która niczego nie trzymała). Metoda, gdyby trzeba
+    było powtórzyć ją dla nowej broni: (1) `channel` = ZMIERZONA oś chwytu
+    (główna oś wierzchołków wokół rękojeści/łoża w przestrzeni modelu broni -
+    grupy materiałowe z `js/models.js` mówią, gdzie ta rękojeść jest);
+    (2) `palm` = `[1,0,0]` dla dłoni roboczej, dla wsparcia kierunek z SMG;
+    (3) `pos` rozwiązuj WSTECZ: wybierz, gdzie ma stać ŻYWA pięść, i iteruj
+    `pos += cel - fistAnchor` (kilka kroków schodzi poniżej 0,1 mm) - punkt
+    zdjęty z geometrii i wklejony wprost trafi obok, bo `pos` jest w
+    przestrzeni ZAMROŻONEJ kotwicy. Weryfikacja liczbowa, nie okiem:
+    `tests/shots_weapons.py` (czapa odcięcia + kotwiczenie) i odczyty
+    nadgarstka z DEVRIG - dostrojone chwyty siedzą na 1-39° zgięcia
+    i 82-107° skrętu.
   - **Cztery niezależne sterowania na dłoń** (`HANDS` w weapons.js, wszystkie
     edytowalne w DEVRIG), wszystkie w **przestrzeni modelu broni**:
     `pos` (gdzie ląduje zamknięta pięść), `channel` + `palm` (ramka chwytu =
@@ -595,15 +893,82 @@ więc formy męskie w kwestiach DO gracza są OK.
     `blendArm` woła więc `reachArm` - dwukostne IK w przestrzeni broni:
     **bark jest zadany, a stawy rozwiązywane**. Punkt podparcia daje
     `armBodyFix(vm)` w weapons.js: macierz z transformu NOSZENIA broni
-    (biodro/ADS + bob + odrzut, BEZ offsetów przeładowania i sprintu) do
+    (biodro + bob + odrzut, BEZ offsetów przeładowania i sprintu) do
     bieżącego, przepuszczona przez `shoulderHome` - bark stoi w klatce
-    piersiowej gracza, broń jedzie pod nim. Odniesieniem jest noszenie,
-    nie `VM_BASE`: przy ADS ramiona MAJĄ jechać z bronią, inaczej start
-    przeładowania w trakcie celowania szarpałby ramieniem.
+    piersiowej gracza, broń jedzie pod nim.
+    ⚠️ **Bark jest kotwiczony w KAŻDYM stanie, nie tylko w animacjach**
+    (2026-08-21, zgłoszenie użytkownika „przy celowaniu lewa ręka kończy się
+    przed końcem ekranu i wisi w powietrzu"). Wcześniej odniesieniem było
+    bieżące noszenie, czyli przy ADS bark jechał do oka razem z bronią:
+    zmierzone na strzelnicy, lewy bark SMG siedzi przy biodrze na NDC y
+    -1,62 (bezpiecznie pod dolną krawędzią), a przy ADS wyjeżdżał na -0,85,
+    czyli W KADR - a ramiona są UCIĘTE na barku, więc widać koniec kończyny
+    wiszący w powietrzu. Dlatego `applySprintPose` zmieniło się
+    w `applyCarryArms(vm, w)`, które solvuje OBIE dłonie także przy w = 0
+    (przy broni na biodrze macierz jest jednostkowa, więc wychodzi dokładnie
+    poza spoczynkowa), a odniesieniem jest biodro.
+    ⚠️ Bark nie stoi jednak całkiem w miejscu: `ARM_ADS_FOLLOW` przepuszcza
+    część podniesienia do ADS/lunety także na barki. Ten rig ma od barku do
+    pięści 0,49 m (prawdziwe ramię ~0,6), więc bark zaryglowany na sztywno
+    zostawiał prawą dłoń **4,8 cm od chwytu** przy ADS.
+    ⚠️ **To są TRZY osobne ułamki, po jednym na oś** (`{x: 0.70, y: 0.30,
+    z: 0.55}`, 2026-08-21), bo podniesienie do ADS to dwa niezwiązane ruchy
+    sklejone w jeden. Jedna wspólna liczba (0.35) była zła w obie strony
+    naraz - zgłoszenie użytkownika: „ręce wykręca i anchoruje je do prawej,
+    a one powinny być do środka".
+      **x** - broń przejeżdża 0,32 m na środek ekranu i ciało jedzie za nią;
+      broń podnosi się przed TWARZ, a nie wystawia w bok z głową dochyloną do
+      niej. Przy 0,35 barki zostawały 0,21 m na prawo od broni, więc oba
+      ramiona wchodziły ukosem z prawego rogu, a całą różnicę brały na siebie
+      nadgarstki - to był ten wykręt. 0,70 to zmierzony punkt, w którym barki
+      siadają NA linii celowania: pistolet ma barki na x -0,144 i +0,145
+      (symetrycznie względem lufy), a długie bronie na ~0,00.
+      **y** - broń idzie 0,20 m w górę do oka, a barki do oczu się nie
+      podnoszą; to ta oś wpycha ucięte końce ramion w kadr, więc zostaje
+      najmniejsza.
+      **z** - broń cofa się 0,13 m do kamery; ta oś decyduje też, ile musi
+      nadrobić `SHOULDER_GIVE` przy długiej broni (przy 0,35 luz ściągał ich
+      barki 0,09 m na prawo od lufy, przy 0,55 już nie).
+    Reszta podniesienia, offsety przeładowania i zjazd sprintu to dalej praca
+    stawów. Sprawdza to `tests/shots_weapons.py`: wiersze `ads squared <broń>`
+    pilnują, żeby środek między barkami trzymał się linii celowania (pistolet
+    ≤ 0,09 - strzela się nim frontalnie; długa broń ≤ 0,17 - kolba ma prawo
+    siedzieć w prawym barku), a wiersze `L/R arm cap` pilnują, żeby UCIĘTY
+    KONIEC ramienia został poza kadrem - z biodra i przy ADS.
+    ⚠️ **Kadrowanie ramienia mierz na CZAPIE ODCIĘCIA, nie na stawie barku**
+    (2026-08-21): czapa siedzi wyraźnie dalej niż staw i wychodzi z kadru
+    pierwsza, więc staw pokazuje „na ekranie" przy ramieniu skadrowanym
+    poprawnie - i pokazuje tak przy KAŻDEJ długiej broni.
+    ⚠️ **A czapę znajduj jako OTWARTY BRZEG SIATKI, nie „najdalsze od łokcia"**
+    (2026-08-21). Brzeg liczy się tak: najpierw scal wierzchołki po POZYCJI
+    (bufor duplikuje je na szwach UV/normalnych, więc surowe liczenie krawędzi
+    uzna każdy szew za brzeg), potem zostaw krawędzie użyte przez dokładnie
+    JEDEN trójkąt. Wychodzi 20 wierzchołków na ramię - dokładnie pierścień,
+    na którym kończy się kończyna. Poprzednia wersja zgadywała: brała
+    wierzchołki ważone korzeniem ramienia i zostawiała 6% najdalszych od
+    łokcia. To NIE jest ten pierścień (tamte siedzą na bicepsie), więc test
+    przepuszczał strzelbę z wynikiem 1.02/0.85, gdy realnie połowa pierścienia
+    była w kadrze przy biodrze (0,79), a CAŁY przy ADS (0,70) - i kikut
+    zostawał widoczny po dwóch „naprawach" (zgłoszenie użytkownika 2026-08-21,
+    trzy razy z rzędu). Przy poprawnej sondzie pozostałe cztery bronie
+    przechodzą (pistolet 9,00, SMG 1,74, karabin 1,12, snajperka 4,14).
     Podpowiedź łokcia (pole) to `upper` z wpisu - dokładnie ten kierunek,
     na który dostrojona jest poza spoczynkowa, więc podanie wartości
-    spoczynkowych odtwarza ją kość w kość (`fore` w ścieżce IK nie robi
-    nic - przy zadanym barku i pięści łokieć wyznacza już samo pole).
+    spoczynkowych odtwarza ją kość w kość.
+    ⚠️ **`fore` NIE jest bezużyteczne** (2026-08-21), choć solver go nie
+    czyta: aim'uje przedramię POZY SPOCZYNKOWEJ, a z niej mierzony jest
+    `shoulderHome`, czyli kotwica, względem której IK potem liczy. Wpisanie
+    tam kierunku ODCZYTANEGO z pozy w grze karmi więc samo siebie - iterowane
+    na dłoniach roboczych przesuwa nadgarstek z 57° na 88° i jedzie dalej.
+    ⚠️ **Dłoń wsparcia na łożu wypycha ucięty koniec ramienia w ŚRODEK
+    kadru** (2026-08-21, przy dostrajaniu strzelby/karabinu/snajperki):
+    ramię wisi pod rootem broni, a łoże jest wysoko, więc kończyna urywa się
+    w powietrzu - ta sama wada, przed którą powstało `ARM_ADS_FOLLOW`.
+    Celuje czapą NIE pozycja pięści, tylko kąty samego ramienia: zmierzone na
+    strzelnicy, podniesienie `fore` o 20° i `upper` o 25° wyprowadza ją poza
+    kadr (NDC |y| 1,07-1,25 zamiast 0,74-0,83) przy pięści dalej na osi łoża
+    i przy MNIEJSZYM zgięciu nadgarstka. Przesuwanie dłoni po łożu prawie nic
+    tu nie daje - sprawdzone.
     ⚠️ Ten rig stoi w KAŻDYM dostrojonym chwycie na 99,5% wyprostu
     (zmierzone: `SW` 0,4877 przy zasięgu 0,4901), więc bark na sztywno nie
     dosięgnąłby nawet gniazda magazynka. Stąd dwa luzy w hands.js:
@@ -720,36 +1085,167 @@ więc formy męskie w kwestiach DO gracza są OK.
     (smoothstep `vmEase`/`vmPulse`), dłonie przestawia `blendArm` (pozycja
     i palce lerpem, ramka chwytu SLERPEM - interpolacja samych wektorów
     `channel`/`palm` zwija bazę w połowie kąta prostego).
+    ⚠️ **Poza broni przy przeładowaniu jest PER BROŃ** (`relGun` w `HANDS`,
+    2026-08-21): wspólne „w górę i do środka" jest dostrojone pod pistolet,
+    któremu gniazdo magazynka siedzi tuż pod linią celowania. Gniazdo SMG
+    jest 0,14 m dalej w przód i 0,13 m niżej, więc bez własnej odchyłki cała
+    wymiana grała się w prawym dolnym rogu, połowa za krawędzią (zmierzone:
+    gniazdo NDC y -0,71, pięść dochodziła do -1,27). Z odchyłką gniazdo
+    siedzi na -0,47, a najgłębszy zjazd ręki zostaje w kadrze.
     ⚠️ **Chwyt przeładowania to osobne dane, nie chwyt bojowy** (2026-08-19):
     opcjonalny blok `grips` we wpisie `HANDS` (`mag`/`bolt`/`port`) nadpisuje
     `channel`/`palm`/`curl`/`upper` na czas danej fazy, resztę dziedziczy
     po `l`. Bez tego dłoń jechała na magazynek z linią kostek ustawioną
     pionowo do ramy i palcami zaciśniętymi na niczym, a chwyt zamka jest
     90° od bojowego (kanał wzdłuż lufy) - żadne przesuwanie pięści tego nie
-    nadrabia. Dostrojony jest na razie **tylko Glock**; broń bez `grips`
-    jedzie po staremu, samą pozycją. Kotwice (`mag`/`low`/`bolt`) liczy się
+    nadrabia. Dostrojone są **Glock i SMG**; broń bez `grips`
+    jedzie po staremu, samą pozycją - od 2026-08-21 dotyczy to strzelby,
+    karabinu i snajperki, które mają już dostrojony chwyt BOJOWY, ale nie
+    przeładowania. Kotwice (`mag`/`low`/`bolt`) liczy się
     z geometrii (`tools/gen_models.py --probe`), a `low` NIE może być dalej
     niż sięga ramię - IK zatrzyma dłoń w powietrzu zamiast wyprowadzić ją
-    poza kadr. Mag-styl: broń lekko w górę,
+    poza kadr.
+    ⚠️ **Kotwice przeładowania są w przestrzeni ZAMROŻONEJ kotwicy
+    (`gripAnchor`), nie żywej pięści** (2026-08-21): dziura w pięści, wokół
+    której faktycznie zamykają się palce, ląduje po nałożeniu zwojów chwytu
+    kilka centymetrów obok wpisanej liczby (przy Glocku 16 mm w prawo, 15 mm
+    w górę, 23 mm do przodu). Punkt zdjęty z geometrii i wklejony wprost
+    stawia więc ŻYWĄ pięść w złym miejscu - stary `mag` sadzał ją 29 mm za
+    magazynkiem i na równi z dolną krawędzią chwytu, przez co dłoń zamykała
+    się na grzbiecie rękojeści, a czubki palca wskazującego i kciuka
+    przechodziły na wylot przez ramę (zgłoszenie użytkownika 2026-08-21).
+    Kotwice rozwiązuj odwrotnie: wybierz, gdzie ma stać ŻYWA pięść (przy
+    wkładaniu magazynka: na jego osi, dłonią pod wystającą stopką, która
+    schodzi 12 mm niżej niż chwyt), zmierz `fistAnchor(rig.L)` w przestrzeni
+    broni i odejmij różnicę. Sprawdzaj po pięści, nie po wpisanej liczbie.
+    ⚠️ Do tego **kciuk musi się w chwycie `mag` ZAMYKAĆ na magazynku**:
+    zwoje z chwytu bojowego stawiają go pionowo wzdłuż ramy, więc z pięścią
+    pod gniazdem jego czubek kończy w środku rękojeści. Mag-styl: broń lekko w górę,
     lewa dłoń wyjmuje/wsadza magazynek (prop `magProp` w pięści); shell-styl:
     broń w dół (strzelba dodatkowo rolka, snajperka odsłania komorę), lewa
     dłoń nosi pojedyncze naboje (`shellProp`). **Od pustego magazynka**
-    sekwencja jest DŁUŻSZA (`reloadDuration × 1.3`) i kończy ją przeładowanie:
-    zamek (mag-styl lewą, snajperka PRAWĄ dłonią) albo pompa (strzelba).
+    sekwencja jest DŁUŻSZA (`reloadDuration × 1.3`, per broń przez `emptyMul`
+    w `HANDS`) i kończy ją przeładowanie: zamek (mag-styl lewą, snajperka
+    PRAWĄ dłonią) albo pompa (strzelba).
     Przy Glocku zamek JEDZIE - `vm.userData.slide.position.z` idzie tym samym
     impulsem co dłoń (`clearReloadVisuals` zeruje).
-    ⚠️ **Magazynek Glocka też WYPADA z gniazda** (2026-08-19): węzeł `Mag`
-    jest w `tools/gen_models.py` zmapowany na WŁASNĄ część (`order` ma
-    `mag`), więc runtime dostaje `vm.userData.magPart` i zjeżdża nim wzdłuż
-    osi magazynka (`magDrop` w `HANDS`), po czym chowa - gniazdo stoi puste,
-    dopóki dłoń nie wepchnie nowego.
-    ⚠️ **Oś zjazdu mierz jako oś główną wierzchołków magazynka, NIE z jego
-    bboxa** (2026-08-19): rogi bboxa sugerują pochylenie 34°, a magazynek
-    jest pochylony 16°. Po tym zgadnięciu wysuwał się skośnie i przechodził
-    przez przednią i tylną ściankę rączki (zgłoszenie użytkownika: „magazynek
-    wystaje z rączki, tekstura się przebija").
-    Pudełko w pięści (`magProp`/`magDim`) to ŚWIEŻY magazynek, nie ten
-    wypięty. `clearReloadVisuals` przywraca pozycję i widoczność.
+    ⚠️ **Glock ma WŁASNĄ tabelę faz pustego przeładowania** (`relEmptyT:
+    T_MAG_E_SLIDE`, `emptyMul: 1.45`, 2026-08-21): to jedyna broń mag-stylu,
+    której przeciągnięcie zamka rusza PRAWDZIWĄ geometrią, więc gdy zamek
+    zjeżdża dalej (`pull` 0.055 → 0.072, czyli 54 mm za tang ramy), skok
+    dostaje na to więcej czasu (okno `pull` 0,22 s zamiast 0,12 s) zamiast
+    lecieć szybciej. Fazy wymiany magazynka są przeskalowane o ten sam
+    czynnik, o jaki urósł całkowity czas, więc trwają tyle co przedtem.
+    Dźwięk `boltPull` jedzie ze ŚRODKA okna `pull` z tabeli, nie z wklejonego
+    ułamka. Broń bez tych pól jedzie po staremu (`T_MAG_E`, ×1.3).
+    ⚠️ Tabele faz (`T_MAG`/`T_MAG_E`/`T_MAG_E_SLIDE`) MUSZĄ być zadeklarowane
+    NAD `HANDS` - `const` w TDZ, a `HANDS` wskazuje na nie przy ładowaniu.
+    ⚠️ **Kropka celownicza musi wisieć na CZĘŚCI, która ją nosi**: muszka
+    Glocka jest kawałkiem zamka, więc kropka doczepiona do roota modelu
+    stała w miejscu, gdy przyrząd wyjeżdżał spod niej (zgłoszenie użytkownika
+    2026-08-21). Wisi teraz na `m.parts.slide`; piwot części to origin, więc
+    współrzędne są te same, a zerowa pozycja zamka nie zmienia obrazu
+    przyrządów (`tests/shots_weapons.py` dalej widzi kropkę na osi).
+    ⚠️ **Pompka strzelby jedzie w DWÓCH miejscach** (2026-08-21): przy racku
+    pustego przeładowania i **po każdym strzale** (`pumpT` w weapons.js,
+    odpalane w `tryFire`).
+    ⚠️ **Cykl NIE zaczyna się na strzale** (zgłoszenie użytkownika 2026-08-21:
+    „za szybko"): nikt nie przeciąga zamka, gdy broń jeszcze wraca z odrzutu.
+    Dlatego cykl to `PUMP_HOLD` 0,26 s martwej przerwy + `PUMP_STROKE` 0,40 s
+    samego skoku (razem 0,66 s, przy odstępie strzałów 0,75 s - mieści się).
+    Skok liczy się od WIEKU cyklu, nie od surowego `pumpT`, więc przerwa jest
+    w sekundach, a nie w ułamku animacji. `AudioSys.pump()` z `tryFire` ma
+    `delay: PUMP_HOLD` - dźwięk ma lądować na ruchu łoża, nie w huku wystrzału
+    i nie na nieruchomej dłoni; podawaj tam stałą, nie przepisaną liczbę. Skok pcha `setPump(vm, dz)` - część `pump` ma
+    NIEZEROWY piwot (to prawdziwa kość riga, nie wycięta wyspa jak magazynek
+    SMG), więc `position.z = skok` szarpnęłoby łożem o 0,26 m; jedzie ofset od
+    `pumpHome`. Dłoń wsparcia idzie z łożem: `applyCarryArms(vm, w, pump)`
+    dokłada `cfg.pull` do celu lewej ręki, podzielone przez wagę, którą
+    `blendArm` i tak przemnoży (cele noszenia nie niosą własnej pozy, więc
+    bieg i rack się nie skalują wzajemnie). Bark zostaje na wadze BIEGU -
+    przeciąganie pompki to praca stawów, nie barku.
+    ⚠️ **Magazynek OPUSZCZA gniazdo** (Glock 2026-08-19, SMG 2026-08-21):
+    jedzie jako WŁASNA część modelu, więc runtime dostaje
+    `vm.userData.magPart` i rusza nim sam - gniazdo stoi puste, dopóki nie
+    wróci. Glock zjeżdża nim wzdłuż osi magazynka (`magDrop` w `HANDS`)
+    i chowa go; SMG (`magSwap`) w ogóle go nie upuszcza, tylko wynosi
+    w dłoni - patrz niżej. Glock ma na to nazwany węzeł (`nodes`), SMG nie ma - jest jednym
+    meshem, więc magazynek wycina reguła `split` z `island` (patrz Konwencje →
+    „Modele zewnętrzne"). U SMG na zewnątrz komory wystaje tylko dolne 6 cm
+    magazynka (komora kończy się na y -0,10), więc `mag` chwyta ten kikut,
+    a nie środek całej bryły.
+    ⚠️ **Przy `magSwap` magazynek NIE WYPADA - jedzie w dłoni** (decyzja
+    użytkownika 2026-08-21: „nie możesz żeby był przyczepiony do ręki tak jak
+    w glocku?"). Jest wyrywany z gniazda, znoszony w dół i wpychany z powrotem
+    jako JEDEN obiekt, doczepiony do pięści; nie ma drugiego magazynka, nie ma
+    podmiany, nie ma propa. Offset to droga pięści od chwytu, czyli
+    `_lp - cfg.mag`, i **liczy się go po wyznaczeniu `_lp` w tej samej
+    klatce** - odczyt z upozowanej dłoni spóźnia się o klatkę, a przy tych
+    prędkościach to do 9 cm. Zgadza się na obu końcach: dłoń stoi na
+    `cfg.mag`, gdy chwyta, i znowu, gdy zasiada, więc magazynek wychodzi
+    z pozycji domowej i wraca do niej bez żadnego skoku (zmierzone: offset
+    stały co do milimetra przez całą animację, maksymalny krok 0,016 m).
+    ⚠️ **Upuszczania nie da się dobrać dystansem** - próbowane dwa razy
+    i dwa razy źle. Na oknie 0,3 s spadek dość wolny, żeby wyglądał spokojnie,
+    zostawia magazynek znikający w środku kadru („przeskakuje"), a dość
+    szybki, żeby zszedł z ekranu, robi ponad 1 g i czyta się jak wystrzelenie
+    magazynka z broni („leci gdzieś w kosmos"). Nawet uczciwe 1 g nie pomaga:
+    z 0,5 m od kamery zamiata pół kadru. Jeśli kiedyś ma naprawdę wypadać,
+    trzeba mu dać osobne, dłuższe okno, a nie kręcić dystansem.
+    ⚠️ **Dłoń schodzi z EKRANU** (`low`, decyzja użytkownika 2026-08-21):
+    wymiana ma wyglądać, jakby postać sięgnęła po świeży magazynek, a nie
+    wkładała ten sam - a jedyne, co to sprzedaje, to zniknięcie magazynka
+    z kadru na czas podmiany. Przy okazji chowa to każde pojawienie się
+    i zniknięcie rekwizytu. ⚠️ **Samą głębokością się tego nie ugra** - ramię
+    kończy się szybciej niż kadr (SMG prosto w dół sięga y -0,50 i górna
+    krawędź magazynka dalej siedzi na NDC -0,78). Trzeba `low` COFNĄĆ ku
+    kamerze: bliżej oka ten sam zjazd daje większy kąt. SMG z z +0,13 daje
+    -1,18, pistolet z z +0,24 daje -1,22, i **oba trafiają w kotwicę
+    dokładnie** (błąd 0,000). Sprawdza to `tests/shots_weapons.py`.
+    ⚠️ Cała ta ścieżka jest **OPT-IN per broń** (`magSwap` w `HANDS`), bo
+    przestawia też kotwice przeładowania na ŻYWĄ pięść (`byFist`). Włączenie
+    jej dla broni z dostrojonym chwytem wymaga PRZELICZENIA kotwic: dopisz do
+    nich zmierzony bias, wtedy widoczna dłoń jedzie dokładnie tą samą drogą
+    (pistolet: `mag`/`low` +[0,0156, 0,0152, 0,0231], `bolt`
+    +[-0,0157, -0,0322, -0,0002]; zweryfikowane porównaniem toru pięści przed
+    i po - fazy ustalone zgadzają się co do 0,1 mm). Bez tego wymiana odjeżdża
+    (zgłoszenie użytkownika: pistoletowi „poszła w lewo").
+    Osobno per broń jest `RELOAD_SHOULDER` (jak `SPRINT_TWEAK`) - tego
+    pistolet NIE ma i mieć nie powinien, bo jego dłoń podpierająca pracuje
+    blisko osi kadru.
+    Pudełko w pięści (`magProp`/`magDim`) to zastępczy magazynek dla broni,
+    której model nie ma odłączalnego (dziś karabin) - broń z `magSwap`
+    (pistolet, SMG) nie ma go wcale, bo niesie swój własny.
+    ⚠️ **Kotwice przeładowania mierzą ŻYWĄ dziurę w pięści, nie zamrożoną**
+    (`byFist` + `fistBias` w hands.js, 2026-08-21). Obie kotwice różnią się na
+    tym rigu o 0,032 m i każda jest dobra do czego innego: `pos` dostrojonego
+    chwytu znaczy „postaw TU zamrożoną kotwicę", bo to nią ruszał suwak
+    w DEVRIG i pod nią dobierano wygląd. Tabele przeładowania są odwrotnie -
+    czyta się je z geometrii broni (oś magazynka, rączka zamka), więc mówią,
+    gdzie ma trafić DZIURA W PIĘŚCI. `blendArm` odejmuje więc `fistBias`
+    od celu, wygaszony przez wagę pozy, dzięki czemu poza spoczynkowa zostaje
+    nietknięta. Zmierzone: żywa pięść ląduje na `mag` i `low` co do zera.
+    Bez tego magazynek jechał 3 cm obok dłoni, wbity w rękawicę i obracający
+    się razem z nadgarstkiem (zgłoszenie użytkownika „magazynek przesuwa się
+    w dłoni"), a kotwice z geometrii i tak nie trafiały tam, gdzie mówiły.
+    `clearReloadVisuals` przywraca pozycję i widoczność.
+    ⚠️ **Zastępczy prop pokazuje się dopiero, gdy dłoń rusza w dół**, a nie
+    przy wyjmowaniu magazynka: wskoczenie pudełka do pustej pięści stojącej
+    jeszcze przy broni wsadza bryłę wielkości magazynka w komorę i rączkę,
+    a dłoń wynosi ją potem przez nie na zewnątrz - i to czyta się jak DRUGI
+    magazynek wyjeżdżający z rączki.
+    ⚠️ **`attachToFist` musi mieć własny wektor wyjściowy** (2026-08-21):
+    `fistAnchor` używa wewnątrz współdzielonego `_hV` jako scratcha, więc
+    podanie `_hV` jako parametru wyjściowego nakłada akumulator na odczyt
+    pojedynczego stawu i kotwica wychodzi śmieciowa. To parkowało świeży
+    magazynek ~0,15 m obok dłoni, na wysokości rączki - dokładnie ten sam
+    objaw co wyżej, tylko przez cały czas trwania animacji. Po naprawie prop
+    siedzi w pięści z dokładnością do 3 mm (zmierzone).
+    ⚠️ Prop wisi na KOŚCI dłoni, której lokalne +Z to linia kostek, czyli oś
+    dziury w pięści - a magazynek trzyma się WŁAŚNIE przez tę dziurę.
+    Geometria boxa/cylindra rośnie wzdłuż Y, więc `attachHandsAndProps`
+    obraca ją o 90° (`geo.rotateX`); bez tego świeży magazynek sterczał
+    wzdłuż palców, czyli w poprzek tego, jak się go niesie.
     Dźwięki są keyframowane z animacji: `AudioSys.grab/magOut/magIn/boltPull/
     shellIn/pump` (stary `reloadSeq` skasowany) - nowa broń = plan + kotwice
     w `HANDS`.
@@ -758,9 +1254,33 @@ więc formy męskie w kwestiach DO gracza są OK.
     **OBURĄCZ**. Docelowy odczyt to sprint z Battlefielda (referencja od
     użytkownika): przy dolnej krawędzi leży sama bryła broni, **dłonie ledwo
     widoczne albo w ogóle** - i to zależnie od broni.
+    ⚠️ **Bark odsuwa się na bok też przy PRZEŁADOWANIU** (`RELOAD_SHOULDER`,
+    2026-08-21, zgłoszenie użytkownika „lewa ręka przechodzi do prawej"):
+    wymiana magazynka zdejmuje lewą dłoń z broni i prowadzi ją w dół, czyli
+    daje ten sam zapas co bieg. Waga to własna waga lewej dłoni w animacji
+    (`_relLw`), więc pchnięcie narasta i wygasa razem z ruchem, a prawy bark
+    dostaje zero - ta dłoń nie schodzi z chwytu. Zmierzone: lewy bark
+    przechodzi z NDC x +0,16 na -0,42…-0,68 i wraca, a obie dłonie trzymają
+    swoje kotwice co do milimetra.
+    ⚠️ **Bark w biegu jest odsuwany na bok** (`SPRINT_SHOULDER` w weapons.js,
+    2026-08-21, zgłoszenie użytkownika „lewy bark powinien być bardziej na
+    lewo"). Kotwicą jest bark DOSTROJONEGO chwytu, a ten jest pozą bojową:
+    rig ma od barku do pięści 0,49 m, więc trzymanie łoża 0,35 m przed sobą
+    ściąga bark podpierający w poprzek klatki - zmierzone na x +0,035, czyli
+    pod brodą zamiast z boku ciała. Bieg to jedyna poza z zapasem: broń jest
+    przy ciele, więc lewe ramię zajmuje 0,357 z 0,49 m zasięgu i 0,16 m na
+    wyprostowanie barków nic nie kosztuje - pięść zostaje na łożu, otwiera
+    się sam łokieć (zmierzone: bark ląduje na x -0,125, błąd chwytu 0,0000).
+    Offset jest podawany w przestrzeni KAMERY i wygaszany przez `sprintBlend`:
+    przy biodrze i przy ADS ramię stoi na ~99,5% wyprostu i to samo pchnięcie
+    zerwałoby dłoń z broni.
     ⚠️ Ten sam offset wywala krótką broń CAŁKIEM poza kadr (pistolet znikał
     do jednego piksela), więc jest tabela odchyłek per broń `SPRINT_TWEAK`
-    (dziś tylko `pistol`) - „ledwo widoczne" tak, „nie ma jej" nie.
+    (dziś `pistol` i `smg`) - „ledwo widoczne" tak, „nie ma jej" nie.
+    SMG dostało swoją odchyłkę po zejściu z 1.00 na 0.84 (2026-08-21): przy
+    tej samej dawce zjazdu cała komora schodziła pod krawędź i w kadrze
+    zostawała **sama zielona kropka celownicza nad bezimienną ciemną belką**,
+    bez śladu rąk - to się czyta jak błąd, nie jak bieg.
     ⚠️ **Nie dosuwaj broni do kamery, żeby wyszła „bliżej"** - near plane to
     0,08, a kolby długiej broni już przy biodrze siedzą 0,04 przed okiem
     (zmierzone). Wrażenie „przy ciele" bierze się ze zjazdu w dół i obrotu,
@@ -802,7 +1322,8 @@ więc formy męskie w kwestiach DO gracza są OK.
     viewmodelu (`clearReloadVisuals`).
   - Widoczność kropki celowniczej przy ADS dalej pilnuje
     `tests/shots_weapons.py` (raycast osi kamery) - ręce nie mogą jej
-    zasłaniać. Ten sam zestaw sprawdza liczbowo kotwiczenie ramion
+    zasłaniać. Ten sam zestaw pilnuje też, że UCIĘTY koniec ramienia (bark)
+    nie wchodzi w kadr - ani przy biodrze, ani przy ADS. Ten sam zestaw sprawdza liczbowo kotwiczenie ramion
     (bark w przestrzeni kamery, dłoń nieruchoma zostaje na chwycie)
     w czterech fazach przeładowania i w sprincie - w sprincie sprawdzane są
     OBIE dłonie, bo obie mają zostać na broni. Czarnej rękawicy na ciemnej
@@ -1083,7 +1604,8 @@ więc formy męskie w kwestiach DO gracza są OK.
     mission {id, active, time, kills, objectives[]}, seed, arenaHash,
     arenaReachable, pointerLock/wantLock, crouch/eyeH, slide, grenades,
     settings, pressure, radioHold, menuBg, dev, devrig, scoped);
-    audio: `sfxPlayed`, `musicSteps`/`musicRunning`, `musicError`, `menuMusic`;
+    audio: `sfxPlayed`, `sfxSamples`/`sfxDecodeFail` (dekodowanie próbek),
+    `menuMusic`;
   - parametry URL: `?test=play` (autostart areny bez pointer locka), `?test=shoot`
     (+ auto-celowanie z kontrolą LOS), `?test=over`, `?test=win` (przewinięcie fal);
     `&wave=N` (arena od fali N); debug generatora (arena):
@@ -1120,7 +1642,7 @@ napięcia przy niskim HP).
 Zostało opcjonalnie: **materiał podłoża pod krokami** (inny dźwięk na betonie vs metalu
 — dziś jeden), **pogłos zależny od otoczenia** (krótszy na otwartej arenie, dłuższy przy
 murze — dziś jeden impuls) i **suwaki głośności** (patrz Rozgrywka → „Ustawienia
-w pauzie": `master.gain` i `musicGain.gain` są gotowymi punktami zaczepienia).
+w pauzie": `master.gain` jest gotowym punktem zaczepienia).
 
 ### Oprawa wizualna (odejście od „kółek i kwadratów")
 

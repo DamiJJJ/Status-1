@@ -224,7 +224,6 @@ function updatePlayer(dt) {
   if (keys['Space'] && !inputHold && player.onGround) {
     player.vel.y = JUMP_SPEED;
     player.onGround = false;
-    AudioSys.jump();
     // bunnyhop: jumping right after landing builds up speed (stacks to +35%)
     if (player.sinceLand < 0.25 && hasInput) {
       player.hopBoost = Math.min(1.35, player.hopBoost + 0.07);

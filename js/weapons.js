@@ -249,21 +249,30 @@ function buildViewmodel(id) {
 }
 
 /* The HIP carry. Raised 8 cm and pulled 2 cm inboard on 2026-08-21 (user
-   call, reference: Ready Or Not): the old (0.32, -0.28) parked the gun in the
-   bottom-right corner with nothing of the arms in frame, and left the trip to
-   the sights 0.15-0.20 m of vertical travel - so ADS read as the gun being
-   swung across the frame rather than pulled the last inch into the eyeline.
+   call, reference: Ready Or Not), then pulled a further 8 cm inboard and 9 cm
+   toward the camera the same day (user call: "wszystkie bronie blizej srodka
+   oraz przyblizmy do samej kamery"): the old (0.32, -0.28, -0.55) parked the
+   gun in the bottom-right corner with nothing of the arms in frame, and left
+   the trip to the sights 0.15-0.20 m of vertical travel - so ADS read as the
+   gun being swung across the frame rather than pulled the last inch into the
+   eyeline.
    `adsPos` is ABSOLUTE, so this moves nothing about where the sights end up;
    it only shortens that trip, and brings the support forearm onto the
    handguard where it belongs.
-   ⚠️ The rest pose of the arms hangs under this, so the shoulder rides up
-   with it and the cut end of the upper arm walks toward the bottom edge -
-   that, not the near plane, is the ceiling here. 8 cm keeps it under the
-   edge; going higher needs the shoulder decoupled from the carry the way
-   ARM_ADS_FOLLOW decouples it from the ADS raise.
+   ⚠️ The z is a screen-SIZE dial, not a reach dial. Long guns already have
+   their butt behind the eye at the hip (the near plane takes it, as it does
+   in any FPS), so what moving in buys is angular size, and what it costs is
+   how much of the frame the receiver covers. Measured at -0.40 the rifle's
+   barrel lies across the crosshair itself, which is past useful; -0.46 keeps
+   the sight picture clear.
+   ⚠️ The rest pose of the arms hangs under this, so a raise walks the CUT
+   END of the upper arm toward the bottom edge - that, not the near plane, was
+   the ceiling here. It no longer is: ARM_CARRY_REST is what decides where the
+   cut end sits, and it is parked low enough for the whole ring to clear the
+   frame on every weapon.
    ⚠️ SPRINT_POS and the reload tables are DELTAS on this - anything moved
    here moves them too (the sprint numbers below were paid back by hand). */
-const VM_BASE = new THREE.Vector3(0.30, -0.20, -0.55);
+const VM_BASE = new THREE.Vector3(0.22, -0.20, -0.46);
 
 /* ==================== RĘCE (BRON-2) ====================
    Per-weapon arm placement (gun-model space) + reload-animation anchors.
@@ -362,15 +371,15 @@ const HANDS = {
     r: { pos: [0.04, -0.018, 0.022],
          channel: [-0.0202, -0.9985, -0.0513],
          palm: [0.9984, -0.0175, -0.0532],
-         fore: [-0.077, -0.0349, -0.9964],
-         upper: [0.1139, -0.0523, -0.9921],
+         fore: [-0.0871, -0.0349, -0.9956],
+         upper: [-0.087, -0.0523, -0.9948],
          curl: { f: [0.95, 0.63, 0.60], i: [0.28, 0.25, 0.12],
                  t: [0.00, 1.16, 0.26], tAdd: -0.08 } },
     l: { pos: [-0.026, -0.038, 0.032],
          channel: [-0.2503, 0.9653, -0.0737],
          palm: [-0.9555, -0.2586, -0.1421],
-         fore: [0.515, -0.0175, -0.857],
-         upper: [0.5995, -0.0872, -0.7956],
+         fore: [0.3907, -0.0175, -0.9204],
+         upper: [0.4367, -0.0872, -0.8954],
          curl: { f: [0.00, 0.69, 0.00], i: [0.32, 0.00, 0.00],
                  t: [0.08, 1.25, 0.49], tAdd: -0.13 } },
     /* Reload anchors, re-derived from the model once the grip above was
@@ -493,8 +502,8 @@ const HANDS = {
     l: { pos: [-0.011, -0.006, -0.3461],
          channel: [-0.144, 0.9877, -0.0612],
          palm: [-0.9092, -0.1565, -0.3859],
-         fore: [0.601, 0.0523, -0.7975],
-         upper: [0.3905, -0.0349, -0.9199],
+         fore: [0.4382, -0.0175, -0.8987],
+         upper: [0.3089, -0.0175, -0.9509],
          curl: { f: [0.85, 0.90, 0.61], i: [0.78, 0.55, 0.78],
                  t: [0.17, 1.02, 0.20], tAdd: -0.12 } },
     /* Reload anchors, re-derived from the baked geometry once the grip above
@@ -543,7 +552,7 @@ const HANDS = {
        ⚠️ These are DELTAS on VM_BASE, like SPRINT_POS: re-measure them
        whenever the hip carry moves (raising it 8 cm took the whole swap up
        to NDC -0.05..-0.73, i.e. into the middle of the screen). */
-    relGun: { pos: [-0.08, 0.03, 0.04], rot: [0.16, 0.10, 0.06] },
+    relGun: { pos: [-0.08, 0.03, 0.04], rot: [0.16, 0.10, -0.08] },
     /* the charging pull is taken from the LEFT of the receiver, at the height
        of the bolt slab: the top rail closes over the receiver 7 cm above it,
        which is not a gap a fist goes into, so an overhand rack would have had
@@ -605,22 +614,30 @@ const HANDS = {
        reads as a pistol grip, so it is raked 30 deg back from vertical. The
        posed joint then sits at 36 deg of bend and 94 of forearm roll, both
        inside the band the other four weapons live in. */
-    r: { pos: [0.0133, 0.011, 0.216],
-         channel: [0, -0.766, 0.6428],
-         palm: [1, 0, 0],
-         fore: [-0.434, 0.1392, -0.8901],
-         upper: [0.2214, 0.1736, -0.9596],
-         curl: { f: [1.34, 0.55, 0.97], i: [0.01, 0.23, 0.91],
-                 t: [0.00, 0.03, 0.86], tAdd: -0.21 } },
+    r: { pos: [0.027, -0.009, 0.225],
+         channel: [-0.0555, -0.9853, 0.1615],
+         palm: [0.9947, -0.0685, -0.0761],
+         fore: [-0.2753, 0.0523, -0.9599],
+         upper: [0.297, 0.2756, -0.9142],
+         curl: { f: [1.80, 0.55, 0.00], i: [0.31, 0.01, 0.14],
+                 t: [0.00, 0.00, 0.00], tAdd: 0.05 } },
     /* forend: the knuckle line runs ALONG it, because that is what the fist
-       is threaded onto (same reading as the SMG's bolt grab). The forearm of
-       the REST pose is aimed steeply up - it never shows, it only decides
-       where shoulderHome lands, and this is what keeps the cut end out. */
-    l: { pos: [0.056, 0.052, -0.328],
-         channel: [0.0279, 0.2055, -0.9783],
-         palm: [0.4208, -0.8901, -0.175],
-         fore: [0.5959, 0.1392, -0.7909],
-         upper: [0.4367, -0.0872, -0.8954],
+       is threaded onto (same reading as the SMG's bolt grab).
+       ⚠️ `fore`/`upper` are the SUPPORT ARM'S SHAPE ON SCREEN and are dialled
+       from the player's view, not from the geometry (2026-08-21, user report:
+       "the shotgun, the rifle and the sniper look terrible"). Both point UP
+       and slightly LEFT of the gun, which stacks elbow under wrist and
+       shoulder under elbow, i.e. the limb comes up as a column tucked under
+       the gun. Aiming them along the gun instead - which is what the
+       geometry-first dial did - swings the elbow out sideways and lays the
+       whole forearm across the middle of the frame as a pale slab, which is
+       what looked broken. They also decide where shoulderHome lands, so they
+       are still the only dial keeping the cut end out of frame. */
+    l: { pos: [0.056, 0.052, -0.281],
+         channel: [-0.1116, 0.6114, -0.7834],
+         palm: [0.4346, -0.6789, -0.5918],
+         fore: [-0.1003, 0.6018, -0.7923],
+         upper: [-0.0501, 0.7818, -0.6215],
          curl: { f: [0.60, 0.38, 0.50], i: [0.85, 0.17, 0.44],
                  t: [0.44, 0.70, 0.23], tAdd: -0.40 } },
     /* Reload anchors, in the same FROZEN grip-anchor space as `pos` (so each
@@ -672,15 +689,15 @@ const HANDS = {
     r: { pos: [0.047, -0.015, 0.141],
          channel: [0.0001, -0.9877, 0.1564],
          palm: [1, 0.0001, -0.0002],
-         fore: [-0.2248, -0.0349, -0.9738],
-         upper: [0.3089, -0.0349, -0.9504],
+         fore: [-0.273, -0.1392, -0.9519],
+         upper: [0.3024, -0.2079, -0.9302],
          curl: { f: [0.83, 0.52, 0.51], i: [0.65, 0.00, 0.27],
                  t: [0.20, 1.42, 0.13], tAdd: -0.02 } },
     l: { pos: [0.066, 0.0846, -0.15],
          channel: [0.0842, 0.1699, -0.9819],
          palm: [0.2243, -0.9633, -0.1475],
-         fore: [0.5926, 0.1736, -0.7865],
-         upper: [0.3078, -0.0872, -0.9474],
+         fore: [-0.1196, 0.6178, -0.7772],
+         upper: [-0.0501, 0.7818, -0.6215],
          curl: { f: [0.74, 0.90, 0.73], i: [0.99, 0.67, 0.78],
                  t: [0.01, 1.32, 0.00], tAdd: -0.40 } },
     mag: [-0.0099, -0.1187, -0.0056], low: [-0.0699, -0.5787, 0.1344],
@@ -717,15 +734,15 @@ const HANDS = {
     r: { pos: [-0.0027, -0.039, 0.289],
          channel: [0.0001, -0.9135, 0.4067],
          palm: [1, 0.0003, 0.0003],
-         fore: [-0.4801, 0.1392, -0.8661],
-         upper: [0.0867, 0.1045, -0.9907],
+         fore: [-0.4317, 0.1736, -0.8851],
+         upper: [0.3584, -0.0175, -0.9334],
          curl: { f: [1.80, 0.34, 0.98], i: [0.00, 0.00, 0.78],
                  t: [0.00, 0.40, 0.46], tAdd: -0.32 } },
     l: { pos: [0.037, 0.004, -0.075],
          channel: [0.0005, 0, -1],
          palm: [-0.1043, -0.9945, -0.0001],
-         fore: [0.6246, 0.1219, -0.7713],
-         upper: [0, -0.0175, -0.9998],
+         fore: [-0.1001, 0.8008, -0.5906],
+         upper: [-0.0501, 0.9012, -0.4306],
          curl: { f: [0.91, 0.90, 0.61], i: [0.78, 0.86, 0.78],
                  t: [0.26, 0.89, 0.34], tAdd: -0.40 } },
     port: [0.0201, 0.0502, 0.1852], low: [0.1401, -0.4798, 0.4352],
@@ -792,9 +809,10 @@ let vmRecoil = 0;
 
    The hands stay ON the gun, so the sprint targets carry no pose of their
    own - only the body transform the shoulders are held against. */
-/* Deltas on VM_BASE, so they were re-paid when the carry went up 8 cm and in
-   2 cm on 2026-08-21: the run pose itself is unchanged on screen. */
-const SPRINT_POS = [-0.04, -0.28, 0.05];
+/* Deltas on VM_BASE, so they are re-paid by hand whenever the carry moves
+   (up 8 cm and in 2 cm on 2026-08-21, then a further 8 cm in and 9 cm toward
+   the camera the same day): the run pose itself is unchanged on screen. */
+const SPRINT_POS = [0.04, -0.28, -0.04];
 const SPRINT_ROT = [-0.55, 0.50, 0.34];
 /* Per-weapon deviation from that carry. The drop is what takes the hands out
    of frame, and how much of the gun is left depends on how long it is: a
@@ -931,19 +949,27 @@ const _bodyFix = new THREE.Matrix4();
 const ARM_ADS_FOLLOW = { x: 0.70, y: 0.30, z: 0.55 };
 
 /* Where the BODY stands behind the hip carry. Same idea as ARM_ADS_FOLLOW,
-   for the other move: the gun went up 8 cm on 2026-08-21 and the shoulders do
-   not have to go all the way with it. They hang under the gun's root, so a
-   raise walks the CUT END of the upper arm toward the bottom edge - measured
-   on the range, the full 8 cm puts it on screen behind the weapon slots.
-   Parking the reference lower leaves the joints to absorb the difference.
-   ⚠️ Not a free dial: this rig is short (shoulder to fist 0.49 m) and every
-   dialled grip already sits at 99.5% of that reach, so dropping the shoulder
-   away from the gun runs out of arm and SHOULDER_GIVE (js/hands.js) hauls it
-   back up anyway. Tune it by measuring, not by eye - here it turned out the
-   arm has the slack: at the OLD carry position, which is what this is, every
-   fist still lands on its dialled anchor to within a millimetre, so the raise
-   is a gun-only move and the body does not follow it at all. */
-const ARM_CARRY_REST = new THREE.Vector3(0.32, -0.28, -0.55);
+   for the other move: the gun travels around the frame and the shoulders do
+   not have to go with it. They hang under the gun's root, so anything that
+   raises or centres the carry walks the CUT END of the upper arm toward the
+   bottom edge.
+   ⚠️ It is VM_BASE ITSELF (2026-08-21, user decision). It used to sit 0.35 m
+   below and behind the carry, and that gap is exactly what the game rendered
+   differently from what DEVRIG previews: the editor shows the REST pose,
+   while the solver held every shoulder that far below it and let the joints
+   swallow the difference - measured at 9-16 deg on the forearm and 0-12 deg
+   on the upper arm. Dialling a grip in the editor and getting another pose in
+   the game is not a trade worth any framing (user report 2026-08-21: "in
+   DEVRIG I set them up nicely and the guns are wrecked"). With the reference
+   ON the carry, `armBodyFix` is the identity at the plain hip pose and the
+   solver reproduces the dialled rest pose bone for bone.
+   ⚠️ The cut end is then framed by the GRIPS alone, i.e. by `fore`/`upper` in
+   HANDS - which is right, because those are visible in the editor. Moving the
+   reference was worth 0.32 m of free framing and it is gone: the shotgun and
+   the rifle put all 20 cap vertices on screen under ADS (nearest |ndc y| 0.40
+   and 0.03) until their support arm was lifted 45 and 35 deg. Re-measure with
+   tests/shots_weapons.py after every re-dial - there is no slack left here. */
+const ARM_CARRY_REST = VM_BASE.clone();
 
 /* The reference is the gun's HIP carry for this frame - VM_BASE plus bob and
    recoil, with most of the ADS/scope raise left OUT. Everything the gun does on top of
@@ -975,20 +1001,10 @@ function armBodyFix(vm) {
     .multiply(root.matrix);
 }
 
-/* ⚠️ The carry fix at the plain hip pose is NOT the identity, and the claim
-   here that it was (until 2026-08-21) was simply wrong. VM_BASE was raised
-   8 cm that day and ARM_CARRY_REST deliberately stayed on the old carry, so
-   the solver holds every shoulder 82 mm BELOW where the dialled rest pose
-   puts it and the joints swallow the difference. Measured across all five
-   weapons, that leaves the rendered forearm 9-16 deg and the upper arm
-   0-12 deg away from the direction its slider was set to.
-   Consequence to know about: DEVRIG previews the REST pose, so the editor and
-   the game disagree by exactly that much, which is why aiming the forearm in
-   the editor feels disconnected from the result (user report 2026-08-21).
-   Left alone on purpose - settling the preview through this fix also stops
-   NEUTRAL reading as a straight wrist, which is the editor's own baseline.
-   Fix it at the source (ARM_CARRY_REST vs VM_BASE) or settle the preview AND
-   re-baseline the editor; not halfway. */
+/* ⚠️ At the plain hip pose this fix IS the identity, and it has to stay that
+   way: it is what makes the game agree with DEVRIG, which previews the rest
+   pose. Anything that pulls ARM_CARRY_REST off VM_BASE re-opens the gap the
+   editor cannot show (see the note there). */
 /* The arms outside a reload: the sprint carry at weight w, and - at w = 0 -
    plain carry, which is NOT a no-op. Both hands still go through the solver
    so the shoulders are held to the body while the gun travels to the eye and
@@ -1150,7 +1166,11 @@ function applyReloadPose(vm, t) {
     const rr = cfg.relGun ? cfg.relGun.rot : ZERO_TWEAK;
     _gp.rx = (0.30 + rr[0]) * env;
     _gp.ry = (0.14 + rr[1]) * env;
-    _gp.rz = (0.12 + rr[2]) * env;
+    // ⚠️ roll is NEGATIVE, i.e. the gun tips to the RIGHT (top right, bottom
+    // toward the middle of the screen). The magwell faces the camera then, so
+    // the swap is actually visible - at the old +0.12 the gun stayed upright
+    // and the magazine went in behind its own frame (user 2026-08-21).
+    _gp.rz = (-0.42 + rr[2]) * env;
     _gp.px = (-0.10 + rp[0]) * env;
     _gp.py = (0.05 + rp[1]) * env;
     _gp.pz = (-0.03 + rp[2]) * env;

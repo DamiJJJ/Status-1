@@ -98,7 +98,7 @@ document.addEventListener('mousedown', e => {
 });
 document.addEventListener('mouseup', e => {
   if (e.button === 0) firing = false;
-  if (e.button === 2) setAiming(false);
+  if (e.button === 2) setAiming(false, true); // the player lowering the rifle
 });
 document.addEventListener('contextmenu', e => e.preventDefault());
 // passive:false — the default passive document listener cannot preventDefault,

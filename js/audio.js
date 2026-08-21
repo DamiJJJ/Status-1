@@ -1,4 +1,4 @@
-/* NEON ARENA — synthesized SFX + procedural music (WebAudio)
+/* STATUS 1 — SFX bus (WebAudio): synthesis plus baked samples from js/sfx.js
    Classic script (NOT an ES module): shares the global scope with the other
    js/ files; load order is defined by index.html. THREE and its addons are
    exposed on window by the bootstrap module in index.html. */
@@ -12,7 +12,7 @@ const AudioSys = (() => {
   let reverb = null, reverbGain = null;
   // user volume multipliers (settings screen); base gains stay the mix reference
   let userMaster = 1, userMusic = 1;
-  const MASTER_GAIN = 0.32, MUSIC_GAIN = 0.55;
+  const MASTER_GAIN = 0.32;
 
   const BREATH_SFX = true; // subtle sprint breathing; flip to false to disable
 
@@ -39,7 +39,7 @@ const AudioSys = (() => {
     if (ctx) { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); return; }
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // chain: voices -> sfxBus / musicGain -> master -> duckFilter -> compressor -> out
+      // chain: voices -> sfxBus -> master -> duckFilter -> compressor -> out
       compressor = ctx.createDynamicsCompressor();
       compressor.threshold.value = -16;
       compressor.knee.value = 12;
@@ -68,6 +68,7 @@ const AudioSys = (() => {
       reverbGain.gain.value = 0.5;
       reverb.connect(reverbGain).connect(master);
     } catch (e) { ctx = null; }
+    loadSamples();
   }
 
   /* --- world-space positioning: stereo pan + distance fade + distance muffle --- */
@@ -196,6 +197,61 @@ const AudioSys = (() => {
     return enemyVoices > 6 ? 0.5 : 1;
   }
 
+  /* ---- sampled voices: base64 (js/sfx.js) -> AudioBuffer inside the graph ----
+     Recorded SFX go through the SAME chain as the synthesized ones: a
+     BufferSourceNode handed to routeOut() gets spatialisation, the reverb
+     send, the duck filter and the limiter. That is the whole reason samples
+     are inlined as base64 rather than played from an <audio> element - see
+     CLAUDE.md (Architektura -> Zasoby). Decoding is asynchronous, so every
+     caller must survive `sample()` returning false and fall back to synthesis;
+     that is also what keeps the game audible if js/sfx.js is ever missing. */
+  const samples = Object.create(null);
+  let samplesAsked = false;
+
+  function loadSamples() {
+    if (samplesAsked || !ctx || typeof SFX_DATA === 'undefined') return;
+    samplesAsked = true;
+    for (const key in SFX_DATA) {
+      const bank = samples[key] = [];
+      SFX_DATA[key].forEach((b64, i) => {
+        bank[i] = null;
+        try {
+          const bin = atob(b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+          // decodeAudioData detaches the buffer - fine, nothing reads it again
+          ctx.decodeAudioData(bytes.buffer, (buf) => {
+            bank[i] = buf;
+            __test.sfxSamples = (__test.sfxSamples || 0) + 1;
+          }, () => { __test.sfxDecodeFail = (__test.sfxDecodeFail || 0) + 1; });
+        } catch (e) { __test.sfxDecodeFail = (__test.sfxDecodeFail || 0) + 1; }
+      });
+    }
+  }
+
+  /* Play one variant of a sampled voice. Returns false when there is nothing
+     to play yet (still decoding, or no such key), so callers can synthesize
+     instead. `jitter` rides playbackRate: it varies pitch AND length together,
+     exactly like a real repeat, and keeps a burst from sounding stamped. */
+  function sample(key, { vol = 1, pos = null, pan = 0, send = 0, jitter = 0, delay = 0, rate = 1 } = {}) {
+    if (!ctx) return false;
+    const bank = samples[key];
+    if (!bank || !bank.length) return false;
+    const buf = bank.length === 1 ? bank[0] : bank[(Math.random() * bank.length) | 0];
+    if (!buf) return false;
+    __test.sfxPlayed = (__test.sfxPlayed || 0) + 1;
+    const t0 = ctx.currentTime + delay;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = rate * (jitter ? 1 + (Math.random() * 2 - 1) * jitter : 1);
+    const g = ctx.createGain();
+    src.connect(g);
+    // the recording carries its own envelope - only the level is set here
+    g.gain.value = Math.max(0.0001, vol * routeOut(g, { pos, pan, send }));
+    src.start(t0);
+    return true;
+  }
+
   /* Brief full-mix muffle ("ears ringing") after taking damage. */
   function duckMix(amount, hold) {
     const t0 = ctx.currentTime;
@@ -252,161 +308,22 @@ const AudioSys = (() => {
     }
   }
 
-  /* ---- procedural music (16-step sequencer, lookahead scheduling) ---- */
-  let musicTimer = null, musicStep = 0, musicNext = 0, musicGain = null, musicDuck = null;
-  let musicBar = 0, moodBlend = 0;
-  const MSTEP = 60 / 118 / 2; // eighth notes at 118 BPM
-  // A-minor progressions, one chord per 4 steps. A: Am—C—G—F, B: Am—F—C—G
-  const BASS_A = [110, 110, 0, 110, 130.81, 130.81, 0, 130.81, 98, 98, 0, 98, 87.31, 87.31, 0, 130.81];
-  const BASS_B = [110, 110, 0, 220, 87.31, 87.31, 0, 87.31, 130.81, 130.81, 0, 130.81, 98, 98, 0, 196];
-  const ARP_SEQ = [220, 261.63, 329.63, 440, 329.63, 261.63];
+  /* The procedural in-game score was REMOVED (user call 2026-08-21). It was a
+     16-step sequencer with A/B sections, a combat/calm mood blend and a kick
+     sidechain; git history has it if it is ever wanted back. The menu theme
+     below is now the only music in the game, and gameplay runs on SFX alone.
+     `userMusic` survives because that theme still obeys the music slider. */
 
-  function mTone(t, { type = 'sawtooth', f = 110, dur = 0.2, vol = 0.15, filter = 0, slide = 0, spread = 0, duck = false }) {
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(spread ? vol * 0.62 : vol, t + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    let dest = g;
-    if (filter) {
-      const fl = ctx.createBiquadFilter();
-      fl.type = 'lowpass';
-      fl.frequency.value = filter;
-      fl.connect(g); dest = fl;
-    }
-    const mk = (det) => { // spread = two detuned oscillators (fat synthwave pad)
-      const o = ctx.createOscillator();
-      o.type = type;
-      o.frequency.setValueAtTime(f, t);
-      if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
-      if (det) o.detune.value = det;
-      o.connect(dest);
-      o.start(t); o.stop(t + dur + 0.05);
-    };
-    mk(spread ? -spread : 0);
-    if (spread) mk(spread);
-    g.connect(duck ? musicDuck : musicGain);
-  }
-
-  function mNoise(t, { dur = 0.03, vol = 0.06, freq = 6500, type = 'highpass' }) {
-    const s = ctx.createBufferSource();
-    s.buffer = noiseBuf;
-    const f = ctx.createBiquadFilter();
-    f.type = type; f.frequency.value = freq;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    s.connect(f).connect(g).connect(musicGain);
-    s.start(t); s.stop(t + dur + 0.02);
-  }
-
-  /* Simple FM bell for arps — much rounder than a raw square. */
-  function mBell(t, f, dur, vol) {
-    const car = ctx.createOscillator();
-    car.type = 'sine'; car.frequency.value = f;
-    const mod = ctx.createOscillator();
-    mod.type = 'sine'; mod.frequency.value = f * 3.01;
-    const mg = ctx.createGain();
-    mg.gain.setValueAtTime(f * 2.2, t);
-    mg.gain.exponentialRampToValueAtTime(1, t + dur);
-    mod.connect(mg).connect(car.frequency);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    car.connect(g).connect(musicDuck);
-    car.start(t); mod.start(t);
-    car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
-  }
-
-  /* Sidechain pump: bass/pads/bells duck for a beat under every kick. */
-  function duckMusicAt(t) {
-    const g = musicDuck.gain;
-    g.cancelScheduledValues(t);
-    g.setValueAtTime(0.42, t);
-    g.linearRampToValueAtTime(1, t + MSTEP * 1.8);
-  }
-
-  function scheduleMusicStep(t, s) {
-    // gate/objective missions fight without an active "wave" — live enemies
-    // must count as combat too, or the music goes calm mid-firefight
-    const combat = game.state === 'playing' &&
-      (waveSystem.active || enemies.some(e => !e.passive));
-    // crossfade combat<->calm layers over roughly a bar instead of a hard cut
-    moodBlend += ((combat ? 1 : 0) - moodBlend) * 0.14;
-    const cb = moodBlend, calm = 1 - moodBlend;
-    // intensity: wave number + live enemy pressure (real combat density)
-    const inten = Math.min(1, waveSystem.wave / 10 + enemies.length / 14);
-    const bass = (musicBar >> 2) % 2 ? BASS_B : BASS_A; // section A/B, 4 bars each
-    const fill = musicBar % 4 === 3 && s >= 12;          // snare roll into next section
-
-    if (cb > 0.05) {
-      if (s % 4 === 0) {
-        mTone(t, { type: 'sine', f: 140, slide: 42, dur: 0.13, vol: 0.5 * cb });          // kick
-        mNoise(t, { dur: 0.016, vol: 0.05 * cb, freq: 4200, type: 'highpass' });          // kick click
-        duckMusicAt(t);
-      }
-      if (s % 8 === 4) mNoise(t, { dur: 0.09, vol: 0.13 * cb, freq: 1900, type: 'bandpass' }); // snare
-      if (s % 2 === 1) mNoise(t, { dur: 0.03, vol: (0.05 + inten * 0.05) * cb });               // hi-hat
-      if (fill) mNoise(t, { dur: 0.05, vol: (0.05 + 0.02 * (s - 12)) * cb, freq: 1700, type: 'bandpass' });
-      const bf = bass[s % 16];
-      if (bf) mTone(t, { type: 'sawtooth', f: bf, dur: 0.22, vol: 0.18 * cb, filter: 380 + inten * 550, duck: true });
-      if (inten > 0.2 && s % 4 === 2)
-        mBell(t, ARP_SEQ[(s / 2 | 0) % 6] * 2, 0.22, 0.05 * cb);
-    }
-    if (calm > 0.05) {
-      if (s % 4 === 0) mTone(t, { type: 'triangle', f: bass[s % 16] || 110, dur: MSTEP * 4, vol: 0.08 * calm, filter: 600, duck: true });
-      if (s % 2 === 0) mBell(t, ARP_SEQ[(s / 2 | 0) % 6] * 2, 0.34, 0.045 * calm);
-    }
-    if (s === 0) { // pad each bar: detuned saws on root + fifth
-      const pv = 0.026 * cb + 0.05 * calm;
-      mTone(t, { type: 'sawtooth', f: 110, dur: MSTEP * 16, vol: pv, filter: 750, spread: 7, duck: true });
-      mTone(t, { type: 'sawtooth', f: 164.81, dur: MSTEP * 16, vol: pv * 0.8, filter: 750, spread: 7, duck: true });
-    }
-    // low-HP tension: quiet high shimmer layered on top of everything
-    if (game.state === 'playing' && player.hp > 0 && player.hp < 25 && s % 2 === 0)
-      mTone(t, { type: 'triangle', f: 880, dur: 0.09, vol: 0.02, filter: 3200 });
-  }
-
-  function musicTick() {
-    while (musicNext < ctx.currentTime + 0.3) {
-      try { scheduleMusicStep(musicNext, musicStep); }
-      catch (e) { // keep the loop alive, but surface the first error to diagnostics
-        if (!__test.musicError) { __test.musicError = String(e); __test.errors.push('music: ' + e); }
-      }
-      musicStep = (musicStep + 1) % 16;
-      if (musicStep === 0) musicBar++; // advance AFTER a bar is fully scheduled
-      musicNext += MSTEP;
-      __test.musicSteps = (__test.musicSteps || 0) + 1;
-    }
-  }
-
-  /* Single owner of the sequencer level: the procedural score is ducked all the
-     way out under the menu theme (menuFade) so the two never play at once. */
-  function applyMusicGain() {
-    if (musicGain) musicGain.gain.value = MUSIC_GAIN * userMusic * (1 - menuFade);
-  }
-
-  function startMusic() {
-    if (musicTimer || !ctx) return;
-    musicGain = ctx.createGain();
-    musicGain.connect(master);
-    applyMusicGain();
-    musicDuck = ctx.createGain(); // sidechained sub-bus (bass/pads/bells)
-    musicDuck.connect(musicGain);
-    musicNext = ctx.currentTime + 0.1;
-    musicTimer = setInterval(musicTick, 120);
-    __test.musicRunning = true;
-  }
-
-  /* ---- menu theme: the single audio FILE in an otherwise synthetic mix ----
-     Deliberate exception to the "everything is synthesized" rule, and just as
-     deliberately kept OUTSIDE the WebAudio graph: under file:// a local media
-     file cannot be decoded (fetch + decodeAudioData is blocked by CORS) and a
-     MediaElementSource would taint the graph, so it plays through a plain
-     <audio> element with its own volume. Nothing is lost — the navigation
-     screens have no combat to sidechain or duck against. The procedural score
-     is faded out underneath (applyMusicGain), so the two never stack. */
-  const MENU_GAIN = 0.4; // the file is mastered far louder than the synth mix
+  /* ---- menu theme: the one sound that plays OUTSIDE the WebAudio graph ----
+     It streams from a plain <audio> element with its own volume, because the
+     track is minutes long: keeping it out of the graph costs nothing here, as
+     the navigation screens have no combat to sidechain or duck against.
+     Note this is NOT the only way to play a recording under
+     file:// — fetch is blocked, but a base64 sample decodes without it (atob
+     -> Uint8Array -> decodeAudioData) and comes back as a normal AudioBuffer
+     that belongs to the graph. That is the road for short SFX; see CLAUDE.md
+     (Architektura -> Zasoby). Do not route new sounds through <audio>. */
+  const MENU_GAIN = 0.4; // the file is mastered far louder than the SFX mix
   const MENU_FADE_IN = 1.6, MENU_FADE_OUT = 0.45; // seconds
   let menuEl = null, menuWant = false, menuFade = 0;
 
@@ -437,7 +354,6 @@ const AudioSys = (() => {
     if (menuFade !== target) {
       const step = dt / (menuWant ? MENU_FADE_IN : MENU_FADE_OUT);
       menuFade = target > menuFade ? Math.min(1, menuFade + step) : Math.max(0, menuFade - step);
-      applyMusicGain(); // crossfade: the sequencer comes back up as this drops
     }
     __test.menuMusic = !!menuEl && !menuEl.paused && menuFade > 0;
     if (!menuEl) return;
@@ -447,7 +363,6 @@ const AudioSys = (() => {
 
   return {
     init,
-    startMusic,
     menuMusic,
     update,
     resetFx,
@@ -457,7 +372,6 @@ const AudioSys = (() => {
     setVolumes(m, mus) {
       userMaster = m; userMusic = mus;
       if (master) master.gain.value = MASTER_GAIN * userMaster;
-      applyMusicGain();
       // the menu theme is outside the graph, so it takes both multipliers by hand
       if (menuEl) menuEl.volume = Math.max(0, Math.min(1, MENU_GAIN * userMaster * userMusic * menuFade));
     },
@@ -467,18 +381,32 @@ const AudioSys = (() => {
       if (!ctx) return;
       switch (id) {
         case 'pistol':
+          // recorded 9 mm, dry take: the room comes from our own convolver
+          // via `send`, so the shot follows the arena instead of the range
+          // it was recorded on. Falls through to synthesis while decoding.
+          if (sample('pistol_fire', { vol: 0.5, jitter: 0.035, send: 0.55 })) break;
           burst({ dur: 0.012, vol: 0.2, freq: 3200, type: 'highpass' });                     // action snap
           burst({ dur: 0.08, vol: 0.3, freq: 1400, jitter: 0.1, send: 0.3 });                // body
           tone({ type: 'square', f0: 220, f1: 70, dur: 0.09, vol: 0.2, jitter: 0.05 });
           burst({ dur: 0.16, vol: 0.09, freq: 750, jitter: 0.1, send: 0.9, delay: 0.012 });  // tail
           break;
         case 'shotgun':
+          // recorded 20 gauge, dry: the shell's own body is long enough that
+          // the send can stay modest - the convolver is placing it in the
+          // hall, not supplying the boom
+          if (sample('shotgun_fire', { vol: 0.6, jitter: 0.03, send: 0.45 })) break;
           burst({ dur: 0.014, vol: 0.24, freq: 2600, type: 'highpass' });
           burst({ dur: 0.24, vol: 0.5, freq: 650, jitter: 0.08, send: 0.35 });
           tone({ type: 'sine', f0: 110, f1: 35, dur: 0.22, vol: 0.35, jitter: 0.04 });
           burst({ dur: 0.5, vol: 0.14, freq: 430, jitter: 0.1, send: 1.0, delay: 0.02 });
           break;
         case 'smg':
+          // recorded 9 mm, rapid-fire takes. `rate` drops it just over a
+          // semitone: the game's SMG fires the same round as the Glock, and
+          // the barrel length is the only thing separating them - a longer
+          // barrel burns more powder before the gas leaves, so the report
+          // sits lower. Anything deeper starts to sound like a rifle.
+          if (sample('smg_fire', { vol: 0.42, jitter: 0.04, send: 0.4, rate: 0.93 })) break;
           // SMG: small calibre, high rate - a light, snappy report where the
           // bolt clack carries as much as the muzzle (the rifle is the heavy one)
           burst({ dur: 0.012, vol: 0.15, freq: 3400, type: 'highpass' });          // bolt clack
@@ -486,12 +414,20 @@ const AudioSys = (() => {
           tone({ type: 'square', f0: 230, f1: 85, dur: 0.05, vol: 0.12, jitter: 0.08 });
           break;
         case 'rifle':
+          // recorded 5.56, dry. Louder send than the 9 mm pair: a rifle round
+          // drives the room far harder than a pistol one, and that crack
+          // coming back off the walls is most of what makes it read as big.
+          if (sample('rifle_fire', { vol: 0.5, jitter: 0.035, send: 0.7 })) break;
           burst({ dur: 0.011, vol: 0.18, freq: 3300, type: 'highpass' });
           burst({ dur: 0.07, vol: 0.26, freq: 1200, jitter: 0.1, send: 0.25 });
           tone({ type: 'square', f0: 240, f1: 80, dur: 0.07, vol: 0.16, jitter: 0.06 });
           burst({ dur: 0.14, vol: 0.07, freq: 700, jitter: 0.1, send: 0.8, delay: 0.012 }); // tail
           break;
         case 'sniper':
+          // recorded 7.62x54R, dry, with the longest tail in the arsenal and
+          // the biggest send. A shot this size is mostly what comes BACK -
+          // the crack is over in 60 ms, the hall answers for the rest.
+          if (sample('sniper_fire', { vol: 0.6, jitter: 0.025, send: 0.9 })) break;
           burst({ dur: 0.014, vol: 0.28, freq: 2400, type: 'highpass' });
           burst({ dur: 0.32, vol: 0.5, freq: 450, jitter: 0.06, send: 0.5 });
           tone({ type: 'sine', f0: 170, f1: 28, dur: 0.3, vol: 0.4, jitter: 0.03 });
@@ -516,33 +452,63 @@ const AudioSys = (() => {
       }
     },
     empty() { tone({ type: 'square', f0: 1100, f1: 900, dur: 0.04, vol: 0.12 }); },
+    /* The sniper's scope reaching the eye and leaving it. Handling foley, not
+       an optic sound - see gen_sfx.py. Quiet on purpose: it sits under the
+       held breath of a player lining up a shot, and anything louder turns
+       every aim-and-release into an event. Synthesis fallback is a soft
+       filtered swish, not a click - a click here reads as a malfunction. */
+    scope(on) {
+      if (sample(on ? 'scope_up' : 'scope_down', { vol: on ? 0.3 : 0.26, jitter: 0.05, send: 0.15 })) return;
+      burst({ dur: on ? 0.11 : 0.08, vol: 0.05, freq: on ? 900 : 1200,
+              q: 1.2, type: 'bandpass', jitter: 0.1 });
+    },
     /* reload foley, fired as keyframe events by the viewmodel animation
        (weapons.js buildReloadEvents) so the sound lands ON the hand motion */
-    grab() { burst({ dur: 0.07, vol: 0.09, freq: 750, q: 1.1, type: 'bandpass' }); }, // cloth
-    magOut() {
+    /* Each takes the weapon id so a gun with baked samples uses them and the
+       rest stay synthesized - the arsenal can be converted one gun at a time. */
+    grab(id = '') { // cloth / hand on the spare magazine
+      if (sample(id + '_grab', { vol: 0.5, jitter: 0.04 })) return;
+      burst({ dur: 0.07, vol: 0.09, freq: 750, q: 1.1, type: 'bandpass' });
+    },
+    magOut(id = '') {
+      if (sample(id + '_mag_out', { vol: 0.65, jitter: 0.03, send: 0.2 })) return;
       tone({ type: 'square', f0: 330, f1: 240, dur: 0.08, vol: 0.16 });
       burst({ dur: 0.06, vol: 0.1, freq: 320 });
     },
-    magIn() {
+    magIn(id = '') {
+      if (sample(id + '_mag_in', { vol: 0.7, jitter: 0.03, send: 0.25 })) return;
       tone({ type: 'square', f0: 420, f1: 640, dur: 0.07, vol: 0.18 });
       burst({ dur: 0.06, vol: 0.1, freq: 800, q: 1.1, type: 'bandpass' });
     },
-    boltPull() {
+    boltPull(id = '') {
+      if (sample(id + '_slide', { vol: 0.7, jitter: 0.03, send: 0.25 })) return;
       tone({ type: 'square', f0: 700, f1: 980, dur: 0.05, vol: 0.2 });
       burst({ dur: 0.06, vol: 0.12, freq: 1300, delay: 0.05 });
     },
-    shellIn() {
+    shellIn(id = '') {
+      if (sample(id + '_shell', { vol: 0.6, jitter: 0.05, send: 0.2 })) return;
       burst({ dur: 0.04, vol: 0.12, freq: 1100 });
       tone({ type: 'square', f0: 520, f1: 400, dur: 0.05, vol: 0.14, delay: 0.01 });
     },
-    pump() {
-      tone({ type: 'square', f0: 480, f1: 320, dur: 0.07, vol: 0.2 });
-      burst({ dur: 0.07, vol: 0.14, freq: 900, delay: 0.07 });
-      tone({ type: 'square', f0: 340, f1: 520, dur: 0.06, vol: 0.18, delay: 0.09 });
+    /* One clip, both strokes. Called twice over for different reasons: the
+       reload cycles the action at full weight, and every shot cycles it too -
+       that one is quieter and delayed, because the forend moves while the
+       muzzle is still ringing. Hence the level and offset are arguments. */
+    pump(id = '', { vol = 0.6, delay = 0 } = {}) {
+      if (sample(id + '_pump', { vol, jitter: 0.03, send: 0.25, delay })) return;
+      const k = vol / 0.6;
+      tone({ type: 'square', f0: 480, f1: 320, dur: 0.07, vol: 0.2 * k, delay });
+      burst({ dur: 0.07, vol: 0.14 * k, freq: 900, delay: delay + 0.07 });
+      tone({ type: 'square', f0: 340, f1: 520, dur: 0.06, vol: 0.18 * k, delay: delay + 0.09 });
     },
     // weapon draw: cloth swish + bolt click-clack; heavier guns lower & slower
     switch_(id = 'pistol') {
       const wgt = { pistol: 0, smg: 0.3, shotgun: 0.75, rifle: 0.55, sniper: 1 }[id] || 0;
+      // ONE recorded handling take for every weapon (user call 2026-08-21):
+      // the heavier take read as a whip crack, and the weight is already
+      // carried by the shot itself. No per-weapon rate lean either - the
+      // point is that the swap sounds the same whatever comes up.
+      if (sample('draw', { vol: 0.5, jitter: 0.04, send: 0.2 })) return;
       const p = 1 - wgt * 0.3;
       burst({ dur: 0.07, vol: 0.09 + wgt * 0.05, freq: 900 * p, q: 1.1, type: 'bandpass', jitter: 0.1 });
       tone({ type: 'square', f0: 430 * p, f1: 320 * p, dur: 0.04, vol: 0.12, delay: 0.05 });
@@ -551,27 +517,56 @@ const AudioSys = (() => {
     },
 
     /* --- combat feedback --- */
-    hit() { tone({ type: 'square', f0: 1500, f1: 1200, dur: 0.035, vol: 0.11, jitter: 0.04 }); },
+    /* Rounds landing on a drone: metal on metal, because that is what the
+       enemy is made of. No world position - this is the hitmarker's voice,
+       the confirmation that the shot connected, and it has to read the same
+       whether the target is at 5 m or 40 m. */
+    hit() {
+      if (sample('hit_bot', { vol: 0.34, jitter: 0.06, send: 0.35 })) return;
+      tone({ type: 'square', f0: 1500, f1: 1200, dur: 0.035, vol: 0.11, jitter: 0.04 });
+    },
     headshot() {
-      tone({ type: 'square', f0: 2100, f1: 1600, dur: 0.04, vol: 0.13 });
+      // the ping STAYS on top of the sample: it is not texture, it is the
+      // game telling the player what they just did
+      if (!sample('hit_head', { vol: 0.4, jitter: 0.05, send: 0.4 })) {
+        tone({ type: 'square', f0: 2100, f1: 1600, dur: 0.04, vol: 0.13 });
+      }
       ping({ f: 2350, dur: 0.16, vol: 0.09, delay: 0.02 });
     },
     kill(pos = null, type = 'assault') {
-      // per-type "shutdown": heavy is low and long, scout short and bright
+      // per-type "shutdown": heavy is low and long, scout short and bright.
+      // This tone stays synthesized - it is where the per-type character
+      // lives, and no recording would scale across the roster like this.
       const k = type === 'heavy' ? { f0: 340, f1: 48, dur: 0.36, vol: 0.26 }
               : type === 'scout' ? { f0: 520, f1: 95, dur: 0.18, vol: 0.17 }
               : { f0: 420, f1: 70, dur: 0.25, vol: 0.2 };
       tone({ type: 'sawtooth', ...k, jitter: 0.05, pos, send: 0.5 });
       burst({ dur: 0.12, vol: 0.1, freq: 2400, type: 'highpass', jitter: 0.2, pos, send: 0.4 }); // sparks
-      burst({ dur: 0.2, vol: 0.12, freq: 500, jitter: 0.1, pos, send: 0.5, delay: 0.03 });
+      /* The machine going down: struck metal for the body, a burst of dead
+         electronics on top, both POSITIONED - unlike the hitmarker, a death
+         is information about the battlefield and belongs where it happened.
+         `rate` carries the size: a heavy falls slower and lower. */
+      const r = type === 'heavy' ? 0.86 : type === 'scout' ? 1.14 : 1;
+      const body = sample('kill_body', { vol: 0.34, jitter: 0.05, rate: r, pos, send: 0.5, delay: 0.03 });
+      sample('kill_glitch', { vol: 0.22, jitter: 0.08, rate: r, pos, send: 0.35 });
+      if (!body) burst({ dur: 0.2, vol: 0.12, freq: 500, jitter: 0.1, pos, send: 0.5, delay: 0.03 });
     },
     hurt(dmg = 12, fromPos = null) {
       if (!ctx) return;
       const k = Math.min(1, dmg / 30);
       const pan = fromPos ? spatial(fromPos).pan * 0.7 : 0;
       tone({ type: 'sine', f0: 130, f1: 55, dur: 0.2, vol: 0.26 + 0.12 * k, pan });
-      burst({ dur: 0.12, vol: 0.12 + 0.1 * k, freq: 300, pan });
-      burst({ dur: 0.05, vol: 0.1, freq: 1700, q: 2, type: 'bandpass', pan });
+      /* A recorded body impact - blunt, not metallic. The player wears a
+         vest; the metal takes are what the DRONE sounds like, and the two
+         must stay tellable apart when both happen at once. Panned toward the
+         shooter (a partial pan, not the full spatial: this is happening TO
+         the player, not somewhere in the room), and it hits lower and harder
+         as the damage climbs. */
+      if (!sample('hurt_body', { vol: 0.3 + 0.3 * k, pan, jitter: 0.06,
+                                 rate: 1.08 - 0.2 * k })) {
+        burst({ dur: 0.12, vol: 0.12 + 0.1 * k, freq: 300, pan });
+        burst({ dur: 0.05, vol: 0.1, freq: 1700, q: 2, type: 'bandpass', pan });
+      }
       duckMix(k, 0.25 + 0.3 * k); // brief "ears ringing" muffle, scales with damage
     },
 
@@ -580,25 +575,46 @@ const AudioSys = (() => {
       if (!ctx) return;
       stepSide = -stepSide; // alternate feet: slight left/right pan
       const pan = stepSide * 0.12;
+      /* Recorded boots on metal (six variants - a step lands more often than
+         anything else in the game). Sprinting is not a different recording:
+         the same boot hits harder and the stride is quicker, so it is louder
+         and slightly faster, which is what actually changes when you run. */
+      if (sample('step_metal', { vol: sprint ? 0.5 : 0.3, pan, jitter: 0.05,
+                                 rate: sprint ? 1.07 : 1, send: 0.12 })) return;
       burst({ dur: sprint ? 0.07 : 0.055, vol: sprint ? 0.11 : 0.065, freq: sprint ? 520 : 440, q: 0.9, type: 'bandpass', jitter: 0.18, pan });
       tone({ type: 'sine', f0: sprint ? 96 : 84, f1: 46, dur: 0.05, vol: sprint ? 0.09 : 0.055, jitter: 0.12, pan });
     },
-    jump() {
-      burst({ dur: 0.12, vol: 0.05, freq: 500, q: 0.7, type: 'bandpass', jitter: 0.1 });
-      tone({ type: 'sine', f0: 170, f1: 260, dur: 0.1, vol: 0.035 });
-    },
+    /* Landing is a hybrid for the same reason the slide is: the recordings
+       carry the texture (boots, body) and the synthesized tone carries the
+       low end, which none of these takes have.
+       There is deliberately NO jump sound (user call 2026-08-21) - leaving
+       the ground is silent, only coming back down is heard. */
     land(k = 0.5) { // k 0..1 = impact strength (from fall speed)
       tone({ type: 'sine', f0: 120, f1: 50, dur: 0.12 + 0.08 * k, vol: 0.09 + 0.18 * k });
-      burst({ dur: 0.08 + 0.06 * k, vol: 0.05 + 0.11 * k, freq: 380, q: 0.8, jitter: 0.1 });
+      /* Boots always; the body only on a real drop. A hop off a crate and a
+         fall off the gantry are different EVENTS, not one event at two
+         volumes - so the heavy layer joins in rather than replacing.
+         `rate` falls with the impact: a harder landing reads lower. */
+      const boots = sample('land_soft', { vol: 0.3 + 0.4 * k, jitter: 0.06,
+                                          rate: 1.06 - 0.14 * k, send: 0.15 });
+      if (k > 0.45) sample('land_hard', { vol: 0.2 + 0.5 * k, jitter: 0.05, send: 0.2 });
+      if (!boots) {
+        burst({ dur: 0.08 + 0.06 * k, vol: 0.05 + 0.11 * k, freq: 380, q: 0.8, jitter: 0.1 });
+      }
     },
     // bunnyhop chain feedback: chirp pitch climbs with the boost
     bhop(boost = 1) {
       const f = 480 + (boost - 1) * 1900;
       tone({ type: 'square', f0: f, f1: f * 1.3, dur: 0.05, vol: 0.05, filter: 2600 });
     },
-    // slide: one sustained floor scrape + a low body rumble
+    /* slide: one sustained floor scrape + a low body rumble. HYBRID on
+       purpose - the recording is clothing dragging along the floor and has
+       no low end at all, so the synthesized rumble stays underneath it. The
+       sample is the texture, the tone is the weight of the player. */
     slide() {
-      burst({ dur: 0.45, vol: 0.15, freq: 470, q: 0.7, type: 'bandpass', jitter: 0.12, send: 0.25 });
+      if (!sample('slide', { vol: 0.55, jitter: 0.06, send: 0.25 })) {
+        burst({ dur: 0.45, vol: 0.15, freq: 470, q: 0.7, type: 'bandpass', jitter: 0.12, send: 0.25 });
+      }
       tone({ type: 'sine', f0: 92, f1: 58, dur: 0.34, vol: 0.07, jitter: 0.1 });
     },
 

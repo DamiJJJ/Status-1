@@ -122,15 +122,17 @@ with sync_playwright() as pw:
     page.evaluate("pauseGame()")
     check("play: pause keeps the game world (not the panorama)",
           page.evaluate("window.__test.menuBg === false"), "")
-    steps0 = page.evaluate("window.__test.musicSteps || 0")
     page.evaluate("quitToMenu()")
     ok = wait_for(page, "game.state === 'menu' && window.__test.menuBg === true", 10)
     check("play: quit to menu re-enters the panorama", ok, "")
     ok = wait_for(page, "window.__test.menuMusic === true", 20)
     check("play: menu theme resumes after the run", ok, str(page.evaluate(audio)))
     time.sleep(1.0)
-    check("play: procedural sequencer survives the crossfade",
-          page.evaluate("window.__test.musicSteps") > steps0, "")
+    # the procedural score is gone (2026-08-21): gameplay is SFX only, so the
+    # menu theme is the ONLY music and nothing may play under it
+    check("play: menu theme is the only music",
+          page.evaluate("window.__test.musicSteps === undefined"),
+          str(page.evaluate("window.__test.musicSteps")))
     check("play: no errors", not page.evaluate("window.__test.errors"),
           str(page.evaluate("window.__test.errors"))[:300])
     page.close()

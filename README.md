@@ -146,7 +146,7 @@ materials, colors and lighting are the game's own procedural ones.
 - Ross by joney_lol [CC-BY] via Poly Pizza
 - Glock by J-Toastie [CC-BY] via Poly Pizza
 - Submachine Gun by Quaternius [CC0] via Poly Pizza
-- Shotgun by Quaternius [CC0] via Poly Pizza
+- Mossberg 590A1 by J-Toastie [CC-BY] via Poly Pizza (strzelba)
 - Assault Rifle by Quaternius [CC0] via Poly Pizza
 - Sniper Rifle by Quaternius [CC0] via Poly Pizza
 - Rigged FPS Arms by J-Toastie [CC-BY] via Poly Pizza (first-person arms on
@@ -162,6 +162,29 @@ yet:
 
 The source `.glb` files live in `assets_src/`; regenerate with
 `python3 tools/gen_models.py`.
+
+### Sound
+
+Most of the mix is synthesized in WebAudio and has no source files at all.
+The weapon SFX are recorded samples, baked by `tools/gen_sfx.py` into
+`js/sfx.js` as base64 Opus so they decode into the audio graph under
+`file://`, where `fetch` is blocked.
+
+- Snake's Authentic Gun Sounds, packs 1 and 2, by SnakeF8 / F8 Studios
+  [public domain] - https://f8studios.itch.io/snakes-authentic-gun-sounds
+  (credit is not required by the author; it is given here anyway)
+  Every weapon report and all the reload mechanics come from these.
+- GameAudioGDC Bundle 2026 by Sonniss [royalty-free] - drone hits (David
+  Dumais Audio, Epic Stock Media, The Noisery)
+- GameAudioGDC Bundle 2018 by Sonniss [royalty-free] -
+  https://sonniss.com/gameaudiogdc/ - footsteps (The Sound Pack Tree,
+  "Footstep Loops") and the slide (TheWorkRoom Audio Post,
+  "Cloths & Sponges Foley")
+
+The source recordings live in `assets_src/sfx/`; regenerate with
+`python3 tools/gen_sfx.py`. The menu theme
+(`assets/Rain Over Neon Spires.mp3`) is the one sound that plays outside the
+WebAudio graph.
 
 One bitmap is not procedural: `assets/lspd_badge.png`, the LSPD shield worn on
 a drone's chest plate. It is baked into `js/badge.js` as a data URI by

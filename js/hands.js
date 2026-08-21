@@ -504,8 +504,15 @@ const SHOULDER_GIVE_MAX = 0.10;
 /* Extra reach, and ONLY when the arm would otherwise fall short. The sprint
    carry is what needs it: dropping a long gun to the hip puts the forward
    handguard past what a pinned shoulder can hold, and a support hand floating
-   off the forend is worse than a shoulder that leans a little. */
-const SHOULDER_LEAN_MAX = 0.12;
+   off the forend is worse than a shoulder that leans a little.
+   ⚠️ 0.12 -> 0.22 on 2026-08-21, when ARM_CARRY_REST dropped 0.24 m to get
+   the arms' cut ends out of frame: the shotgun's FIRING hand then came up
+   short of its grip under ADS (0.039 m at the old cap, 0.020 at 0.18), and
+   that shortfall is exactly what the cap was clipping off. Every other
+   weapon/state was already inside the cap, so nothing else moves - measured
+   across all five at the hip, under ADS, through a reload and in the sprint
+   carry. Raise the two together: this is the reach that pays for the drop. */
+const SHOULDER_LEAN_MAX = 0.22;
 
 function lerpDir(out, a, b, k) {
   for (let i = 0; i < 3; i++) out[i] = a[i] + (b[i] - a[i]) * k;

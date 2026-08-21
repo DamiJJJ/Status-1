@@ -447,9 +447,24 @@ Zakres techniczny:
 > (odchył ≤0.002 NDC). Dźwięki: SMG ma stłumiony strzał, karabin własny
 > (`shot('rifle')`). Sklep: `w_smg` 50 kr → `w_shotgun` 80 → `w_rifle` 110
 > → `w_sniper` 140.
-> Do rozważenia: cięższy dźwięk snajperki, animacja cyklu zamka Glocka
-> (część `slide` czeka w userData) i pompki strzelby (nowy model jest jedną
-> bryłą - pompka wymagałaby podziału w `MODELS`).
+> **Aktualizacja 2026-08-21 - strzelba wróciła na Mossberga.** Zgłoszenie
+> użytkownika: model nie czytał się jak strzelba, tylko jak karabin
+> powtarzalny, bo strzelba Quaterniusa NIE MA łoża - rura magazynka biegnie
+> goła do komory. Pompki nie dało się z niej wyciąć (`split` nie ma czego
+> wyciąć), więc slot 3 dostał **Mossberga 590A1 by J-Toastie [CC-BY]**, ten
+> sam autor co Glock i ręce. Model jest rigowany, łoże to osobna kość, więc
+> pompka chodzi naprawdę - i to nie tylko przy przeładowaniu: cykluje po
+> KAŻDYM strzale, razem z dłonią wsparcia. Zarzut „za drobne" z pierwszego
+> podejścia go nie dotyczy: proporcjonalnie jest wyższy od poprzednika
+> (wys/dł 0,203 vs 0,164, czyli 0,295 m zamiast 0,238 przy `length` 1.45).
+> Przyrządy to ghost ring, więc kropka siedzi w środku apertury; `adsPos.z`
+> zszedł na -0.40, bo lita kolba przy -0.54 zajmowała prawą połowę ekranu
+> (ta sama decyzja co przy SMG). Chwyt obu rąk przeliczony od zera
+> (`tests/shots_weapons.py`: kropka w osi, ucięte końce ramion poza kadrem
+> 1.43/9.00); dostrojenie na oko zostaje do DEVRIG.
+>
+> Do rozważenia: cięższy dźwięk snajperki i animacja cyklu zamka Glocka
+> (część `slide` czeka w userData, dziś rusza tylko przy przeładowaniu).
 
 Docelowe pierwowzory (sylwetka i charakter, nie kopia 1:1):
 
@@ -457,7 +472,7 @@ Docelowe pierwowzory (sylwetka i charakter, nie kopia 1:1):
 |---|---|
 | Pistolet [1] | Glock by J-Toastie [CC-BY] |
 | SMG [2] | Submachine Gun by Quaternius [CC0] |
-| Strzelba [3] | Shotgun by Quaternius [CC0] |
+| Strzelba [3] | Mossberg 590A1 by J-Toastie [CC-BY] |
 | Karabin (auto) [4] | Assault Rifle by Quaternius [CC0] |
 | Snajperka [5] | Sniper Rifle by Quaternius [CC0] |
 
