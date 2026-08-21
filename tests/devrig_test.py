@@ -45,6 +45,10 @@ with sync_playwright() as pw:
 
     page.evaluate("devKey('KeyH')")   # the real key path, not openDevRig()
     time.sleep(1.0)
+    # what the FILE says, sampled before anything here edits it - the reset
+    # check at the end compares against this instead of a literal, which went
+    # stale the moment the rifle's grip was dialled (2026-08-21)
+    FILE_CURL = page.evaluate("HANDS.rifle.r.curl.f[0]")
     check("open: own state", page.evaluate("__test.state") == 'devrig',
           page.evaluate("__test.state"))
     check("open: screen visible", page.evaluate(
@@ -247,16 +251,51 @@ with sync_playwright() as pw:
           });
         });
     })()"""))
-    # and the shipped neutral IS the rig's bind pose, so a reset leaves a
-    # dead-straight arm with nothing for the wrist to absorb
+    # Two test-only helpers, injected once the editor is open (devRigBase is
+    # built by openDevRig). Both exist because the shipped HANDS entries are
+    # TUNED grips - "neutral" has to be built, not borrowed from a weapon.
+    page.evaluate("""(() => {
+      window.devRigNeutral = id => {
+        const s = JSON.parse(JSON.stringify(devRigBase[id]));
+        for (const [k, n] of [['r', NEUTRAL_R], ['l', NEUTRAL_L]]) {
+          s[k].channel = n.channel.slice(); s[k].palm = n.palm.slice();
+          s[k].fore = n.fore.slice(); s[k].upper = n.upper.slice();
+        }
+        delete s.grips;              // reload grips are tuned too
+        return s;
+      };
+      // palm normal of a POSED hand: the hand bone's own local +X taken into
+      // gun space now, as opposed to rig[s].palmNormal, which is frozen at
+      // build time in the bind pose
+      window.palmNow = h => {
+        h.root.updateMatrixWorld(true);
+        const q = new THREE.Quaternion(), gq = new THREE.Quaternion();
+        h.bones.hand.getWorldQuaternion(q);
+        h.gunRoot.getWorldQuaternion(gq);
+        return new THREE.Vector3(1, 0, 0)
+          .applyQuaternion(gq.invert().multiply(q)).normalize();
+      };
+      // the block must not END as a function value - playwright would take
+      // it for the callable to run and invoke it with no arguments
+      return true;
+    })()""")
+
+    # NEUTRAL_R/NEUTRAL_L are the rig's own bind pose, so asking for them
+    # leaves a dead-straight arm with nothing for the wrist to absorb.
+    # ⚠️ Measured against NEUTRAL_*, not against whatever the pistol ships:
+    # every weapon in HANDS gets dialled in sooner or later (the pistol did on
+    # 2026-08-19, the SMG on 2026-08-21), and a shipped grip is bent ON PURPOSE
+    # - hanging this check off one made it fail the moment that gun was tuned.
     check("wrist: neutral values leave the wrist straight",
           page.evaluate("""(() => {
-        HANDS.pistol = JSON.parse(JSON.stringify(devRigBase.pistol));
         const rig = viewmodels[0].userData.arms;
-        regripArms(rig, HANDS.pistol);
-        const d = handFrame(HANDS.pistol.r.channel, HANDS.pistol.r.palm)
-          .multiply(rig.R.bindHand.clone().invert());
-        return 2 * Math.acos(Math.min(1, Math.abs(d.w))) * 180 / Math.PI < 2;
+        regripArms(rig, devRigNeutral('pistol'));
+        return ['R', 'L'].every(s => {
+          const n = s === 'R' ? NEUTRAL_R : NEUTRAL_L;
+          const d = handFrame(n.channel, n.palm)
+            .multiply(rig[s].bindHand.clone().invert());
+          return 2 * Math.acos(Math.min(1, Math.abs(d.w))) * 180 / Math.PI < 2;
+        });
     })()"""))
 
     # curl has to CLOSE the hand: the first build read the hinge off the
@@ -264,6 +303,12 @@ with sync_playwright() as pw:
     # the knuckle - so the axis came out 90 deg off the fold AND flipped sign
     # between the index and the paired fingers, scissoring them through each
     # other instead of closing them.
+    # ⚠️ The palm normal is read off the POSED hand bone, not from the cached
+    # rig[s].palmNormal: that one is measured once at build time, at the bind
+    # pose, and a dialled-in grip turns the hand away from it. Against the
+    # stale vector the very same closing fist reads as +0.003 on the right
+    # hand and -0.010 on the left - the check went red on the pistol the day
+    # its grip was tuned, while the fingers were closing perfectly well.
     check("curl: every chain closes toward the palm, on both hands",
           page.evaluate("""(() => {
         const rig = viewmodels[0].userData.arms, spec = HANDS.pistol;
@@ -273,10 +318,11 @@ with sync_playwright() as pw:
           return o; };
         const set = v => { for (const s of ['l','r']) { spec[s].curl =
             { f:[v,v,v], i:[v,v,v], t:[v,v,v], tAdd:0 }; } regripArms(rig, spec); };
-        set(0); const A = { R: tips(rig.R), L: tips(rig.L) };
+        set(0); const A = { R: tips(rig.R), L: tips(rig.L) },
+                     N = { R: palmNow(rig.R), L: palmNow(rig.L) };
         set(1.2); const B = { R: tips(rig.R), L: tips(rig.L) };
         return ['R','L'].every(s => {
-          const n = rig[s].palmNormal;
+          const n = N[s];
           const mv = c => B[s][c].clone().sub(A[s][c]);
           const f = mv('f'), i = mv('i');
           // every chain travels toward the palm, and the two finger chains
@@ -312,7 +358,9 @@ with sync_playwright() as pw:
     check("wrist: readout follows the joint, not the bind pose",
           page.evaluate("""(() => {
         devRigSelectWeapon(0); devRigSelectHand('R');
-        HANDS.pistol = JSON.parse(JSON.stringify(devRigBase.pistol));
+        // the straight baseline has to be NEUTRAL, not the shipped pistol
+        // grip - that one is deliberately canted onto the frame
+        HANDS.pistol = devRigNeutral('pistol');
         devRigApply();
         const read = () => parseFloat(el('devrig-wrist').textContent);
         const straight = read();
@@ -470,7 +518,7 @@ with sync_playwright() as pw:
     page.evaluate("devRigReset()")
     time.sleep(0.5)
     check("reset: file values restored",
-          abs(page.evaluate("HANDS.rifle.r.curl.f[0]") - 0.95) < 1e-6)
+          abs(page.evaluate("HANDS.rifle.r.curl.f[0]") - FILE_CURL) < 1e-6)
 
     score_before = page.evaluate("game.score")
     page.evaluate("closeDevRig()")

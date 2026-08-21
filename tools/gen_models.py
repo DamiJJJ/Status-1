@@ -450,6 +450,116 @@ def b64(fmt, values):
     return base64.b64encode(struct.pack('<%d%s' % (len(values), fmt), *values)).decode('ascii')
 
 
+def island_at(part, world, point):
+    """Vertex indices of the connected component (welded by position) whose
+    vertex sits closest to `point`, in final model space."""
+    weld, key, rep = [], {}, []
+
+    def find(a):
+        while rep[a] != a:
+            rep[a] = rep[rep[a]]
+            a = rep[a]
+        return a
+
+    for v in world:
+        k = (round(v[0], 5), round(v[1], 5), round(v[2], 5))
+        if k not in key:
+            key[k] = len(rep)
+            rep.append(len(rep))
+        weld.append(key[k])
+    for t in part.tris:
+        a, b, c = (find(weld[i]) for i in t[:3])
+        if a != b:
+            rep[a] = b
+        if find(b) != c:
+            rep[find(b)] = c
+    best, bestd = None, None
+    for i, v in enumerate(world):
+        d = sum((v[k] - point[k]) ** 2 for k in range(3))
+        if bestd is None or d < bestd:
+            best, bestd = i, d
+    root = find(weld[best])
+    return {i for i in range(len(world)) if find(weld[i]) == root}
+
+
+def split_parts(parts, cfg, G):
+    """Carve a moving PART out of a static mesh that ships as ONE node.
+
+    The Glock names its magazine (`nodes`), so it can be split by name. The
+    Quaternius guns do not - the whole gun is a single mesh with a single
+    node, so a magazine that has to fall out of the well cannot be picked by
+    what it is called, only by WHERE it is (and, for a part that owns its
+    material outright, by that).
+
+    A rule is `{part, from?, island?, src?, x?, y?, z?}`. Coordinates are in
+    FINAL model space (metres, the numbers `--probe` prints), so they have to
+    be re-derived after a `length` change, exactly like the paint rules.
+
+    ⚠️ PREFER `island`: it takes the whole connected component (vertices
+    welded by position) nearest the given point. These guns are separate
+    primitives merged into one mesh, so a magazine IS its own island, and an
+    island is what the eye calls "a part" - a box cannot know where one ends.
+    Picking the SMG's magazine with a box took 46 of its 60 triangles: the
+    upper 14 stayed welded to the gun while the rest slid out, which read as
+    the magazine dragging a streak behind it (user report 2026-08-21). A box
+    cannot be widened to fix that either - the lower receiver sits in the same
+    x/z column, so any box big enough to hold the whole magazine also eats the
+    magwell around it.
+
+    `src` (a material name) is a last resort: it holds only for a part that
+    owns its material outright. It did NOT hold for this gun - `Grey` turned
+    out to be five separate decorative plates spread along the receiver, so
+    driving them as one "bolt" slid five panels out of the gun at once.
+    """
+    rules = cfg.get('split')
+    if not rules:
+        return
+    for r in rules:
+        src = parts.get(r.get('from', cfg['fallback']))
+        if src is None:
+            continue
+        dst = parts.setdefault(r['part'], Part(r['part']))
+        world = [xf_point(G, v) for v in src.verts]
+        island = island_at(src, world, r['island']) if 'island' in r else None
+        keep, moved = [], []
+        for t in src.tris:
+            c = [sum(world[vi][k] for vi in t[:3]) / 3 for k in range(3)]
+            if island is not None:
+                (moved if t[0] in island else keep).append(t)
+                continue
+            if r.get('src') and t[3] not in r['src']:
+                keep.append(t)
+                continue
+            for k, axis in enumerate('xyz'):
+                lo, hi = r.get(axis, (-9e9, 9e9))
+                if not lo <= c[k] <= hi:
+                    keep.append(t)
+                    break
+            else:
+                moved.append(t)
+        # rebuild both vertex tables: a triangle that leaves would otherwise
+        # strand its vertices in the part it came from
+        for tris, part in ((moved, dst), (keep, src)):
+            verts, norms, out, remap = [], [], [], {}
+            for t in tris:
+                idx = []
+                for vi in t[:3]:
+                    if vi not in remap:
+                        remap[vi] = len(verts)
+                        verts.append(src.verts[vi])
+                        norms.append(src.norms[vi])
+                    idx.append(remap[vi])
+                out.append((idx[0], idx[1], idx[2], t[3]))
+            if part is dst:
+                base = len(part.verts)
+                part.verts.extend(verts)
+                part.norms.extend(norms)
+                part.tris.extend((a + base, b + base, c2 + base, m)
+                                 for a, b, c2, m in out)
+            else:
+                part.verts, part.norms, part.tris = verts, norms, out
+
+
 def pack(parts, order):
     out = []
     for name in order:
@@ -832,20 +942,43 @@ MODELS = {
         'fallback': 'body',
         'nodes': {},
         'rot': [('y', 90)],
-        'length': 1.00,
+        # 0.84, down from 1.00 (user call 2026-08-21). At 1.00 this thing was
+        # 95% of the assault rifle's length and 0.381 m TALL - the tallest gun
+        # in the game, above the rifle (0.364), the sniper (0.321) and the
+        # shotgun (0.238). A real SMG is ~80% of a carbine. The hands are
+        # human-sized (HAND_SCALE, js/weapons.js), so the gun is what moves.
+        'length': 0.84,
         'center': True,
-        'order': ['body'],
+        # This gun ships as ONE node, so the magazine the reload has to drop
+        # is carved out as the ISLAND under the magwell (see split_parts):
+        # 60 triangles, x +-0.0155 y[-0.160 0.055] z[-0.168 -0.104]. Only the
+        # bottom 6 cm of it is outside the receiver; the rest runs up into the
+        # well, which is why it can drop clear of it at all.
+        # There is no bolt to drive: the only other loose geometry up there is
+        # five separate decorative plates ('Grey'), not one reciprocating part.
+        'split': [{'part': 'mag', 'island': (0, -0.155, -0.136)}],
+        'order': ['body', 'mag'],
     },
-    # pump shotgun (weapon slot 3); Quaternius guns pack, muzzle at +X
+    # pump shotgun (weapon slot 3); muzzle at +X, rigged
+    # The Quaternius shotgun this replaced (2026-08-21, user call) had NO
+    # forend at all - the magazine tube ran bare into the receiver, so the
+    # silhouette read as a tube-fed repeater, not as a pump gun.
+    # This one carries the pump as its own joint ('FR', the forend), so the
+    # slide can actually be worked on reload.
+    # bindWorld: the mesh node scales (50.2, 33.2, 50.2) against an armature
+    # scaled a uniform 50.2, so jointWorld*IBM does NOT cancel out - raw
+    # POSITION is ~100x smaller than the bind pose. Same story as the arms.
     'shotgun': {
-        'file': 'Shotgun by Quaternius - DcNE0HVdW8.glb',
-        'credit': 'Shotgun by Quaternius [CC0] via Poly Pizza',
+        'file': 'Mossberg 590A1 by J-Toastie - eAh1oHY32T.glb',
+        'credit': 'Mossberg 590A1 by J-Toastie [CC-BY] via Poly Pizza',
         'fallback': 'body',
         'nodes': {},
+        'joints': {'FR': 'pump'},
+        'bindWorld': True,
         'rot': [('y', 90)],
         'length': 1.45,
         'center': True,
-        'order': ['body'],
+        'order': ['body', 'pump'],
     },
     # automatic rifle (weapon slot 4); static low-poly, muzzle at +X
     'rifle': {
@@ -938,6 +1071,9 @@ def build(key, cfg, probe=False):
         shift = [0, 0, 0]
     G = m_mul(m_translate(shift), G)
     NG = m_transpose(m_inv(G))
+    # carve out the moving parts before anything is baked into pivot space -
+    # the rules are written in the final metres G produces
+    split_parts(parts, cfg, G)
     socks = {k: xf_point(G, v) for k, v in socks.items()}
     for name, p in parts.items():
         p.verts = [xf_point(G, v) for v in p.verts]

@@ -262,6 +262,26 @@ function gripAnchor(hand, out) {
   return hand.gunRoot.worldToLocal(out);
 }
 
+/* How far the LIVE fist hole sits from the FROZEN placement anchor, in gun
+   space, for the pose the arm is in right now.
+
+   The two are 0.032 m apart on this rig, and each is right for a different
+   job. `pos` in a dialled grip means "put the frozen anchor here", because
+   that is what DEVRIG's slider moved and what the eye was matched against.
+   The reload tables mean the opposite: they are read off the gun's geometry
+   (the magazine's axis, the charging handle), so they name where the HOLE
+   THROUGH THE FIST has to end up. Subtracting this from a reload target makes
+   those numbers mean what they say - and, because a carried magazine rides
+   the live hole, it also makes the carried magazine land exactly on the
+   seated one when the hand reaches the well. */
+const _fbA = new THREE.Vector3();
+const _fbB = new THREE.Vector3();
+function fistBias(hand, out) {
+  fistAnchor(hand, _fbA);
+  gripAnchor(hand, _fbB);
+  return out.subVectors(_fbA, _fbB);
+}
+
 /* Slide the whole arm (by its shoulder, which is the root of the chain) so the
    grip anchor lands on `pos` in gun-model space. Rotations are already set by
    then, so this is a pure translation - no IK, no solving. */
@@ -472,6 +492,7 @@ const _baSpec = { pos: _baPos, fore: _baFore, upper: _baUpper, curl: _baCurl };
 const _baFrame = new THREE.Quaternion();
 const _baS = new THREE.Vector3();
 const _baV = new THREE.Vector3();
+const _baBias = new THREE.Vector3();
 const ZERO3 = [0, 0, 0];
 /* The shoulder is anchored to the body, not welded to it: this rig sits at
    99.5% extension in every dialled grip (measured), so a shoulder that never
@@ -512,6 +533,13 @@ function blendArm(hand, target, w) {
   hand.blended = true;
   const tp = target.pos || base.pos;
   for (let i = 0; i < 3; i++) _baPos[i] = base.pos[i] + (tp[i] - base.pos[i]) * k;
+  // `byFist` targets name where the fist HOLE goes, not where the frozen
+  // anchor goes (see fistBias). Faded by k, so the rest pose - which does
+  // mean the frozen anchor - is untouched at k = 0.
+  if (target.byFist) {
+    fistBias(hand, _baBias);
+    for (let i = 0; i < 3; i++) _baPos[i] -= _baBias.getComponent(i) * k;
+  }
   lerpDir(_baFore, base.fore, target.fore || base.fore, k);
   lerpDir(_baUpper, base.upper, target.upper || base.upper, k);
   const tc = target.curl || base.curl;
@@ -530,6 +558,11 @@ function blendArm(hand, target, w) {
   // the gun's rest transform).
   if (target.bodyFix) {
     _baS.copy(hand.shoulderHome).applyMatrix4(target.bodyFix);
+    // an explicit shove for the joint itself, on top of where the carry
+    // anchor puts it (the run uses it - see SPRINT_SHOULDER in weapons.js).
+    // It is already in gun-model space, and weapons.js is what converts it,
+    // because weapons.js is what knows the camera-to-gun transform.
+    if (target.shoulderOff) _baS.add(target.shoulderOff);
     _baV.set(_baPos[0] - base.pos[0], _baPos[1] - base.pos[1], _baPos[2] - base.pos[2]);
     const d = _baV.length();
     if (d > 1e-6) {
@@ -632,14 +665,32 @@ function regripArms(rig, spec) {
    while the bone carries the bake's own scale on top of the arms root. */
 const _fitS = new THREE.Vector3();
 const _fitS2 = new THREE.Vector3();
-function attachToFist(hand, obj) {
+/* ⚠️ Its OWN vector, never the shared `_hV`: fistAnchor uses `_hV` internally
+   as scratch, so handing it `_hV` as the output aliases the accumulator with
+   the per-joint read and the anchor comes back as garbage. That is what
+   parked the fresh magazine ~0.15 m off the hand, level with the pistol grip,
+   so a reload looked like a second magazine sliding out of the grip (user
+   report 2026-08-21). */
+const _fitP = new THREE.Vector3();
+/* `anchor` picks which hole the object is hung in:
+     'fist'  the LIVE fist hole, which follows the fingers - right for a loose
+             thing pinched between them (a shell);
+     'grip'  the FROZEN placement anchor, the one `pos` positions the arm by.
+             A magazine held in a closed fist does not slide when a finger
+             flexes, and more to the point this is the anchor the reload
+             tables are written in, so a magazine carried on it lands exactly
+             where the seated one is when the hand reaches the well - which is
+             what lets the carried one be swapped for the real one without a
+             jump (the two are 0.032 m apart, see the bias in js/weapons.js). */
+function attachToFist(hand, obj, anchor) {
   const bone = hand.bones.hand;
   hand.root.updateMatrixWorld(true);
   if (obj.parent !== bone) bone.add(obj);
-  fistAnchor(hand, _hV);
-  hand.gunRoot.localToWorld(_hV);
-  bone.worldToLocal(_hV);
-  obj.position.copy(_hV);
+  if (anchor === 'grip') gripAnchor(hand, _fitP);
+  else fistAnchor(hand, _fitP);
+  hand.gunRoot.localToWorld(_fitP);
+  bone.worldToLocal(_fitP);
+  obj.position.copy(_fitP);
   hand.gunRoot.matrixWorld.decompose(_hV2, _hQ, _fitS);
   bone.matrixWorld.decompose(_hV2, _hQ, _fitS2);
   obj.scale.set(_fitS.x / _fitS2.x, _fitS.y / _fitS2.y, _fitS.z / _fitS2.z);

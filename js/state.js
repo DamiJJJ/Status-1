@@ -65,7 +65,6 @@ function startArena() {
 
 function startGame({ usePointerLock = true } = {}) {
   AudioSys.init();
-  AudioSys.startMusic();
   resetGameState();
   if (TEST && TEST_WAVE > 0) waveSystem.wave = TEST_WAVE - 1; // tests: start at wave N (arena only)
   if (usePointerLock) {

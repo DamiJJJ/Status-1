@@ -111,10 +111,11 @@ function devRigSide() { return devRigSpec()[devRigHand.toLowerCase()]; }
 
 function devRigClone(o) { return JSON.parse(JSON.stringify(o)); }
 
-/* The CURL_* constants in weapons.js are SHARED between weapons (four guns
-   point at the same CURL_TRIGGER object). Editing one in place would silently
-   re-pose the others, so every weapon gets its own copy the first time the
-   editor opens. */
+/* Curls used to be SHARED between weapons (four guns pointed at the same
+   preset object), so editing one in place silently re-posed the others. Every
+   weapon carries its own numbers since 2026-08-21, but the copy stays: a new
+   gun added by pasting another one's entry would bring the sharing straight
+   back, and it would be invisible until two grips moved together. */
 function devRigIsolate() {
   for (const w of WEAPONS) {
     const s = HANDS[w.id];
@@ -404,8 +405,15 @@ function devRigBuildControls() {
   }
   devRigSlider(host, 'Przywiedzenie kciuka', sd.curl, 'tAdd', -0.4, 1.4, 0.01);
 
-  devRigSection(host, 'Skala rąk (obie dłonie)');
-  devRigSlider(host, 'Skala', spec, 'scale', 0.5, 1.8, 0.01);
+  /* ⚠️ GLOBAL, not per weapon (user call 2026-08-21): the hands are the
+     player's body, so they are the same size on all five guns. The slider
+     writes every HANDS entry and re-poses every live viewmodel - a gun that
+     looks too big next to them is fixed by its own `length` in
+     tools/gen_models.py, never by shrinking the glove on that one weapon. */
+  devRigSection(host, 'Skala rąk (wszystkie bronie)');
+  devRigDerived(host, 'Skala', () => devRigSpec().scale,
+    v => { for (const w of WEAPONS) HANDS[w.id].scale = v; devRigReposeAll(); },
+    0.5, 1.8, 0.01);
 
   // the camera looks at whatever hand is selected
   DevRig.frameHand(sd.pos);
@@ -471,11 +479,17 @@ function devRigPaste() {
   for (const w of WEAPONS) {
     if (data[w.id]) HANDS[w.id] = data[w.id];
   }
+  // the hand scale is shared, so an import that carries five different values
+  // (an older dump, a hand-edited paste) is snapped back to one
+  const hs = HANDS[WEAPONS[0].id].scale;
+  const mixed = WEAPONS.some(w => HANDS[w.id].scale !== hs);
+  for (const w of WEAPONS) HANDS[w.id].scale = hs;
   devRigReposeAll();
   DevRig.show(devRigWeapon);
   devRigApply();          // re-poses the preview too
   devRigBuildControls();
-  devRigToast('Wczytano JSON');
+  devRigToast(mixed ? 'Wczytano JSON (skalę rąk zrównano do ' + hs + ')'
+                    : 'Wczytano JSON');
 }
 
 /* every LIVE viewmodel, not just the visible one - previews are re-posed as
