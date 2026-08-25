@@ -867,6 +867,64 @@ więc formy męskie w kwestiach DO gracza są OK.
     `tests/shots_weapons.py` (czapa odcięcia + kotwiczenie) i odczyty
     nadgarstka z DEVRIG - dostrojone chwyty siedzą na 1-39° zgięcia
     i 82-107° skrętu.
+    ⚠️ **Punkt (1) tej metody jest MYLĄCY dla dłoni WSPARCIA i strzelba się
+    o niego rozbiła** (2026-08-25, zgłoszenie użytkownika „chwyt do
+    poprawy"). `channel` to LINIA KOSTEK (wskazujący → mały palec), a nie oś
+    bryły, którą się trzyma - te dwie rzeczy pokrywają się na rękojeści
+    pistoletowej (kostki biegną w dół chwytu) i są PROSTOPADŁE na poziomym
+    łożu: dłoń oplata je od dołu, więc kostki lecą w dół BLISKIEJ ścianki
+    łoża, prawie pionowo. Wpisanie tam osi łoża daje dłoń OTWARTĄ, płasko
+    przyklejoną do boku broni, z palcami sterczącymi w górę obok lufy -
+    dokładnie to, co strzelba miała od 2026-08-21 (86° zgięcia nadgarstka
+    i 150° skrętu, oba w CZERWONYM paśmie samego DEVRIG-a).
+    Wzorcem dla dłoni wsparcia jest **SMG** - jedyna, która od początku
+    czytała się jak zaciśnięta pięść (6° zgięcia) - i jej ramkę bierze się
+    w całości, a potem przemiata przechyłem kanału i rolką dłoni. Strzelba
+    siadła na 7°/102°, czyli w paśmie SMG.
+    ⚠️ **Sprawdź też, czy dziura w pięści leży NA bryle**: stara strzelba
+    miała ją na x +0,037, czyli 4 mm ZA prawym licem łoża (łoże ma x ±0,033) -
+    ręka nie trzymała niczego, choć wszystkie liczby wyglądały sensownie.
+    ⚠️ **`fore`/`upper` NIE ruszają dłoni** (zmierzone na 59280 kombinacjach:
+    dryf kotwicy pięści 0,00000 m), więc wolno je rozwiązywać niezależnie -
+    także pod chwyt, który ktoś inny ustawił w DEVRIG. To jedyne dwa pola,
+    których edytor NIE jest w stanie ocenić: decydują o KSZTAŁCIE kończyny
+    w widoku gracza i o kadrowaniu kikuta, a kamera warsztatowa nie pokazuje
+    ani jednego, ani drugiego.
+    ⚠️ **Jest tu prawdziwy, monotoniczny kompromis** (strzelba 2026-08-25,
+    referencja fotograficzna od użytkownika): im PŁYCEJ leży przedramię, tym
+    mocniej musi się skręcić, żeby dosięgnąć zadanej dłoni. Zmierzone przy
+    zapasie kadru kikuta > 1,10:
+
+    | przedramię nad poziomem | skręt |
+    |---|---|
+    | 0-10° | 114° |
+    | 10-20° | 95° |
+    | 20-30° | 84° |
+    | 50-60° | 64° |
+    | 70-80° | 57° |
+
+    Pionowe przedramię (kolumna pod nadgarstkiem) jest na tym rigu
+    NAJTAŃSZE - i jest źle: tak się nie trzyma broni długiej. Referencja
+    pokazuje przedramię biegnące płasko w dół i w lewo, prawie w linii broni.
+    Więc **najpierw wybiera się kształt, potem płaci za niego skrętem**;
+    strzelba stoi na płytkim końcu tabeli (31° zgięcia, 161° skrętu) -
+    i to jest CENA POZY, a nie błąd do naprawienia postawieniem ramienia.
+    ⚠️ **Kadrowanie kikuta kupuje się wtedy DYSTANSEM ADS, nie kątami**
+    (decyzja użytkownika 2026-08-25). Ta poza wypychała ucięty koniec ramienia
+    na ekran przy ADS (|ndc y| 0,89, 8 z 20 wierzchołków pierścienia widoczne).
+    `adsPos.z` strzelby zjechało z -0.74 na -0.62 i kikut schodzi na 1,24.
+    **Obraz przyrządów jest na to ODPORNY**: kropka ma `adsPos.x` 0 i takie
+    `adsPos.y`, że siedzi NA osi kamery, a punkt na osi rzutuje się na środek
+    z dowolnej odległości (zmierzone: NDC 0,0 przy -0.74, -0.70, -0.66, -0.62,
+    -0.58, -0.54 i -0.50). Broń też nie zalewa kadru - jej własne pokrycie
+    ekranu idzie 819 → 804 punktów próbki przez cały ten zakres, bo to, co się
+    przybliża, to kolba, a tę i tak zbiera near plane.
+    ⚠️ **Przestrojenie chwytu bojowego UNIEWAŻNIA chwyty przeładowania.**
+    `shoulderHome` mierzy się na pozie spoczynkowej, a IK rozwiązuje względem
+    niej - więc ramka `grips.port`/`grips.bolt` przemieciona pod poprzedni
+    chwyt przestaje pasować. Przy strzelbie ta sama ramka po zmianie
+    `fore`/`upper` skoczyła z 20° na 100° zgięcia. Po każdej zmianie `l`
+    przemieć oba chwyty od nowa.
   - **Cztery niezależne sterowania na dłoń** (`HANDS` w weapons.js, wszystkie
     edytowalne w DEVRIG), wszystkie w **przestrzeni modelu broni**:
     `pos` (gdzie ląduje zamknięta pięść), `channel` + `palm` (ramka chwytu =
@@ -1092,15 +1150,78 @@ więc formy męskie w kwestiach DO gracza są OK.
     wymiana grała się w prawym dolnym rogu, połowa za krawędzią (zmierzone:
     gniazdo NDC y -0,71, pięść dochodziła do -1,27). Z odchyłką gniazdo
     siedzi na -0,47, a najgłębszy zjazd ręki zostaje w kadrze.
+    ⚠️ **`relGun` działa też dla stylu SHELL** (2026-08-25) - wcześniej
+    gałąź nabojowa miała offsety wklejone na sztywno, więc strzelba (najdłuższa
+    broń, przysunięta o 0,34) ładowała się okienkiem w PRAWYM DOLNYM ROGU:
+    okno ładowania na NDC (0,46, -0,74), dłoń nigdy bliżej niego niż -0,91,
+    a zjazd po nabój do -2,5 (czyli nabój POJAWIAŁ SIĘ dwa ekrany pod kadrem).
+    ⚠️ Przy tak długiej broni to jest głównie **OBRÓT, nie przesunięcie**:
+    kolba siedzi już przy biodrze za okiem, więc przesunięcie w lewo dość duże,
+    żeby wyciągnąć okno z rogu, przeciąga tę kolbę przez ŚRODEK kadru jako
+    ciemną płytę (zmierzone: kolba na NDC (-0,07, 0,08)). Obrót wyprowadza ją
+    poza lewą krawędź i pokazuje bok komory - czyli robi to, co robi człowiek,
+    który ładuje. Do tego 0,16 m OD oka: najdłuższa broń w grze potrzebuje
+    miejsca, żeby się obrócić.
+    ⚠️ `low` w stylu shell dostraja się **na DNIE wahnięcia**, bo dokładnie
+    tam `buildReloadEvents` zapala prop naboju - dłoń widoczna w tym momencie
+    „wyczarowuje" nabój na oczach gracza. Strzelba schodzi na NDC -1,10, tuż
+    za krawędź (ten sam margines co wymiana magazynka w SMG).
+    ⚠️ Przy okazji: gałąź shell/shellBolt ustawia teraz WSZYSTKIE sześć pól
+    `_gp`. Wcześniej shell nie ruszał `ry`/`pz`, a shellBolt `rz`/`pz`, więc
+    `_gp` (obiekt współdzielony) niósł resztki po poprzednim przeładowaniu.
     ⚠️ **Chwyt przeładowania to osobne dane, nie chwyt bojowy** (2026-08-19):
     opcjonalny blok `grips` we wpisie `HANDS` (`mag`/`bolt`/`port`) nadpisuje
     `channel`/`palm`/`curl`/`upper` na czas danej fazy, resztę dziedziczy
     po `l`. Bez tego dłoń jechała na magazynek z linią kostek ustawioną
     pionowo do ramy i palcami zaciśniętymi na niczym, a chwyt zamka jest
     90° od bojowego (kanał wzdłuż lufy) - żadne przesuwanie pięści tego nie
-    nadrabia. Dostrojone są **Glock i SMG**; broń bez `grips`
-    jedzie po staremu, samą pozycją - od 2026-08-21 dotyczy to strzelby,
-    karabinu i snajperki, które mają już dostrojony chwyt BOJOWY, ale nie
+    nadrabia. Dostrojone są **Glock, SMG i strzelba** (2026-08-25: bez `port`
+    dłoń jechała pod okno ładowania z linią kostek ustawioną wzdłuż
+    nieistniejącego już łoża, a nabój - który wisi NA linii kostek, bo tak
+    sadza propy `attachToFist` - kładł się w poprzek okna zamiast wchodzić
+    w nie).
+    ⚠️ **Strzelba potrzebuje też własnego `bolt`, choć dłoń wraca DOKŁADNIE
+    tam, gdzie strzela** (`bolt` = `pos` co do znaku). To nie jest ta sama
+    poza: `armBodyFix` trzyma bark na chwycie Z BIODRA, a `relGun` odwrócił
+    broń o 0,45 rad i odsunął ją o 0,16 m, więc ramię sięga w poprzek
+    i różnicę zjada nadgarstek. Dziedziczenie chwytu bojowego dawało tam
+    86-94° zgięcia, własna ramka daje 8-17°.
+    ⚠️ **Przy przeładowaniu „dziwnie wygięta dłoń" najczęściej NIE JEST
+    nadgarstkiem** (strzelba 2026-08-25, trzy podejścia). Zmierz, zanim
+    zaczniesz stroić ramkę: kąt między przedramieniem a kierunkiem palców
+    wychodził 12-20°, czyli dłoń szła prosto z ramieniem, a odczyt DEVRIG-a
+    zgadzał się z nim co do stopnia (**edytor nie kłamie**). Razi
+    PRZEDRAMIĘ: przy pięści pod komorą i barku zakotwiczonym na chwycie
+    z biodra łokieć wachluje w lewo (NDC x -0,36 przy -0,02 w pozie bojowej),
+    ramię staje na 53° zamiast 2° i przedramię kładzie się przez cały dolny
+    lewy róg jako szeroka blada płyta.
+    ⚠️ **Pole hint tego nie naprawi** - przemiecione 7056 kombinacji, najlepsze
+    co osiąga `grips.port`, to łokieć na NDC x -0,35. Jedyną dźwignią jest
+    `RELOAD_SHOULDER` (ten sam mechanizm co przy wymianie magazynka w SMG,
+    tylko w drugą stronę: w PRAWO i KU KAMERZE). Składowa `z` robi tu robotę,
+    bo skraca przedramię perspektywą w wąską kolumnę; samo `x` tylko przesuwa
+    płytę. Strzelba: `[0.18, 0, -0.10]`, łokieć schodzi pod dolną krawędź,
+    pięść zostaje na oknie co do centymetra.
+    ⚠️ **Ramki chwytu przeładowania NIE DA SIĘ dobrać rozumowaniem, trzeba ją
+    PRZEMIEŚĆ** (2026-08-25, zgłoszenie użytkownika: „nie widziałeś ręki
+    w trakcie przeładowania, jak wygięta jest nienaturalnie"). Pierwsza wersja
+    `grips.port` strzelby była wyprowadzona z anatomii (nabój w górę i w przód
+    do okna, dłoń pod nim) i dawała **113-127° zgięcia nadgarstka przez całe
+    okno ładowania** - przy czerwonej linii DEVRIG-a na 75. Powód jest
+    strukturalny: nadgarstek bierze na siebie RÓŻNICĘ między ramką dłoni
+    a przedramieniem, a przedramienia w animacji nie ustawiasz - liczy je IK
+    z barku, celu pięści i podpowiedzi `upper`. Dlatego ramkę przemiata się
+    (oś naboju × rolka dłoni × podpowiedź łokcia), punktuje dwiema liczbami,
+    które pokazuje DEVRIG, i próbkuje w kilku miejscach cyklu. Strzelba zeszła
+    na 20-29°. Odpowiedź, na którą to wyszło, jest przy okazji poprawna
+    realnie: nabój leży PRAWIE POZIOMO, wzdłuż rury magazynka - tak się karmi
+    broń z rurą, a kąt „w górę" był po prostu zły.
+    ⚠️ **Pozy przeładowania nie da się obejrzeć wymuszając ją z konsoli** -
+    zrzut ekranu wyzwala klatkę, `tick` przelicza pozę z `reloadTimer`
+    i wymuszenie znika. Trzeba PRZYPIĄĆ `reloadTimer` w pętli `rAF`.
+    Broń bez `grips`
+    jedzie po staremu, samą pozycją - dotyczy to karabinu i snajperki,
+    które mają dostrojony chwyt BOJOWY, ale nie
     przeładowania. Kotwice (`mag`/`low`/`bolt`) liczy się
     z geometrii (`tools/gen_models.py --probe`), a `low` NIE może być dalej
     niż sięga ramię - IK zatrzyma dłoń w powietrzu zamiast wyprowadzić ją
@@ -1246,6 +1367,11 @@ więc formy męskie w kwestiach DO gracza są OK.
     Geometria boxa/cylindra rośnie wzdłuż Y, więc `attachHandsAndProps`
     obraca ją o 90° (`geo.rotateX`); bez tego świeży magazynek sterczał
     wzdłuż palców, czyli w poprzek tego, jak się go niesie.
+    ⚠️ To zdanie było PRAWDZIWE tylko dla magazynka - **cylinder naboju nie
+    był obracany do 2026-08-25**. Nabój leżał więc w poprzek pięści i czytał
+    się jak kikut wystający z wierzchu rękawicy, a przy okazji przeczył całemu
+    sensowi chwytu `port`, którego zadaniem jest wycelować tę dziurę w okno
+    ładowania. Dotyczyło strzelby i snajperki.
     Dźwięki są keyframowane z animacji: `AudioSys.grab/magOut/magIn/boltPull/
     shellIn/pump` (stary `reloadSeq` skasowany) - nowa broń = plan + kotwice
     w `HANDS`.
@@ -1276,7 +1402,13 @@ więc formy męskie w kwestiach DO gracza są OK.
     zerwałoby dłoń z broni.
     ⚠️ Ten sam offset wywala krótką broń CAŁKIEM poza kadr (pistolet znikał
     do jednego piksela), więc jest tabela odchyłek per broń `SPRINT_TWEAK`
-    (dziś `pistol` i `smg`) - „ledwo widoczne" tak, „nie ma jej" nie.
+    (dziś `pistol`, `smg` i `strzelba`) - „ledwo widoczne" tak, „nie ma jej"
+    nie. Strzelba dostała swoją 2026-08-25 (zgłoszenie użytkownika): jest
+    NAJDŁUŻSZA w grze i jako jedyna jedzie 0,34 przysunięta względem wspólnej
+    kotwicy tyłem, więc na wspólnym zjeździe zostawał z niej pasek przy dolnej
+    krawędzi rozciągnięty do x 1,0, czyli poza prawą krawędzią - i ani śladu
+    rękawicy. Miarą jest tu KARABIN (najbliższa długością): komora ma leżeć
+    wzdłuż dolnej krawędzi, rękawica wsparcia ledwo wystawać.
     SMG dostało swoją odchyłkę po zejściu z 1.00 na 0.84 (2026-08-21): przy
     tej samej dawce zjazdu cała komora schodziła pod krawędź i w kadrze
     zostawała **sama zielona kropka celownicza nad bezimienną ciemną belką**,

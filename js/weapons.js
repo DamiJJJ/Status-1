@@ -216,7 +216,19 @@ function buildViewmodel(id) {
          sight picture is untouched: the dot and the aperture are both ON the
          camera axis, and a point on the axis lands at screen centre from any
          distance (measured: NDC 0,0 at -0.54, -0.46, -0.40, -0.36). */
-      g.userData.adsPos = new THREE.Vector3(0, -0.1064, -0.74); // blade dot on the camera axis
+      /* Pulled 0.12 m nearer the eye on 2026-08-25 (user call). The support
+         arm's dial is the player's own and puts the limb where a shotgun is
+         actually held, which costs framing: its CUT END sat at |ndc y| 0.89
+         under ADS, i.e. 8 of the 20 ring vertices on screen. Distance buys
+         that back without touching anything else - the aim dot has adsPos.x 0
+         and an adsPos.y that puts it ON the camera axis, and a point on the
+         axis projects to the centre from any distance (measured: NDC 0,0 at
+         -0.74, -0.70, -0.66, -0.62, -0.58, -0.54 and -0.50 alike). Nor does
+         the gun swallow the frame: its own on-screen coverage moves 819 ->
+         804 sample points across that whole range, because what comes closer
+         is the buttstock, and the near plane already has it.
+         -0.66 is where the ring first clears; -0.62 leaves a margin (1.25). */
+      g.userData.adsPos = new THREE.Vector3(0, -0.1064, -0.62); // blade dot on the camera axis
       break;
     }
     case 'rifle': {
@@ -579,35 +591,32 @@ const HANDS = {
   },
   shotgun: {
     style: 'shell', scale: HAND_SCALE,
-    /* Re-dialled 2026-08-21 for the Mossberg. The gun it replaced had no
-       forend at all, so its support hand was parked back by the receiver -
-       every number below moved. Method unchanged (CLAUDE.md): the knuckle
-       line is picked against the MEASURED grip, `pos` is solved BACKWARDS
-       from where the LIVE fist has to sit (iterating pos += target -
-       fistAnchor), and everything is read off the POSED arm, not the rest
-       pose - what ends up on screen is the IK solve, not the pose the sliders
-       edit.
-       ⚠️ The SUPPORT hand is the whole difficulty here and it is not about
-       the grip: the arms are CUT at the shoulder, and this rig is only 0.49 m
-       from shoulder to fist. A real pump forend sits 0.63 m out in VIEWMODEL
-       space (this gun is 1.45 m and anchored by its rear), so a hand on the
-       FRONT of the forend puts the shoulder past its own reach: the solver
-       leans it forward and the cut end comes into frame - measured, |ndc y|
-       0.88 with the fist at z -0.315, and no forearm or upper-arm angle moves
-       it (the reach is saturated, so the angles stop mattering). Sliding the
-       grip back along the forend is what fixes it, one for one. The forend
-       runs z -0.463..-0.170, so the fist sits at z -0.22, in its rear third -
-       which is where a hand sits on a pump anyway - and LOW on it (y 0.040
-       against the forend's 0.056 centre), because the hand wraps under it and
-       every centimetre down is margin at the shoulder. Measured that way the
-       cut end clears BOTH carries: |ndc y| 1.07 at the hip and 1.22 under ADS
-       (the sniper, the tightest of the other four, runs 1.06 and 1.42). The
-       hip is the binding one here, not ADS.
-       ⚠️ The knuckle line is NOT laid straight along the forend. Flat along
-       it the hip framing tops out at 0.99 whatever the arm angles do - the
-       reach is saturated, so the angles stop mattering. Cocked 40 deg up out
-       of the forend axis - the diagonal a real hand takes on a pump - it
-       clears, and the wrist drops to 5 deg of bend as well. */
+    /* The whole left hand, arm included, is the user's own dial out of DEVRIG
+       (2026-08-25, several rounds against a reference photo). Do not
+       second-guess it: the support forearm is meant to run back and DOWN-LEFT
+       at a shallow angle, nearly in line with the gun, which is how a long
+       gun is actually held. A near-vertical forearm - a column under the
+       wrist - is what this rig would rather do, and it reads wrong.
+       ⚠️ That shape has a MEASURED price and it is monotone: the shallower
+       the forearm lies, the further it has to roll to meet this hand. At a
+       cut-end clearance above |ndc y| 1.10 the trade runs
+         forearm  0-10 deg above horizontal -> 114 deg of roll
+                 10-20                      ->  95
+                 20-30                      ->  84
+                 50-60                      ->  64
+                 70-80                      ->  57
+       and this dial sits at the shallow end: 31 deg of wrist bend and 161 of
+       forearm roll at the hip. That roll is past what DEVRIG flags, and it is
+       the price of the pose, not a mistake to fix by standing the arm up.
+       ⚠️ `fore` and `upper` do NOT move the hand - measured across 59280
+       combinations, the fist anchor drifts 0.00000 m - so they can be solved
+       against a hand somebody else placed, and were, before this dial
+       replaced them. What they DO decide is where the arm's cut end lands:
+       this shape put it on screen under ADS (|ndc y| 0.89, 8 of the 20 ring
+       vertices visible), which is bought back with distance instead - see
+       `adsPos` in buildViewmodel.
+       ⚠️ Anything that re-dials this hand invalidates the two reload grips
+       below - see the note on `grips`. */
     /* This gun has no pistol grip either - the firing hand goes on a straight
        stock wrist. Same compromise as before: laying the knuckle line flat
        along the wrist costs a right angle of wrist bend, standing it upright
@@ -621,38 +630,113 @@ const HANDS = {
          upper: [0.297, 0.2756, -0.9142],
          curl: { f: [1.80, 0.55, 0.00], i: [0.31, 0.01, 0.14],
                  t: [0.00, 0.00, 0.00], tAdd: 0.05 } },
-    /* forend: the knuckle line runs ALONG it, because that is what the fist
-       is threaded onto (same reading as the SMG's bolt grab).
-       ⚠️ `fore`/`upper` are the SUPPORT ARM'S SHAPE ON SCREEN and are dialled
-       from the player's view, not from the geometry (2026-08-21, user report:
-       "the shotgun, the rifle and the sniper look terrible"). Both point UP
-       and slightly LEFT of the gun, which stacks elbow under wrist and
-       shoulder under elbow, i.e. the limb comes up as a column tucked under
-       the gun. Aiming them along the gun instead - which is what the
-       geometry-first dial did - swings the elbow out sideways and lays the
-       whole forearm across the middle of the frame as a pale slab, which is
-       what looked broken. They also decide where shoulderHome lands, so they
-       are still the only dial keeping the cut end out of frame. */
-    l: { pos: [0.056, 0.052, -0.281],
-         channel: [-0.1116, 0.6114, -0.7834],
-         palm: [0.4346, -0.6789, -0.5918],
-         fore: [-0.1003, 0.6018, -0.7923],
-         upper: [-0.0501, 0.7818, -0.6215],
-         curl: { f: [0.60, 0.38, 0.50], i: [0.85, 0.17, 0.44],
-                 t: [0.44, 0.70, 0.23], tAdd: -0.40 } },
-    /* Reload anchors, in the same FROZEN grip-anchor space as `pos` (so each
-       is the live fist target plus this hand's constant anchor offset,
-       (-0.0241, 0.0175, 0.0001) - never the raw point off the geometry).
-         port  under the loading gate, at the bottom rear of the receiver
-               (its floor is y ~0, z 0.05..0.17), fist below it so the thumb
-               pushes up;
-         low   just under the bottom edge for the next shell - NOT further
-               than the arm is long, or the hand stops in mid-air instead of
-               leaving frame;
+    /* forend. `pos` / `channel` / `palm` / `curl` are dialled in DEVRIG;
+       `fore` / `upper` are SOLVED (see above) and are the only two fields
+       here that the editor cannot judge, because what they control is the
+       limb's shape in the player's view and its cut-end framing, neither of
+       which the workbench camera shows. */
+    l: { pos: [0.065, 0.0711, -0.231],
+         channel: [-0.2588, 0, -0.9659],
+         palm: [0.4975, -0.8572, -0.1333],
+         fore: [0.558, 0.3746, -0.7405],
+         upper: [0.4224, 0.0349, -0.9058],
+         curl: { f: [0.85, 0.65, 0.61], i: [0.69, 0.55, 0.78],
+                 t: [0.17, 1.02, 0.20], tAdd: -0.12 } },
+    /* The shared shell-reload pose is dialled for a gun held near the
+       centreline. This one is the longest in the game and carried furthest
+       right, so on the shared amount its loading gate sat at NDC (0.46,
+       -0.74) - the bottom-right corner - the hand never came nearer the gate
+       than -0.91, and the dip ran to -2.5, i.e. the shell was made visible
+       while the fist was two screens below the frame (measured 2026-08-25,
+       user report: the reload does not look like it should).
+       ⚠️ DELTAS on the shared shell offsets, like the SMG's `relGun` is on
+       the mag ones - re-measure them whenever the hip carry moves.
+       ⚠️ Most of it is YAW, not a slide to the left. Sliding was the obvious
+       fix and it is the wrong one on this gun: the receiver is 1.4 m long and
+       its butt already sits behind the eye at the hip, so translating it far
+       enough to bring the gate in from the corner sweeps that butt across the
+       middle of the frame as one dark slab (measured: butt at NDC (-0.07,
+       0.08), dead centre). Turning the gun instead takes the butt out past
+       the left edge and presents the receiver's side, which is what a person
+       does to load one anyway. It is also pushed 0.16 m AWAY from the eye,
+       for the same reason: this is the longest gun in the game and it needs
+       the room to turn. Gate ends up at (0.35, -0.30) with the whole gun in
+       frame and the loading hand under it. */
+    relGun: { pos: [-0.03, 0.07, -0.16], rot: [0, 0.45, -0.05] },
+    /* Reload anchors, in the same FROZEN grip-anchor space as `pos`, i.e.
+       each is the live fist target MINUS this hand's constant anchor offset,
+       (0.0235, -0.0051, 0.0176) - never the raw point off the geometry. Both
+       were re-solved for the grip above, since that offset is a property of
+       the grip and moved with it.
+         port  the loading gate (its floor is y ~0, z 0.05..0.17). Solved
+               with the reload FROZEN at the top of a cycle, which is the only
+               way to see it: forcing the pose by hand does not survive a
+               screenshot, since taking one ticks the frame and the pose is
+               recomputed from the timer. The fist ends up right under the
+               receiver with the shell's nose 25 mm off the gate floor and
+               inside its z range - it was floating a hand's width clear of
+               the gun before;
+         low   where the next shell comes from. ⚠️ It is BACK toward the
+               camera as well as down, for the same reason the SMG's is:
+               depth alone runs out of arm before it runs out of frame, and
+               close to the eye the same drop buys far more angle. Dialled at
+               the BOTTOM OF THE SWING, which is where it matters: the shell
+               prop is made visible on that frame, so a hand still in shot
+               there pops the shell into existence in plain view. The fist
+               leaves frame at NDC -1.10, just past the edge - the same margin
+               the SMG's swap is dialled to, and nothing like the old anchor's
+               -2.5, which was the hand a long way past merely gone.
          bolt  the forend itself, i.e. the firing grip: on a pump gun the
-               support hand racks from exactly where it already is. */
-    port: [-0.0012, -0.0288, 0.0866], low: [0.0788, -0.2838, 0.1066],
-    bolt: [-0.0212, 0.0562, -0.2334],
+               support hand racks from exactly where it already is, so this
+               is `pos` verbatim. */
+    port: [0.0271, 0.0028, 0.1381], low: [0.0479, -0.2572, 0.1281],
+    bolt: [0.065, 0.0711, -0.231],
+    /* The reload grips, same contract as the pistol's and the SMG's: each
+       entry overrides the fields it names and inherits the rest from `l`.
+       Without a `port` entry the hand carried its FIRING grip down to the
+       loading gate - knuckle line down the side of a forend that is no longer
+       there, fingers closed on nothing - while the shell it is supposed to be
+       pinching lies along the knuckle line (attachToFist threads props on it),
+       i.e. across the gate instead of into it. Here the line runs along the
+       shell's own travel, up and forward into the gate, and the fingers close
+       on a 23 mm case rather than a 66 mm forend. */
+    grips: {
+      /* ⚠️ SWEPT, not picked (2026-08-25, user report: "you clearly have not
+         seen the hand during the reload, how unnaturally bent it is"). The
+         first attempt at this block was reasoned from anatomy - shell going
+         up and forward into the gate, palm underneath - and it snapped the
+         wrist to 113-127 deg of bend for the whole loading window, against
+         DEVRIG's red line at 75. A hand orientation cannot be picked by
+         reasoning on this rig: the joint takes whatever the frame and the
+         solved forearm disagree on, and the forearm is not a free variable
+         here - the IK decides it from the shoulder, the fist target and the
+         `upper` hint. So the frame is swept (shell axis x hand roll x elbow
+         hint, scored on the two readouts DEVRIG shows, sampled across the
+         cycle) and the best taken: 25 deg of bend, 58 of roll.
+         The answer it lands on is a shell held nearly LEVEL, along the
+         magazine tube, which is also how one is actually fed to a tube gun -
+         the up-and-forward angle was the wrong half of the guess. */
+      port: { channel: [0.4545, -0.7071, -0.5417], palm: [0.2203, -0.5, 0.8375],
+              upper: [-0.9848, 0, -0.1736],
+              curl: { f: [0.95, 1.05, 0.75], i: [0.62, 0.95, 0.70],
+                      t: [0.24, 0.62, 0.30], tAdd: 0.30 } },
+      /* ⚠️ The pump rack needs its OWN frame, even though the hand goes back
+         to exactly where it fires from (`bolt` is `pos` verbatim). The pose is
+         not the same pose: `armBodyFix` holds the shoulder at the HIP carry
+         while `relGun` has yawed the gun 0.45 rad away and pushed it 0.16 m
+         out, so the arm reaches across and the wrist eats the difference.
+         Inheriting the firing grip here measured 86-94 deg of bend across the
+         rack - past the red line - against 12-23 for this one.
+         ⚠️ BOTH frames here are swept against the firing grip's REST pose,
+         because that is where shoulderHome is measured and the IK solves
+         against it. They are NOT portable: re-dialling `l` above walked this
+         reload from 12-23 deg of bend to 38-65 twice over. Re-sweep both
+         after every change to the hand. */
+      bolt: { channel: [0.6124, -0.7071, -0.3536], palm: [0.5, 0, 0.866],
+              upper: [-0.7198, 0.342, -0.604],
+              curl: { f: [1.00, 1.05, 0.60], i: [0.96, 1.00, 0.56],
+                      t: [0.40, 0.55, 0.30], tAdd: 0.55 } },
+    },
     /* the real gun's slide travels ~7% of its length; this drives the forend
        PART as well as the hand (js/weapons.js -> setPump), and at 0.105 the
        bolt piece stays inside the receiver at full travel */
@@ -773,6 +857,14 @@ function attachHandsAndProps(g, id) {
     g.userData.magProp = prop;
   } else if (cfg.shellDim) {
     const geo = new THREE.CylinderGeometry(cfg.shellDim[0], cfg.shellDim[0], cfg.shellDim[1], 8);
+    /* ⚠️ Same 90 deg as the magazine box above, and it was missing until
+       2026-08-25: a cylinder grows along Y, while the hand bone's local +Z is
+       the knuckle line, i.e. the hole through the fist. Without it the shell
+       lay ACROSS the fist, along the fingers - it read as a stub poking out
+       of the top of the glove rather than a round held in it, and it made
+       nonsense of the port grip, whose whole job is to aim that hole at the
+       loading gate. */
+    geo.rotateX(Math.PI / 2);
     const prop = new THREE.Mesh(geo, id === 'shotgun' ? vmMatShell : vmMatMid);
     prop.visible = false;
     attachToFist(g.userData.arms.L, prop);
@@ -827,6 +919,18 @@ const SPRINT_TWEAK = {
      anywhere near it - which reads as a bug, not as a run. Up and in until
      the receiver lies along the bottom edge and the support glove just shows. */
   smg: { pos: [-0.09, 0.09, 0], rot: [0, -0.10, -0.06] },
+  /* Shotgun (2026-08-25, user report: the run does not look like it should).
+     Same failure as the SMG's, from the opposite direction. This gun is the
+     longest in the game and it is the only one carried 0.34 m further IN than
+     the shared rear anchor, so on the shared drop it went past "barely
+     visible" into gone: measured at full blend, the only thing left on screen
+     was a sliver along the bottom right edge, with no glove anywhere near it
+     (its topmost on-screen point sat at NDC y -0.78 but spread out to x 1.0,
+     i.e. off the right edge). Brought in and lifted until it lies ALONG the
+     bottom edge like the rifle does - the reference the other four set is the
+     receiver reading as a shape with the support glove just showing, and the
+     rifle is the nearest gun to this one in length. */
+  shotgun: { pos: [-0.10, 0.07, 0], rot: [0, -0.14, -0.05] },
 };
 const _spPos = [0, 0, 0];
 const _spRot = [0, 0, 0];
@@ -890,6 +994,25 @@ const SPRINT_SHOULDER = { L: new THREE.Vector3(-0.16, 0, 0),
    2026-08-21). A weapon opts in by appearing here. */
 const RELOAD_SHOULDER = {
   smg: { L: new THREE.Vector3(-0.16, 0, 0), R: new THREE.Vector3(0, 0, 0) },
+  /* Shotgun (2026-08-25). Its shove goes the OTHER WAY - right and toward the
+     camera - and it is not about the shoulder crossing the chest, it is about
+     the FOREARM's shape on screen. Feeding shells puts the fist up under the
+     receiver while the shoulder stays at the hip carry, and the elbow answers
+     by winging out to the left: measured at NDC (-0.36, -0.99) against the
+     firing pose's (0.02, -1.05), with the upper arm standing at 53 deg on
+     screen against 2. The forearm then lies across the whole lower left of
+     the frame as a broad pale slab - which is what reads as a wrongly bent
+     arm, not the wrist (that measures 17 deg, and DEVRIG's readout agrees).
+     ⚠️ The pole hint cannot fix it: swept over 7056 frames, the best the
+     `grips.port` pole reaches is an elbow at NDC x -0.35. The shoulder is the
+     only lever that moves it, and it takes the elbow to (-0.15, -1.63), i.e.
+     off the bottom edge, with the upper arm down at 25 deg - so the forearm
+     foreshortens into a narrow column instead of a slab. The `z` term is what
+     does the foreshortening; `x` alone just slides the slab.
+     Cost is 17 -> 38 deg of wrist bend, still well inside the band, and the
+     forearm roll drops 34 -> 11. The fist does not move: it stays on the gate
+     at NDC (0.36, -0.32) to the centimetre. */
+  shotgun: { L: new THREE.Vector3(0.18, 0, -0.10), R: new THREE.Vector3(0, 0, 0) },
 };
 const NO_SHOULDER = { L: new THREE.Vector3(), R: new THREE.Vector3() };
 const _shM = new THREE.Matrix4();
@@ -1235,13 +1358,21 @@ function applyReloadPose(vm, t) {
       }
     }
   } else {
-    // shells one at a time; shotgun rolls to show the port, sniper pitches
+    /* Shells one at a time; the shotgun rolls to show the port, the sniper
+       pitches. `relGun` deviates from the shared amount PER WEAPON, exactly
+       as it does on the mag styles: the shared numbers were dialled on a gun
+       held near the centreline, and this one is the longest in the game and
+       carried furthest right, so without a deviation its loading gate sat at
+       NDC (0.46, -0.74) - the bottom-right corner - and the whole sequence
+       played half off screen (measured 2026-08-25, user report). */
+    const rp = cfg.relGun ? cfg.relGun.pos : ZERO_TWEAK;
+    const rr = cfg.relGun ? cfg.relGun.rot : ZERO_TWEAK;
     if (P.style === 'shell') {
-      _gp.rx = -0.18 * env; _gp.rz = -0.35 * env;
-      _gp.px = -0.03 * env; _gp.py = 0.02 * env;
+      _gp.rx = (-0.18 + rr[0]) * env; _gp.ry = rr[1] * env; _gp.rz = (-0.35 + rr[2]) * env;
+      _gp.px = (-0.03 + rp[0]) * env; _gp.py = (0.02 + rp[1]) * env; _gp.pz = rp[2] * env;
     } else {
-      _gp.rx = -0.16 * env; _gp.ry = 0.18 * env;
-      _gp.px = -0.04 * env; _gp.py = 0.02 * env;
+      _gp.rx = (-0.16 + rr[0]) * env; _gp.ry = (0.18 + rr[1]) * env; _gp.rz = rr[2] * env;
+      _gp.px = (-0.04 + rp[0]) * env; _gp.py = (0.02 + rp[1]) * env; _gp.pz = rp[2] * env;
     }
     const [w0, w1] = P.win;
     lgA = G.port;
