@@ -668,7 +668,20 @@ const HANDS = {
        (0.0235, -0.0051, 0.0176) - never the raw point off the geometry. Both
        were re-solved for the grip above, since that offset is a property of
        the grip and moved with it.
-         port  the loading gate (its floor is y ~0, z 0.05..0.17). Solved
+         port  the loading gate. ⚠️ MOVED forward and up 2026-08-25 (user
+               report: "it loads slugs into the trigger"). The underside of
+               this receiver, sampled near the centreline, dips to y +0.007
+               at z +0.14 and stays down to z +0.22 - that dip IS the trigger
+               guard, and the old anchor put the live fist at z +0.145, in the
+               middle of it. The gate is ahead of the guard, where the
+               receiver body sits ~0.08 HIGHER, so moving forward alone drops
+               the hand into thin air under the gun: it has to go up by about
+               as much as it goes forward. Live fist now (0.002, 0.070,
+               0.079), i.e. under the receiver and clear of the guard.
+               ⚠️ The frozen-to-live offset is a property of the GRIP and this
+               one has been re-dialled since: measured today it is
+               (-0.0250, +0.0103, +0.0068), not the (0.0235, -0.0051, 0.0176)
+               quoted below. Re-measure it, never reuse it. Solved
                with the reload FROZEN at the top of a cycle, which is the only
                way to see it: forcing the pose by hand does not survive a
                screenshot, since taking one ticks the frame and the pose is
@@ -689,54 +702,27 @@ const HANDS = {
          bolt  the forend itself, i.e. the firing grip: on a pump gun the
                support hand racks from exactly where it already is, so this
                is `pos` verbatim. */
-    port: [0.0271, 0.0028, 0.1381], low: [0.0479, -0.2572, 0.1281],
+    port: [0.0265, 0.0601, 0.0724], low: [0.0479, -0.2572, 0.1281],
     bolt: [0.065, 0.0711, -0.231],
-    /* The reload grips, same contract as the pistol's and the SMG's: each
-       entry overrides the fields it names and inherits the rest from `l`.
-       Without a `port` entry the hand carried its FIRING grip down to the
-       loading gate - knuckle line down the side of a forend that is no longer
-       there, fingers closed on nothing - while the shell it is supposed to be
-       pinching lies along the knuckle line (attachToFist threads props on it),
-       i.e. across the gate instead of into it. Here the line runs along the
-       shell's own travel, up and forward into the gate, and the fingers close
-       on a 23 mm case rather than a 66 mm forend. */
-    grips: {
-      /* ⚠️ SWEPT, not picked (2026-08-25, user report: "you clearly have not
-         seen the hand during the reload, how unnaturally bent it is"). The
-         first attempt at this block was reasoned from anatomy - shell going
-         up and forward into the gate, palm underneath - and it snapped the
-         wrist to 113-127 deg of bend for the whole loading window, against
-         DEVRIG's red line at 75. A hand orientation cannot be picked by
-         reasoning on this rig: the joint takes whatever the frame and the
-         solved forearm disagree on, and the forearm is not a free variable
-         here - the IK decides it from the shoulder, the fist target and the
-         `upper` hint. So the frame is swept (shell axis x hand roll x elbow
-         hint, scored on the two readouts DEVRIG shows, sampled across the
-         cycle) and the best taken: 25 deg of bend, 58 of roll.
-         The answer it lands on is a shell held nearly LEVEL, along the
-         magazine tube, which is also how one is actually fed to a tube gun -
-         the up-and-forward angle was the wrong half of the guess. */
-      port: { channel: [0.4545, -0.7071, -0.5417], palm: [0.2203, -0.5, 0.8375],
-              upper: [-0.9848, 0, -0.1736],
-              curl: { f: [0.95, 1.05, 0.75], i: [0.62, 0.95, 0.70],
-                      t: [0.24, 0.62, 0.30], tAdd: 0.30 } },
-      /* ⚠️ The pump rack needs its OWN frame, even though the hand goes back
-         to exactly where it fires from (`bolt` is `pos` verbatim). The pose is
-         not the same pose: `armBodyFix` holds the shoulder at the HIP carry
-         while `relGun` has yawed the gun 0.45 rad away and pushed it 0.16 m
-         out, so the arm reaches across and the wrist eats the difference.
-         Inheriting the firing grip here measured 86-94 deg of bend across the
-         rack - past the red line - against 12-23 for this one.
-         ⚠️ BOTH frames here are swept against the firing grip's REST pose,
-         because that is where shoulderHome is measured and the IK solves
-         against it. They are NOT portable: re-dialling `l` above walked this
-         reload from 12-23 deg of bend to 38-65 twice over. Re-sweep both
-         after every change to the hand. */
-      bolt: { channel: [0.6124, -0.7071, -0.3536], palm: [0.5, 0, 0.866],
-              upper: [-0.7198, 0.342, -0.604],
-              curl: { f: [1.00, 1.05, 0.60], i: [0.96, 1.00, 0.56],
-                      t: [0.40, 0.55, 0.30], tAdd: 0.55 } },
-    },
+    /* NO reload grips, deliberately (user call 2026-08-25: "why are you
+       rotating it at all - leave it the way it holds the pump, we will adjust
+       later"). Without a `grips` block this hand keeps its firing/pump grip
+       for the whole reload and only its POSITION moves, which is what every
+       weapon without one already does.
+       Four swept frames lived here and every one was rejected on sight. The
+       measurements stay on record, because whatever replaces this has to beat
+       them: reasoned from anatomy, 113-127 deg of wrist bend; swept on
+       |bend|, 36-60 deg of EXTENSION; swept on the flexion SIGN, which only
+       moved the deviation into flexion (+38) and left the hand kinked
+       sideways, reading as bent LEFT; swept on BOTH wrist axes plus the
+       on-screen lean, 10-18 deg and leaning right, and still read as wrung
+       out. The lesson is not which numbers to use - it is that scoring the
+       wrist in isolation does not settle this pose. Start from the grip that
+       already reads correctly and adjust from there.
+       ⚠️ The shell prop rides the KNUCKLE LINE (attachToFist threads props on
+       it), so with the firing grip the shell now lies along the forend axis
+       rather than pointing into the gate. That is the known cost of holding
+       the orientation still. */
     /* the real gun's slide travels ~7% of its length; this drives the forend
        PART as well as the hand (js/weapons.js -> setPump), and at 0.105 the
        bolt piece stays inside the receiver at full travel */
@@ -777,13 +763,13 @@ const HANDS = {
          upper: [0.3024, -0.2079, -0.9302],
          curl: { f: [0.83, 0.52, 0.51], i: [0.65, 0.00, 0.27],
                  t: [0.20, 1.42, 0.13], tAdd: -0.02 } },
-    l: { pos: [0.066, 0.0846, -0.15],
-         channel: [0.0842, 0.1699, -0.9819],
-         palm: [0.2243, -0.9633, -0.1475],
-         fore: [-0.1196, 0.6178, -0.7772],
-         upper: [-0.0501, 0.7818, -0.6215],
-         curl: { f: [0.74, 0.90, 0.73], i: [0.99, 0.67, 0.78],
-                 t: [0.01, 1.32, 0.00], tAdd: -0.40 } },
+    l: { pos: [0.066, 0.0846, -0.147],
+         channel: [-0.4999, 0, -0.8661],
+         palm: [0.18, -0.9782, -0.1039],
+         fore: [0.6964, 0.1736, -0.6964],
+         upper: [0.121, -0.1219, -0.9851],
+         curl: { f: [0.98, 0.90, 0.79], i: [0.72, 0.67, 0.97],
+                 t: [0.01, 1.32, 0.63], tAdd: -0.40 } },
     mag: [-0.0099, -0.1187, -0.0056], low: [-0.0699, -0.5787, 0.1344],
     bolt: [-0.0099, 0.1713, 0.0844], pull: 0.07,
     magDim: [0.026, 0.11, 0.055],
@@ -959,6 +945,7 @@ const PUMP_HOLD = 0.26;                            // dead beat after the shot
 const PUMP_STROKE = 0.40;                          // back and forward again
 const PUMP_DUR = PUMP_HOLD + PUMP_STROKE;          // still inside the 0.75 s
 let pumpT = 0;
+let pumpFired = true;   // has this stroke already been sounded?
 
 /* Where the shoulders go once the arms are NOT in the firing pose, as an
    offset in CAMERA space (metres, x right) from wherever the carry anchor put
@@ -984,6 +971,54 @@ let pumpT = 0;
    body) and none in a reload, where that hand never leaves the firing grip. */
 const SPRINT_SHOULDER = { L: new THREE.Vector3(-0.16, 0, 0),
                           R: new THREE.Vector3(0.02, 0, 0) };
+/* Per-weapon deviation from that shove, PER WEAPON for the same reason
+   SPRINT_TWEAK and RELOAD_SHOULDER are: one number cannot serve five guns.
+   Measured on the range, run held, left arm (2026-08-25).
+
+   Why the shared shove has no DOWN in it at all, and why that was wrong: the
+   run drops the gun ~0.21 m and the shoulder followed none of it, so the arm
+   paid the whole drop by STRAIGHTENING. The shotgun's support elbow stood at
+   177.6 deg - a locked, dead-straight limb - where the same arm measures
+   156.8 at the hip, and the user read it as the arm bending oddly at the
+   elbow instead of the shoulder going down (report 2026-08-25). Letting the
+   shoulder take the drop hands the slack back to the joints: 177.6 -> 158.0,
+   i.e. back to the hip's own bend, with the fist still welded to the forend
+   (grip error 0.0000), the forearm roll down from 179 to 167 and the wrist
+   from 44 deg to 12. It also clears the forearm out of the bottom of the
+   frame: 231 vertices on screen down to 25, which is the pale slab that made
+   the limb read as bent in the first place.
+
+   ⚠️ Deeper is NOT uniformly better, in both directions. Past its own optimum
+   the arm runs out of reach the other way and locks straight again (the
+   shotgun is back at 177.6 by -0.32), and the wrist deviation flips from
+   flexion to extension at a depth that differs per gun - the sniper crosses
+   over at -0.08, so it could never share the shotgun's number. The pistol
+   wants none of it: both its hands are on the grip, its support arm never
+   reaches, and its forearm is off screen in the run anyway (3 vertices), so a
+   drop only cranks its wrist.
+
+   ⚠️ Measure the CUT END on the ring, not on `upperOn`-style bicep counts.
+   The proxy said the cut end was on screen during a run for three guns; the
+   real open-boundary ring (the one tests/shots_weapons.py finds) is 0/20 on
+   screen in the run for all five, before and after this table. Same trap as
+   2026-08-21 - see the note in that test. */
+const SPRINT_SHOULDER_TWEAK = {
+  // 177.6 -> 158.0 deg of elbow, roll 179 -> 167, wrist 44 -> 12, and the
+  // forearm off the bottom edge (231 on-screen vertices -> 25)
+  shotgun: { L: new THREE.Vector3(0, -0.26, 0) },
+};
+const _spSh = { L: new THREE.Vector3(), R: new THREE.Vector3() };
+
+/* The run's shoulder shove for the weapon in hand: the shared value plus this
+   weapon's deviation. Returns a shared scratch - read it, do not keep it. */
+function sprintShoulder(id) {
+  const t = SPRINT_SHOULDER_TWEAK[id];
+  for (const side of ['L', 'R']) {
+    _spSh[side].copy(SPRINT_SHOULDER[side]);
+    if (t && t[side]) _spSh[side].add(t[side]);
+  }
+  return _spSh;
+}
 /* The magazine swap takes the left hand off the gun and down, which is the
    same slack the run has - and without it the arm reads as reaching across
    from the right shoulder (user report 2026-08-21: "the left hand crosses to
@@ -994,25 +1029,17 @@ const SPRINT_SHOULDER = { L: new THREE.Vector3(-0.16, 0, 0),
    2026-08-21). A weapon opts in by appearing here. */
 const RELOAD_SHOULDER = {
   smg: { L: new THREE.Vector3(-0.16, 0, 0), R: new THREE.Vector3(0, 0, 0) },
-  /* Shotgun (2026-08-25). Its shove goes the OTHER WAY - right and toward the
-     camera - and it is not about the shoulder crossing the chest, it is about
-     the FOREARM's shape on screen. Feeding shells puts the fist up under the
-     receiver while the shoulder stays at the hip carry, and the elbow answers
-     by winging out to the left: measured at NDC (-0.36, -0.99) against the
-     firing pose's (0.02, -1.05), with the upper arm standing at 53 deg on
-     screen against 2. The forearm then lies across the whole lower left of
-     the frame as a broad pale slab - which is what reads as a wrongly bent
-     arm, not the wrist (that measures 17 deg, and DEVRIG's readout agrees).
-     ⚠️ The pole hint cannot fix it: swept over 7056 frames, the best the
-     `grips.port` pole reaches is an elbow at NDC x -0.35. The shoulder is the
-     only lever that moves it, and it takes the elbow to (-0.15, -1.63), i.e.
-     off the bottom edge, with the upper arm down at 25 deg - so the forearm
-     foreshortens into a narrow column instead of a slab. The `z` term is what
-     does the foreshortening; `x` alone just slides the slab.
-     Cost is 17 -> 38 deg of wrist bend, still well inside the band, and the
-     forearm roll drops 34 -> 11. The fist does not move: it stays on the gate
-     at NDC (0.36, -0.32) to the centimetre. */
-  shotgun: { L: new THREE.Vector3(0.18, 0, -0.10), R: new THREE.Vector3(0, 0, 0) },
+  /* The shotgun HAD an entry here and it was doing the opposite of its job
+     (user call 2026-08-25: "why the hell do the forearm and arm slide down -
+     leave the arm and shoulder anchored"). It shoved the support shoulder
+     right and toward the camera to push the elbow under the bottom edge, and
+     it was dialled against a `grips.port` frame that no longer exists. With
+     the hand back on its firing grip it cost, measured: the elbow dropped
+     0.078-0.164 m below where it sits at the hip instead of 0.025-0.098, and
+     the wrist went to 91-93 deg instead of 54-55. The elbow stays off the
+     bottom edge without it anyway (NDC -1.40 to -1.75).
+     ⚠️ Whatever is dialled here is only valid for the hand frame it was
+     dialled against - see the note on the shotgun's missing `grips` block. */
 };
 const NO_SHOULDER = { L: new THREE.Vector3(), R: new THREE.Vector3() };
 const _shM = new THREE.Matrix4();
@@ -1139,8 +1166,9 @@ function applyCarryArms(vm, w, pump) {
   const fix = armBodyFix(vm);   // leaves vm.matrix and the gun root current
   _spTargetR.bodyFix = fix;   // both stay on the gun, neither on its swing
   _spTargetL.bodyFix = fix;
-  _spTargetR.shoulderOff = shoulderShove(vm, 'R', w);
-  _spTargetL.shoulderOff = shoulderShove(vm, 'L', w);
+  const ss = sprintShoulder(WEAPONS[currentWeapon].id);
+  _spTargetR.shoulderOff = shoulderShove(vm, 'R', w, ss);
+  _spTargetL.shoulderOff = shoulderShove(vm, 'L', w, ss);
   blendArm(rig.R, _spTargetR, w);
   /* The support hand also works the pump between shots. blendArm LERPS the
      target position by its own weight, and these carry targets normally
@@ -1384,16 +1412,38 @@ function applyReloadPose(vm, t) {
       else lerp3(_lp, cfg.port, cfg.low, vmEase(ct, 0.6, 1.0));
     } else if (t >= w1 && P.empty) {
       if (P.style === 'shell') {
-        // the classic pump rack, left hand on the forend
-        lw = vmEase(t, P.win[1], P.win[1] + 0.06);
+        /* The classic pump rack, left hand on the forend.
+           ⚠️ Full weight from the first frame, NOT eased up from zero. The
+           loading cycle above leaves this hand at weight 1, so easing in from
+           0 was a step DOWN, and a partly-weighted hand is a hand blended
+           back toward its FIRING rest pose - which, with `relGun` holding the
+           gun yawed away from a shoulder still anchored at the hip carry, is
+           the very pose `grips.bolt` exists to avoid. Measured: the wrist
+           snapped to 42 deg of BACKWARD bend for ~80 ms at the handover
+           (2026-08-25). There is nothing to ease anyway - `bolt` is the
+           firing grip's position verbatim, so the hand does not move; only
+           the grip frame changes, and it changes while the hand is arriving
+           from off screen. */
+        lw = 1;
         lgA = G.bolt;
-        _lp[0] = cfg.bolt[0]; _lp[1] = cfg.bolt[1];
-        _lp[2] = cfg.bolt[2] + cfg.pull * vmPulse(t, 0.78, 0.94);
-        _gp.pz += 0.025 * vmPulse(t, 0.78, 0.94);
-        _gp.rx -= 0.08 * vmPulse(t, 0.78, 0.94);
+        /* TRAVEL back to the forend, do not teleport onto it. The last
+           loading cycle leaves the fist down at `low`, so writing `bolt`
+           straight in jumped it the whole way in one frame - the hand
+           "suddenly appeared" on the pump (user report 2026-08-25). The
+           stroke itself only starts at 0.78, so there is room to walk the
+           hand up first. */
+        /* ⚠️ The window is sized by SPEED, not by taste: low -> bolt is
+           0.487 m, and the loading swing covers its own 0.26 m at ~1.4 m/s,
+           so anything much under 0.10 of the animation reads as the hand
+           being yanked rather than lifted. The stroke waits behind it. */
+        lerp3(_lp, cfg.low, cfg.bolt, vmEase(t, w1, w1 + 0.10));
+        const rack = vmPulse(t, 0.81, 0.95);
+        _lp[2] += cfg.pull * rack;
+        _gp.pz += 0.025 * rack;
+        _gp.rx -= 0.08 * rack;
         // the forend travels with the hand on it (the model ships it as its
         // own part exactly for this)
-        setPump(vm, cfg.pull * vmPulse(t, 0.78, 0.94));
+        setPump(vm, cfg.pull * rack);
         lw *= 1 - vmEase(t, 0.95, 1.0);
       } else {
         // sniper: the RIGHT hand works the bolt at the rear
@@ -1404,6 +1454,11 @@ function applyReloadPose(vm, t) {
         _gp.rx -= 0.06 * vmPulse(t, 0.76, 0.90);
       }
     } else if (t < w0) {
+      /* Down for the first shell, over a window matched to the loading
+         swing's own speed. It was briefly narrowed to 0.01..0.09 to beat the
+         gun into a `grips.port` frame - that frame is gone, and the narrow
+         ramp only made the hand dive at ~2.3 m/s where the swing runs at
+         1.4, which reads as a lurch. */
       lw = vmEase(t, 0.02, w0); _lp[0] = cfg.low[0]; _lp[1] = cfg.low[1]; _lp[2] = cfg.low[2];
     } else {
       lw = 1 - vmEase(t, w1, Math.min(1, w1 + 0.08));
@@ -1452,7 +1507,10 @@ function buildReloadEvents(w, vm) {
       ev.push({ t: c0 + 0.5 * cw, fn: () => { AudioSys.shellIn(w.id); if (shell) shell.visible = false; } });
     }
     if (reloadFromEmpty) {
-      ev.push({ t: 0.84, fn: () => (cfg.style === 'shell' ? AudioSys.pump(w.id) : AudioSys.boltPull(w.id)) });
+      // on the stroke, not on a pasted fraction: the shell rack sits at
+      // vmPulse(t, 0.81, 0.95), so its sound belongs just past that midpoint
+      ev.push({ t: cfg.style === 'shell' ? 0.87 : 0.84,
+                fn: () => (cfg.style === 'shell' ? AudioSys.pump(w.id) : AudioSys.boltPull(w.id)) });
     }
   }
   ev.sort((a, b) => a.t - b.t);
@@ -1474,7 +1532,7 @@ function clearReloadVisuals(vm) {
 function resetWeaponFx() {
   sprintBlend = 0;
   zoomBlend = 0;
-  pumpT = 0;
+  pumpT = 0; pumpFired = true;
   relPlan = null;
   setScopeOverlay(false, true);
   _relLw = 0; _relRw = 0;
@@ -1524,9 +1582,20 @@ function updateViewmodel(dt) {
   // PUMP_HOLD is the gun settling, with the forend still shut
   const pumpAge = (1 - pumpT) * PUMP_DUR;
   const pumpK = (pumpAge - PUMP_HOLD) / PUMP_STROKE;
-  // the rack sound is fired from tryFire (scheduled, so it can be delayed to
-  // land on PUMP_HOLD) - nothing to trigger here
   const pumpEnv = (reloadPose || pumpT <= 0 || pumpK <= 0) ? 0 : vmPulse(pumpK, 0, 1);
+  /* The stroke's sound is fired HERE, on the frame the forend actually starts
+     moving - not scheduled ahead from tryFire.
+     ⚠️ Scheduling it there was audible as a lie: the shot books it on the
+     WebAudio clock PUMP_HOLD ahead, and a reload started inside that beat
+     zeroes `pumpT`, so the forend never moves while the booked sound plays
+     anyway (user report 2026-08-25: fire, hit reload, hear the pump without
+     the pump). A sample already queued on the audio clock cannot be recalled,
+     so the fix is not to queue it early. Firing it from the animation makes
+     the sound a consequence of the stroke rather than a prediction of it. */
+  if (pumpEnv > 0 && !pumpFired) {
+    pumpFired = true;
+    AudioSys.pump(w.id, { vol: 0.38 });
+  }
   if (!reloadPose) setPump(vm, (vm.userData.handCfg.pull || 0) * pumpEnv);
   if (reloadPose) {
     const t = 1 - reloadTimer / reloadDuration; // 0 -> 1
@@ -1588,7 +1657,7 @@ function switchWeapon(idx) {
     showCenterMsg('Broń zablokowana — kup w sklepie', 1.1, true);
     return;
   }
-  pumpT = 0;
+  pumpT = 0; pumpFired = true;
   clearReloadVisuals(viewmodels[currentWeapon]);
   viewmodels[currentWeapon].visible = false;
   currentWeapon = idx;
@@ -1638,6 +1707,7 @@ function startReload() {
   relPlan.events = buildReloadEvents(w, vm);
   relEvIdx = 0;
   pumpT = 0;            // the reload takes the forend over from here
+  pumpFired = true;     // ...and so does its sound (see updateViewmodel)
   clearReloadVisuals(vm);
   AudioSys.grab(w.id);
   const rm = document.getElementById('reload-msg');
@@ -1756,12 +1826,7 @@ function tryFire() {
      without a forend part skips this entirely. */
   if (vm.userData.pumpPart && w.mag > 0) {
     pumpT = 1;
-    /* The stroke gets its own sound, held back the same beat the FOREND is
-       held back (PUMP_HOLD): fired at t=0 it lands inside the muzzle blast
-       and is simply not heard, and anywhere else it comes off the hand that
-       has not moved yet. It is also softer than the reload's stroke - this
-       one is the gun working, not the player working the gun. */
-    AudioSys.pump(w.id, { vol: 0.38, delay: PUMP_HOLD });
+    pumpFired = false;   // updateViewmodel sounds it when the stroke starts
   }
   camera.rotation.x += w.kick;
 

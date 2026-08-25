@@ -141,8 +141,34 @@ with sync_playwright() as pw:
     # the rig itself: a real skin, with the wrist as its own bone
     check("rig: skinned mesh, not rigid parts",
           page.evaluate("!!viewmodels[0].userData.arms.model.mesh.isSkinnedMesh"))
+    # 24 source bones plus the two forearm twist CHAINS the bake inserts
+    # (add_twist_bones in tools/gen_models.py, twistSegments per side)
     check("rig: full bone tree", page.evaluate(
-          "Object.keys(viewmodels[0].userData.arms.model.bones).length") == 24)
+          "Object.keys(viewmodels[0].userData.arms.model.bones).length") == 34)
+    # the chain has to hang off the forearm, be linked head to tail, and carry
+    # the hand off its last link - otherwise the roll never reaches the wrist
+    check("rig: forearm twist chain carries the hand", page.evaluate("""(() => {
+        const rig = viewmodels[0].userData.arms;
+        return ['L', 'R'].every(s => {
+          const h = rig[s], tw = h.bones.twist;
+          if (!tw || tw.length < 2) return false;
+          if (tw[0].parent !== h.bones.fore) return false;
+          for (let i = 1; i < tw.length; i++) {
+            if (tw[i].parent !== tw[i - 1]) return false;
+          }
+          return h.bones.hand.parent === tw[tw.length - 1];
+        });
+    })()"""))
+    # and the roll has to be SHARED, not dumped on one link: each carries an
+    # equal slice, which is what keeps the skin from pinching (see the
+    # candy-wrapper note in add_twist_bones)
+    check("rig: the roll is shared evenly down the twist chain",
+          page.evaluate("""(() => {
+        const tw = viewmodels[2].userData.arms.L.bones.twist;
+        const a = tw.map(b => 2 * Math.acos(Math.min(1, Math.abs(b.quaternion.w))));
+        const lo = Math.min(...a), hi = Math.max(...a);
+        return lo > 0.05 && hi - lo < 1e-6;
+    })()"""))
     check("rig: wrist bone exposed", page.evaluate(
           "!!viewmodels[0].userData.arms.R.bones.hand"))
     check("rig: upper arm ships (no open elbow)", page.evaluate(

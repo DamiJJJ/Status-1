@@ -45,22 +45,53 @@ function armsMat(src) {
 
 /* bone names as the source rig spells them, per side. f = the paired
    middle/ring fingers, i = index (the trigger finger), t = thumb; the three
-   segments run proximal -> distal. */
+   segments run proximal -> distal.
+
+   `twist` is a PREFIX, not a bone name: the bake inserts a numbered chain of
+   twist bones on the forearm (see add_twist_bones in tools/gen_models.py) and
+   how many is its business alone, so they are collected by prefix rather than
+   listed here where the count would have to be kept in step. */
 const ARM_BONES = {
   L: {
     upper: 'UpperArm.L', fore: 'LowerArm.L', hand: 'Hand.L',
+    twist: 'LowerArm.L.twist',       // .twist1, .twist2, ...
     f: ['DoubleFingersBeginning', 'DoubleFingers.L', 'DoubleFingersTip.L'],
     i: ['IndexBeginning.L', 'Index.L', 'IndexTip.L'],
     t: ['ThumbBeginning.L', 'Thumb.L', 'ThumbTip.L'],
   },
   R: {
     upper: 'UpperArm.R.001', fore: 'LowerArm.R.001', hand: 'Hand.R.001',
+    twist: 'LowerArm.R.001.twist',
     f: ['DoubleFingersBeginning.001', 'DoubleFingers.R.001', 'DoubleFingersTip.R.001'],
     i: ['IndexBeginning.R.001', 'Index.R.001', 'IndexTip.R.001'],
     t: ['ThumbBeginning.R.001', 'Thumb.R.001', 'ThumbTip.R.001'],
   },
 };
 const FINGER_CHAINS = ['f', 'i', 't'];
+/* The chain bones a solve resets to bind, shoulder -> wrist. `twist` is
+   optional: a rig baked without one simply has no such entry in hand.bones. */
+const ARM_CHAIN = ['upper', 'fore', 'hand'];
+
+/* Gather the twist chain by prefix, numbered from 1. Returns null for a rig
+   baked without one, which is what makes the twist support opt-in. */
+function twistChain(modelBones, prefix) {
+  if (!prefix) return null;
+  const out = [];
+  for (let i = 1; modelBones[prefix + i]; i++) out.push(modelBones[prefix + i]);
+  return out.length ? out : null;
+}
+
+/* Put the whole chain back on its bind orientation. Every solve starts here:
+   aimBone() rotates from wherever a bone currently points, so leftover roll
+   would ride along and the same numbers would stop meaning the same pose. */
+function restArmChain(hand) {
+  for (const k of ARM_CHAIN) {
+    const b = hand.bones[k];
+    b.quaternion.copy(b.userData.bindLocal);
+  }
+  const tw = hand.bones.twist;
+  if (tw) for (const b of tw) b.quaternion.copy(b.userData.bindLocal);
+}
 
 /* Every direction in HANDS is expressed in GUN-MODEL space - the space the
    grip anchors are measured in - so that is the reference frame everything
@@ -306,15 +337,33 @@ function placeArm(hand, pos) {
    The axis runs elbow -> wrist, i.e. through the bone's own origin AND the
    wrist, so the hand does not move: only the twist changes hands. Whatever
    the wrist keeps after this is pure bend, which is what the editor's readout
-   flags. */
+   flags.
+
+   The roll is SPREAD down the bake's twist chain when the rig has one - an
+   equal share each, and because they all turn about the same axis the shares
+   compose, so bone k ends up carrying k/N of the roll and the hand, hanging
+   off the last one, still gets all of it. The pose is therefore identical
+   bone for bone; what differs is the skin underneath, whose weights ramp
+   toward the wrist. Rolling the forearm itself put the whole turn on the
+   elbow, and only 80 of the 1048 vertices weighted to LowerArm.L blend with
+   UpperArm.L at all, so that joint is nearly a hard edge - a natural support
+   grip, which needs ~160 deg of pronation, folded it into a sharp wedge.
+   The chain is what keeps the fix from costing the limb its volume: see the
+   candy-wrapper note in add_twist_bones. A rig baked without a twist chain
+   keeps the old behaviour. */
+const _hQ3 = new THREE.Quaternion();
 function rollForearm(hand) {
   const b = hand.bones;
+  const tw = b.twist;
+  // any link of the chain will do as the reference: they all sit on the
+  // forearm's origin, and none of them has been rolled yet this solve
+  const ref = tw ? tw[0] : b.fore;
   const local = b.hand.quaternion.clone()
     .multiply(_hQ.copy(b.hand.userData.bindLocal).invert());
   hand.root.updateMatrixWorld(true);
-  b.fore.getWorldPosition(_hV);
+  ref.getWorldPosition(_hV);
   b.hand.getWorldPosition(_hV2);
-  b.fore.getWorldQuaternion(_hQ2);
+  ref.getWorldQuaternion(_hQ2);
   const ax = _hV2.sub(_hV).applyQuaternion(_hQ2.invert());
   hand.foreTwist = 0;
   if (ax.lengthSq() < 1e-12) return;
@@ -324,8 +373,14 @@ function rollForearm(hand) {
   const twist = new THREE.Quaternion(ax.x * d, ax.y * d, ax.z * d, local.w);
   if (twist.lengthSq() < 1e-12) return;
   twist.normalize();
-  b.fore.quaternion.multiply(twist);
-  b.fore.updateMatrixWorld(true);
+  if (tw) {
+    const step = _hQ3.identity().slerp(twist, 1 / tw.length);
+    for (const t of tw) t.quaternion.multiply(step);
+    tw[0].updateMatrixWorld(true);
+  } else {
+    b.fore.quaternion.multiply(twist);
+    b.fore.updateMatrixWorld(true);
+  }
   hand.foreTwist = 2 * Math.acos(Math.min(1, Math.abs(twist.w)));
 }
 
@@ -335,13 +390,10 @@ function rollForearm(hand) {
    is the hand orientation; pass it in when it was slerped (blends) so the
    channel/palm pair is not rebuilt from interpolated vectors. */
 function applyArmPose(hand, sd, frame) {
-  // Restart from the BIND pose every time. aimBone() rotates from whatever
-  // direction the bone currently points, so without this reset the leftover
-  // roll from the previous edit rides along and the same numbers stop meaning
-  // the same pose - which is what made sliders feel unpredictable.
-  for (const k of ['upper', 'fore', 'hand']) {
-    hand.bones[k].quaternion.copy(hand.bones[k].userData.bindLocal);
-  }
+  // Restart from the BIND pose every time - see restArmChain. Without it the
+  // leftover roll from the previous edit rides along and the same numbers
+  // stop meaning the same pose, which is what made sliders feel unpredictable.
+  restArmChain(hand);
   hand.root.updateMatrixWorld(true);
   poseFingers(hand, sd.curl);
   if (sd.upper) aimBone(hand, hand.bones.upper, hand.bones.fore, sd.upper);
@@ -422,9 +474,7 @@ function reachArm(hand, S, pos, frame, pole) {
   // takes the minimal rotation from wherever the bone currently points, so
   // last frame's roll would ride along and the pose would stop being a
   // function of its inputs
-  for (const k of ['upper', 'fore', 'hand']) {
-    hand.bones[k].quaternion.copy(hand.bones[k].userData.bindLocal);
-  }
+  restArmChain(hand);
   hand.root.updateMatrixWorld(true);
   // the fist anchor rides the hand bone, so a known hand orientation turns
   // the fist target straight into a wrist target
@@ -599,6 +649,10 @@ function attachArms(gunRoot, spec) {
     const names = ARM_BONES[key];
     const bones = { upper: m.bones[names.upper], fore: m.bones[names.fore],
                     hand: m.bones[names.hand] };
+    // optional, and left out entirely when absent so rollForearm falls back
+    // cleanly on a rig baked without a twist chain
+    const twist = twistChain(m.bones, names.twist);
+    if (twist) bones.twist = twist;
     const fingers = {};
     for (const c of FINGER_CHAINS) fingers[c] = names[c].map(n => m.bones[n]);
     const hand = {
@@ -619,9 +673,10 @@ function attachArms(gunRoot, spec) {
     // orientation in arms-root space, and the hinge axes in each finger
     // bone's own frame (so a curl angle survives the wrist turning)
     m.root.updateMatrixWorld(true);
-    for (const k of ['upper', 'fore', 'hand']) {
+    for (const k of ARM_CHAIN) {
       bones[k].userData.bindLocal = bones[k].quaternion.clone();
     }
+    if (twist) for (const t of twist) t.userData.bindLocal = t.quaternion.clone();
     bones.hand.getWorldQuaternion(_hQ);
     gunRoot.getWorldQuaternion(_hQ2);
     hand.bindHand.copy(_hQ2.invert()).multiply(_hQ);

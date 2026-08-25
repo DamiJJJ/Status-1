@@ -502,14 +502,25 @@ więc formy męskie w kwestiach DO gracza są OK.
     Strzelba jedzie stylem `shell`, więc zamiast magazynka ma `_shell`
     (nabój do rurki) i `_pump` (pełny cykl pompy w JEDNYM klipie, takt
     „Fast" - wolniejszy ma 0,27 s przerwy między suwami i nie nadąża za
-    animacją). `pump(id, {vol, delay})` gra w DWÓCH miejscach: raz w
-    przeładowaniu (pełna głośność) i raz **po każdym strzale**, razem
-    z animacją `pumpT` w `tryFire` - ciszej (0.38) i z opóźnieniem 0,1 s,
-    bo puszczony na t=0 wpada w huk wystrzału i po prostu go nie słychać.
+    animacją). `pump(id, {vol})` gra w DWÓCH miejscach: raz
+    w przeładowaniu (pełna głośność; zdarzenie na t 0,87, czyli na skoku
+    0,81..0,95 - nie na wklejonym ułamku) i raz **po każdym strzale**, ciszej
+    (0.38).
     ⚠️ Ten drugi jest pod warunkiem `w.mag > 0` (zgłoszenie użytkownika
     2026-08-21): po OSTATNIM naboju łoże przejmuje przeładowanie
     (`startReload` zeruje `pumpT`), więc suw nigdy się nie rysował, a sam
     dźwięk i tak leciał - broń przeładowywała pustkę.
+    ⚠️ **Odpala się Z ANIMACJI** (`pumpFired` w weapons.js), na klatce,
+    w której łoże faktycznie rusza - a NIE planowany z wyprzedzeniem
+    z `tryFire` przez `delay`. Tamto miało tę samą wadę co wyżej, tylko
+    z innej strony (zgłoszenie użytkownika 2026-08-25: „jak strzelimy
+    i klikniemy reload, to puszcza się dźwięk pompki, pomimo że za pompkę nie
+    ciągniemy"): strzał rezerwował próbkę na zegarze WebAudio `PUMP_HOLD` do
+    przodu, a przeładowanie zaczęte w tej przerwie zerowało `pumpT` - łoże
+    stało, dźwięk leciał. **Próbki wystartowanej na zegarze audio nie da się
+    cofnąć**, więc naprawa polega na tym, żeby jej tam nie stawiać. Każde
+    miejsce kasujące skok (`switchWeapon`, `resetWeaponFx`, `startReload`)
+    ustawia `pumpFired = true`.
     **Luneta** ma `scope_up`/`scope_down` (`AudioSys.scope(on)`, wołane
     z `setScopeOverlay`). W paczkach NIE MA nagrania optyki i nie da się jej
     uczciwie podrobić - to, co gracz naprawdę słyszy, to USTAWIANA BROŃ, więc
@@ -1087,6 +1098,48 @@ więc formy męskie w kwestiach DO gracza są OK.
     łokieć → nadgarstek, czyli przez początek kości ORAZ przez nadgarstek,
     więc dłoń nie rusza się z miejsca. Pilnuje tego asercja
     `wrist: the forearm takes the roll, not the joint`.
+    ⚠️ **Skręt siada na ŁAŃCUCHU KOŚCI SKRĘTU, nie na przedramieniu**
+    (`twist` w `ARM_BONES`, `twistSegments` w `tools/gen_models.py`,
+    2026-08-25). Rig `arms` NIE MA kości skrętu: łańcuch to `UpperArm →
+    LowerArm → Hand`, a z 1048 wierzchołków ważonych do `LowerArm.L` tylko
+    **80** miesza się z `UpperArm.L` - przejście przez łokieć jest prawie
+    twarde. Naturalny chwyt wsparcia wymaga ~160° pronacji (poza bind ma obie
+    dłonie płasko, wnętrzem w dół), więc cała ta pronacja siadała na tym
+    jednym twardym stawie i zapadała łokieć w ostry klin. **DEVRIG nie kłamał**
+    - jego czerwone 161° to poprawne ostrzeżenie, tylko nie dało się go
+    posłuchać przy chwycie, który jest prawidłowy.
+    Wypiek (`add_twist_bones`) wstawia więc kości skrętu NA przedramieniu:
+    zerowa translacja, jednostkowa rotacja, więc w pozie bind leżą w tym samym
+    miejscu i mają ten sam IBM; ostatnia z nich przejmuje `Hand` jako dziecko.
+    Przepięcie nie rusza lokalnego transformu dłoni, więc **poza jest
+    NIEZMIENIONA co do kości** (zmierzone: pozycje do 1e-7 m przy biodrze,
+    kwaterniony do 1e-7) - zmienia się wyłącznie deformacja siatki.
+    ⚠️ **To musi być ŁAŃCUCH, nie jedna kość.** Skinning liniowy uśrednia
+    pozycje z kości, do których wierzchołek jest ważony, więc mieszanie dwóch
+    kości daleko od siebie wokół wspólnej osi **ściąga wierzchołek DO tej osi**
+    - klasyczny „candy wrapper". Przy jednej kości skrętu miesza się 0° ze
+    161° i zmierzone na pozowanej siatce przedramię wsparcia traciło do **71%**
+    promienia w połowie długości: klin znikał, a kończyna robiła się ostrzem.
+    Łańcuch N kości, każda z 1/N obrotu, miesza tylko SĄSIADÓW, czyli 161/N°,
+    a zapadnięcie idzie jak `cos(obrót / 2N)` (zmierzone, zgadza się co do
+    dziesiątej procenta): 1 kość -71%, 3 kości -10,8%, **5 kości -3,9%**.
+    Dodatkowa kość kosztuje jeden wpis w szkielecie i jeden kwaternion na
+    klatkę, więc kupuje się zapas - dziś `twistSegments: 5`.
+    Wagi to **NAMIOT, nie jedna rampa**: wygładzona (smoothstep) pozycja wzdłuż
+    przedramienia wybiera parę sąsiednich kości i podział między nie, dzięki
+    czemu mieszanie nigdy nie wychodzi poza jedno ogniwo. Limit **4 wpływów na
+    wierzchołek** jest twardy, więc namiot wypycha część wierzchołków na 5 -
+    najmniejsza waga leci i reszta jest renormalizowana; wypiek DRUKUJE, ile
+    ich było (dziś 16 + 11, największa odrzucona waga 0,007), bo cichy limit
+    objawiłby się jako zagadkowe załamanie zamiast jako liczba.
+    W runtime `rollForearm` rozkłada obrót po równo na wszystkie ogniwa
+    (`slerp` od jednostkowego) - obracają się wokół tej samej osi, więc obroty
+    się składają i ogniwo k niesie k/N, a dłoń pod ostatnim niesie całość.
+    `ARM_BONES.twist` to **PREFIKS**, nie nazwa: `twistChain()` zbiera kości
+    numerowane od 1, więc liczba ogniw żyje wyłącznie w wypieku. Rig bez
+    łańcucha (SENTINEL) jedzie po staremu - `twist` w `MODELS` jest opt-in.
+    Pilnują tego asercje `rig: forearm twist chain carries the hand`
+    i `rig: the roll is shared evenly down the twist chain`.
     ⚠️ **Zgięcie czyta się z POZOWANEGO stawu** (`devRigWristAngles`: kość
     dłoni względem własnej pozy bind, czyli w układzie przedramienia), a skręt
     z tego, ile pronacji wzięło przedramię (`hand.foreTwist`). Poprzednia
@@ -1202,20 +1255,57 @@ więc formy męskie w kwestiach DO gracza są OK.
     bo skraca przedramię perspektywą w wąską kolumnę; samo `x` tylko przesuwa
     płytę. Strzelba: `[0.18, 0, -0.10]`, łokieć schodzi pod dolną krawędź,
     pięść zostaje na oknie co do centymetra.
-    ⚠️ **Ramki chwytu przeładowania NIE DA SIĘ dobrać rozumowaniem, trzeba ją
-    PRZEMIEŚĆ** (2026-08-25, zgłoszenie użytkownika: „nie widziałeś ręki
-    w trakcie przeładowania, jak wygięta jest nienaturalnie"). Pierwsza wersja
-    `grips.port` strzelby była wyprowadzona z anatomii (nabój w górę i w przód
-    do okna, dłoń pod nim) i dawała **113-127° zgięcia nadgarstka przez całe
-    okno ładowania** - przy czerwonej linii DEVRIG-a na 75. Powód jest
-    strukturalny: nadgarstek bierze na siebie RÓŻNICĘ między ramką dłoni
-    a przedramieniem, a przedramienia w animacji nie ustawiasz - liczy je IK
-    z barku, celu pięści i podpowiedzi `upper`. Dlatego ramkę przemiata się
-    (oś naboju × rolka dłoni × podpowiedź łokcia), punktuje dwiema liczbami,
-    które pokazuje DEVRIG, i próbkuje w kilku miejscach cyklu. Strzelba zeszła
-    na 20-29°. Odpowiedź, na którą to wyszło, jest przy okazji poprawna
-    realnie: nabój leży PRAWIE POZIOMO, wzdłuż rury magazynka - tak się karmi
-    broń z rurą, a kąt „w górę" był po prostu zły.
+    ⚠️ **Strzelba NIE MA już ramek przeładowania** (decyzja użytkownika
+    2026-08-25: „czemu w ogóle ją obracasz, zostaw tak jak trzyma się pompki,
+    potem będziemy dostosowywać"). Blok `grips` zniknął, więc dłoń niesie
+    chwyt bojowy przez całe przeładowanie i rusza się samą POZYCJĄ - dokładnie
+    to, co robi każda broń bez tego bloku. Cztery przemiecione ramki po kolei
+    odpadły na oko i to jest tu nauka, a nie liczby: sama optymalizacja
+    nadgarstka tej pozy NIE ROZSTRZYGA. Historia pomiarów, żeby następna
+    próba musiała je pobić: z anatomii 113-127° zgięcia; punktowane |zgięcie|
+    36-60° PRZEPROSTU; punktowany znak zgięcia - przeprost wyleczony, ale całe
+    odchylenie przeszło w zgięcie (+38°) i dłoń dalej była wykrzywiona w bok
+    (czytała się „w lewo"); punktowane OBIE osie plus pochył ekranowy 10-18°
+    i pochył w prawo - dalej czytało się jako wykręcone.
+    ⚠️ **Prawdziwą przyczyną było `RELOAD_SHOULDER`, nie ramka dłoni**
+    (zgłoszenie użytkownika 2026-08-25: „na cholerę przedramię i ramię zjeżdża
+    w dół, zostaw ramię i bark zakotwiczone"). Wpis strzelby pchał bark w prawo
+    i ku kamerze, żeby wypchnąć łokieć pod dolną krawędź - i był dostrojony pod
+    ramkę `grips.port`, której już nie ma. Zmierzone z chwytem bojowym: z nim
+    łokieć spadał 0,078-0,164 m poniżej pozycji z biodra, bez niego 0,025-0,098,
+    a nadgarstek 91-93° kontra 54-55°. Łokieć i tak zostaje poza kadrem
+    (NDC -1,40..-1,75). Wpis usunięty.
+    ⚠️ Wniosek na przyszłość: **zanim zaczniesz stroić ramkę dłoni, zmierz,
+    co się RUSZA** - bark, łokieć i nadgarstek w przestrzeni kamery, względem
+    pozy z biodra. Bark stoi (±0,035 m), więc „ręka zjeżdża" znaczyło łokieć,
+    a łokciem rządzi pchnięcie barku i podpowiedź `upper`, nie orientacja dłoni.
+    ⚠️ **Klatki, na których dłoń jest poza kadrem, do oceny NIE LICZĄ.**
+    W cyklu ładowania pięść zjeżdża po kolejny nabój do NDC y -1,2..-1,6.
+    Do punktowania bierz tylko klatki z |ndc y| < 1.
+    ⚠️ **Kotwica `port` strzelby siedziała W KABŁĄKU SPUSTU** (zgłoszenie
+    użytkownika 2026-08-25: „ładuje slugi w spust"). Spód komory zmierzony
+    przy osi symetrii ma dołek do y +0,007 na z +0,14 i trzyma go do z +0,22 -
+    **ten dołek TO kabłąk**, a stara kotwica stawiała żywą pięść na z +0,145,
+    czyli w jego środku. Okno ładowania jest PRZED nim, ale tam komora siedzi
+    ~0,08 WYŻEJ, więc sam ruch do przodu zostawia dłoń w powietrzu pod bronią
+    (sprawdzone na zrzucie): trzeba ją podnieść mniej więcej o tyle, o ile
+    jedzie do przodu. Dziś żywa pięść jest na (0,002, 0,070, 0,079).
+    ⚠️ **Offset zamrożona-kotwica → żywa pięść jest własnością CHWYTU** i ten
+    chwyt był od tamtej pory przestrajany: zmierzony dziś wynosi
+    (-0,0250, +0,0103, +0,0068), a nie (0,0235, -0,0051, 0,0176) z komentarza
+    w kodzie. Mierz go za każdym razem, nie przepisuj.
+    ⚠️ **Powrót na łoże po ostatnim naboju to PRZEJAZD, nie teleport**
+    (zgłoszenie użytkownika 2026-08-25: „ręka nagle przeskakuje na pompkę").
+    Ostatni cykl zostawia pięść na dole (`low`), a gałąź racka wpisywała
+    `bolt` wprost, czyli przerzucała ją 0,49 m w jednej klatce. Teraz jedzie
+    `lerp3(low → bolt)` przez 0,10 animacji, a skok pompki czeka za tym
+    (0,81..0,95). ⚠️ **Okno dobiera się PRĘDKOŚCIĄ, nie na oko**: mierzy się
+    największy krok pięści na klatkę przez całe przeładowanie i patrzy, czy
+    któraś klatka odstaje od reszty. Przy 0,07 powrót robił 0,199 m przy
+    0,133 m wahnięcia cyklu - i to widać. Dziś kroki są jednorodne
+    (0,160-0,165). Przy okazji rampa startowa wróciła na `vmEase(t, 0.02, w0)`
+    - zwężenie do 0,01..0,09 było uzasadnione ramką `grips.port`, której już
+    nie ma, a samo w sobie robiło z zanurkowania szarpnięcie.
     ⚠️ **Pozy przeładowania nie da się obejrzeć wymuszając ją z konsoli** -
     zrzut ekranu wyzwala klatkę, `tick` przelicza pozę z `reloadTimer`
     i wymuszenie znika. Trzeba PRZYPIĄĆ `reloadTimer` w pętli `rAF`.
@@ -1400,6 +1490,30 @@ więc formy męskie w kwestiach DO gracza są OK.
     Offset jest podawany w przestrzeni KAMERY i wygaszany przez `sprintBlend`:
     przy biodrze i przy ADS ramię stoi na ~99,5% wyprostu i to samo pchnięcie
     zerwałoby dłoń z broni.
+    ⚠️ **Bark w biegu jedzie też W DÓŁ** (`SPRINT_SHOULDER_TWEAK`,
+    2026-08-25, zgłoszenie użytkownika: „bieganie - dziwnie zgina się
+    w łokciu, zamiast iść w dół w barku"). Wspólne pchnięcie miało `y` = 0,
+    czyli bark nie schodził ANI TROCHĘ, a broń w biegu spada ~0,21 m - więc
+    cały ten zjazd płaciło PROSTOWANIE ramienia. Zmierzone na strzelnicy: łokieć
+    strzelby stał na **177,6°**, czyli kończyna zaryglowana na sztywno, przy
+    156,8° tej samej ręki na biodrze. Oddanie zjazdu barkowi wraca luz stawom:
+    177,6 → 158,0 (czyli dokładnie tyle, ile ma poza biodra), skręt
+    przedramienia 179 → 167, nadgarstek 44° → 12°, a przedramię schodzi
+    z dolnej krawędzi kadru (231 → 25 widocznych wierzchołków) - to ta blada
+    płyta sprawiała, że kończyna czytała się jako wygięta.
+    ⚠️ **Głębiej NIE jest lepiej, i to w obie strony**: za swoim optimum ramię
+    kończy się z drugiej strony i znowu blokuje na prosto (strzelba wraca na
+    177,6 przy -0,32), a odchylenie nadgarstka przeskakuje ze zgięcia
+    w przeprost na innej głębokości dla każdej broni - snajperka przechodzi
+    na -0,08, więc nie da się jej dać liczby strzelby. Dlatego tabela jest
+    PER BROŃ, jak `SPRINT_TWEAK` i `RELOAD_SHOULDER`. Pistolet zostaje bez
+    wpisu: obie dłonie ma na chwycie, ramię wsparcia nigdy nie sięga, a jego
+    przedramię i tak jest poza kadrem (3 wierzchołki).
+    ⚠️ **Kadrowanie kikuta mierz na PIERŚCIENIU, nie na liczniku wierzchołków
+    ramienia.** Proxy „ile wierzchołków ramienia widać" pokazało kikut w kadrze
+    dla trzech broni w biegu; prawdziwy pierścień otwartego brzegu (ten, który
+    znajduje `tests/shots_weapons.py`) jest w biegu **0/20 na ekranie dla
+    wszystkich pięciu**, przed zmianą i po. Ta sama pułapka co 2026-08-21.
     ⚠️ Ten sam offset wywala krótką broń CAŁKIEM poza kadr (pistolet znikał
     do jednego piksela), więc jest tabela odchyłek per broń `SPRINT_TWEAK`
     (dziś `pistol`, `smg` i `strzelba`) - „ledwo widoczne" tak, „nie ma jej"

@@ -608,6 +608,111 @@ def pack(parts, order):
     return out
 
 
+def add_twist_bones(cfg, bones, ibm, jname, jindex, joints, wm, bindv, jidx, jwgt):
+    """Insert a chain of forearm TWIST bones per (forearm, hand) pair and slide
+    the forearm's skin weights onto it along the elbow -> wrist axis.
+
+    Why it exists: this rig ships UpperArm -> LowerArm -> Hand with no twist
+    bone, and only 80 of the 1048 vertices weighted to LowerArm.L blend with
+    UpperArm.L at all - the elbow is very nearly a hard edge. rollForearm() in
+    js/hands.js used to dump the WHOLE pronation on that one joint, and a
+    natural support grip needs ~160 deg of it (the bind pose has both palms
+    flat, facing down), so the elbow folded into a sharp wedge.
+
+    Why it is a CHAIN and not one bone: linear blend skinning averages the
+    positions a vertex gets from each bone it is weighted to, so blending two
+    bones a long way apart around a shared axis pulls the vertex IN toward
+    that axis - the candy-wrapper pinch. One twist bone means blending 0 deg
+    against the full 161, and measured on the posed skin that cost the middle
+    of the support forearm up to 70% of its radius: the wedge was gone and the
+    limb had become a blade. A chain of N bones, each carrying 1/N of the
+    roll, only ever blends NEIGHBOURS, i.e. 161/N deg apart, and the pinch
+    falls off as cos of half that.
+
+    Every twist bone sits ON the forearm - zero translation, identity
+    rotation, so in the bind pose they all share the forearm's place and
+    therefore its inverse bind matrix - and the last one takes the hand over
+    as its child. Reparenting leaves the hand's own local transform alone, so
+    the bind pose is unchanged.
+
+    Weights are a TENT, not a single ramp: the smoothstepped position along
+    the forearm picks which neighbouring pair a vertex hangs between, and how
+    far. That is what keeps the blend local to one link of the chain.
+
+    Opt-in per model (`twist` in MODELS), so SENTINEL is untouched.
+    """
+    pairs = cfg.get('twist')
+    if not pairs:
+        return
+    n = cfg.get('twistSegments', 3)
+    for fore_name, hand_name in pairs:
+        fi, hi = jindex[fore_name], jindex[hand_name]
+        # levels 0..n along the roll: level 0 IS the forearm (it never rolls),
+        # level n is the bone the hand hangs off and carries all of it
+        chain = [fi]
+        for k in range(n):
+            ti = len(bones)
+            name = '%s.twist%d' % (fore_name, k + 1)
+            bones.append({
+                'name': name,
+                'parent': chain[-1],
+                'pos': [0.0, 0.0, 0.0],
+                'rot': [0.0, 0.0, 0.0, 1.0],
+                'scl': [1.0, 1.0, 1.0],
+            })
+            ibm.append(tuple(ibm[fi]))   # same place in the bind pose
+            jname.append(name)
+            jindex[name] = ti
+            chain.append(ti)
+        bones[hi]['parent'] = chain[-1]
+        # elbow -> wrist, in the space bindv lives in (both come off `wm`)
+        e = [wm[joints[fi]][12 + c] for c in range(3)]
+        w = [wm[joints[hi]][12 + c] for c in range(3)]
+        ax = [w[c] - e[c] for c in range(3)]
+        span = sum(c * c for c in ax) or 1e-12
+        clipped, worst = 0, 0.0
+        for vi in range(len(jidx)):
+            ji, jw = jidx[vi], jwgt[vi]
+            infl, split = [], False
+            for c in range(4):
+                w0 = jw[c]
+                if w0 != w0 or w0 <= 0:        # NaN slot (see the note below)
+                    continue
+                j = int(ji[c])
+                if j != fi:
+                    infl.append([j, w0])
+                    continue
+                p = bindv[vi]
+                t = sum((p[k] - e[k]) * ax[k] for k in range(3)) / span
+                t = max(0.0, min(1.0, t))
+                u = t * t * (3 - 2 * t) * n    # smoothstep, in level units
+                k = min(n - 1, int(u))
+                f = u - k
+                if w0 * (1 - f) > 0:
+                    infl.append([chain[k], w0 * (1 - f)])
+                if w0 * f > 0:
+                    infl.append([chain[k + 1], w0 * f])
+                split = True
+            if not split:
+                continue
+            # 4 influences per vertex is the hard cap in the packed format, and
+            # the tent pushes some vertices to 5: drop the smallest and
+            # renormalize rather than let the extra slot fall off the end.
+            # Reported below, because a cap that silently ate real weight
+            # would show up as a mystery crease rather than as a number.
+            infl.sort(key=lambda q: -q[1])
+            if len(infl) > 4:
+                clipped += 1
+                worst = max(worst, sum(q[1] for q in infl[4:]))
+            del infl[4:]
+            tot = sum(q[1] for q in infl) or 1.0
+            jidx[vi] = [q[0] for q in infl] + [0] * (4 - len(infl))
+            jwgt[vi] = [q[1] / tot for q in infl] + [0.0] * (4 - len(infl))
+        if clipped:
+            print('   %s: %d twist bones, %d vertices clipped to 4 influences '
+                  '(worst dropped weight %.3f)' % (fore_name, n, clipped, worst))
+
+
 def build_skinned(key, cfg):
     """Bake a REAL skin: one mesh plus the bone tree, instead of splitting the
     geometry into rigid parts.
@@ -697,6 +802,13 @@ def build_skinned(key, cfg):
             tot += w
         bindv.append(tuple(a / tot for a in acc) if tot > 0
                      else xf_point(skinmat[int(ji[0])], v))
+
+    # Forearm twist bones, once the bind pose exists (the ramp is measured on
+    # it). This only re-labels weights - a twist bone shares its forearm's
+    # bind matrix, so every bindv above stays exactly what it was.
+    jidx = [list(v) for v in jidx]
+    jwgt = [list(v) for v in jwgt]
+    add_twist_bones(cfg, bones, ibm, jname, jindex, joints, wm, bindv, jidx, jwgt)
 
     R = m_ident()
     for axis, deg in cfg.get('rot', []):
@@ -1030,6 +1142,17 @@ MODELS = {
         # would shrink the part that is actually on screen
         'normPair': ('LowerArm.R.001', 'IndexTip.R.001'),
         'length': 0.42,           # elbow -> index fingertip joint
+        # Forearm twist bones (see add_twist_bones): the rig has no twist
+        # joint, so the whole pronation - ~160 deg in a natural support grip -
+        # used to land on the near-hard elbow and fold it into a wedge.
+        'twist': [('LowerArm.L', 'Hand.L'), ('LowerArm.R.001', 'Hand.R.001')],
+        # Segments per forearm. The pinch at the worst-blended cross-section
+        # goes as cos(roll / 2n) - measured on the posed skin and it matches
+        # to a tenth of a percent - so against the 161 deg the shotgun's
+        # support hand needs: 1 segment -71%, 3 segments -10.8%, 5 -3.9%.
+        # Extra segments are nearly free (one bone and one quaternion each,
+        # and the tent still spans two of them), so buy the margin.
+        'twistSegments': 5,
     },
 }
 
