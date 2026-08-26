@@ -1101,7 +1101,12 @@ MODELS = {
         'rot': [('y', 90)],
         'length': 1.05,
         'center': True,
-        'order': ['body'],
+        # One node like the SMG, so the magazine the reload carries out of the
+        # well is the ISLAND under it (see split_parts): 124 triangles,
+        # x +-0.013 y[-0.182 +0.038] z[-0.035 +0.077], principal axis
+        # (0, 0.9915, 0.130) - near-vertical, raked 7.5 deg forward.
+        'split': [{'part': 'mag', 'island': (0, -0.170, 0.010)}],
+        'order': ['body', 'mag'],
     },
     # sniper rifle (weapon slot 5); static low-poly, muzzle at +X
     'sniper': {
@@ -1112,7 +1117,12 @@ MODELS = {
         'rot': [('y', 90)],
         'length': 1.58,
         'center': True,
-        'order': ['body'],
+        # The bolt handle is the ONE island that sticks out to the right of
+        # the receiver (x up to +0.050 where everything else stops at +0.017):
+        # 68 triangles, x[-0.033 +0.050] y[+0.038 +0.085] z[+0.282 +0.296].
+        # Carved out so the cycle after every shot can drive real geometry.
+        'split': [{'part': 'bolt', 'island': (0.045, 0.060, 0.289)}],
+        'order': ['body', 'bolt'],
     },
     # first-person arms for the player viewmodels (BRON-2); one skinned mesh
     # with both arms. Split into ANIMATABLE parts: forearm+palm per side plus

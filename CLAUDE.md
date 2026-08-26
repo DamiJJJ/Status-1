@@ -260,7 +260,12 @@ więc formy męskie w kwestiach DO gracza są OK.
   do nowej części, więc granice stawiaj na krawędziach fasetek, a nową część
   dopisz do `order`. Po zmianie `length` przelicz pudełka - są w metrach.
   Tak jedzie magazynek SMG (`mag`, x ±0,0155 y[-0,160 0,055] z[-0,168 -0,104])
-  i jego płyta zamka (`bolt` = cały materiał `Grey`).
+  i jego płyta zamka (`bolt` = cały materiał `Grey`). Od 2026-08-26 tą samą
+  drogą jadą: magazynek KARABINU (`mag`, wyspa c(0, -0,075, +0,010),
+  x ±0,013 y[-0,182 +0,038] z[-0,035 +0,077], oś główna (0, 0,9915, 0,130) -
+  prawie pionowa, 7,5° do przodu) i rączka zamka SNAJPERKI (`bolt` - JEDYNA
+  wyspa wystająca w prawo od komory, x do +0,050 przy reszcie ≤ +0,017;
+  68 trójkątów, x[-0,033 +0,050] y[+0,038 +0,085] z[+0,282 +0,296]).
   **`paint` (2026-08-19)** dokłada modelowi materiały, których nie ma w źródle:
   lista reguł `{mat, src?, bones?, x/y/z: (lo, hi)}` przenosi trójkąty do nowej
   grupy materiałowej po dominującej kości i pudełku w METRACH pozy bind
@@ -274,8 +279,9 @@ więc formy męskie w kwestiach DO gracza są OK.
   rozmiar (ręce: ucięte ramię `cut` zawyżało bbox, patrz `--probe`, wiersz
   `!! parts not in order`).
   Konwencja broni: lufa wzdłuż **lokalnego −Z**, `length` = długość całkowita,
-  `center: True`; wypieczone są `glock`, `smg`, `shotgun` (Mossberg 590A1,
-  części body+pump), `rifle`, `sniper`.
+  `center: True`; wypieczone są `glock`, `smg` (body+mag), `shotgun`
+  (Mossberg 590A1, części body+pump), `rifle` (body+mag) i `sniper`
+  (body+bolt - rączka zamka jeździ po każdym strzale).
 - **Kucanie** (Ctrl/C, trzymane): `player.crouching` + `player.eyeH` (płynny lerp
   `PLAYER_EYE`↔`CROUCH_EYE`; podłoga to `pos.y <= eyeH` — stojąc na ziemi oko podąża
   za lerpem wprost, bez grawitacji, żeby zejście w kucki nie brzmiało jak upadek).
@@ -721,6 +727,97 @@ więc formy męskie w kwestiach DO gracza są OK.
   (wyjątek: SMG i snajperka są przysunięte o 0.10 bliżej kamery - czytały się
   jako odsunięte; `adsPos.z` oddaje ten dystans z powrotem, więc pozycja ADS
   zostaje ta sama).
+  ⚠️ **Karabin PRÓBOWAŁ z niej wyjść 2026-08-25 i musiał wrócić** - winna
+  KOLBA (zgłoszenia użytkownika: najpierw „przy celowaniu kolba wchodzi
+  w kamerę i widzimy przezroczystość w jej miejscu", potem „podczas
+  przesunięcia z pozycji nie-celowania do celowania jakoś dziwnie przenika").
+  Przysunięcie faktycznie zdejmuje kikut z kadru, ale przepycha kolbę przez
+  near plane, a rozcięta skorupa z odrzuconymi tylnymi ściankami czyta się
+  jako DZIURA.
+  ⚠️ **Dziura żyje w ŚRODKU blendu ADS, więc oba końce mogą wyjść czysto,
+  a przejazd i tak ją pokazuje.** Liczy się nie to, CZY płaszczyzna tnie broń
+  (przy biodrze tnie zawsze), tylko GDZIE wypada przekrój: płytkie ścięcie
+  samego czubka rzutuje się daleko poza kadr i tak samo głębokie cięcie, gdy
+  broń stoi jeszcze z prawej - ale płytkie cięcie przy broni NA ŚRODKU ląduje
+  w kadrze. Przy `root.z` +0.02 tył przejeżdżał +0,087 → −0,093 i otwierał
+  dziurę na t 0,65-0,85, czyli dokładnie wtedy, gdy broń się prostuje.
+  ⚠️ **Blend trzeba więc mierzyć CO UŁAMEK, nie na końcach** - i pinować go
+  PO aktualizacji, a nie przed: `updateViewmodel` sam dociąga `adsBlend` do
+  celu, więc ustawienie go przed wywołaniem daje mu tylko nowy punkt startowy
+  (pin na 0 wychodził ~0,2). Drugi przebieg z `dt = 0` pozuje dokładny ułamek.
+  Zmierzone co 0,05: jedyny czysty kształt to ten, który mają pozostałe
+  bronie - tył albo zostaje ZA okiem przez całą drogę (SMG +0,050 → +0,010,
+  strzelba +0,290 → +0,130), albo PRZED nim przez całą drogę. Kolba karabinu
+  jest za wysoka na pierwsze (przemiecione do `adsPos` −0.28 - dziura od
+  t 0,65), więc jedzie drugie, a to przybija `root.z` do kotwicy: już przy
+  −0.10 dziura wraca. **Biodro nie może się przysunąć ani o centymetr, bo
+  jest POCZĄTKIEM przejazdu do ADS.**
+  Zostaje ostatnie 0,025 dojazdu przy ADS: −0.505 to najbliższy czysty ułamek,
+  −0.48 już dziurawi, a bieżące **−0.52** trzyma zapas (tył −0,048 → −0,108,
+  monotonicznie od płaszczyzny). Kikut zdejmuje za to ramię wsparcia - niżej.
+  ⚠️ **Dziurę mierz PROMIENIEM W TYLNĄ ŚCIANKĘ, nie okiem i nie po pozycji
+  kolby** (2026-08-26). Test: promień z kamery przez siatkę ekranu; pierwszy
+  trójkąt broni ZA near plane musi być PRZEDNI - jeśli jest tylny, przód
+  skorupy został ucięty i widać przez nią świat. Ciemna broń na ciemnej
+  arenie nie da się tego ocenić ze zrzutu (próbowane, nie dało się).
+  ⚠️ **Raycaster Three.js honoruje `material.side`**, a wszystkie materiały
+  broni są `FrontSide` - więc sonda, która nie przełączy ich na czas pomiaru
+  na `DoubleSide`, NIGDY nie trafi w tylną ściankę i zamelduje „czysto" nawet
+  przy 714 wierzchołkach uciętych near planem (zmierzone - pierwsza wersja
+  sondy dokładnie tak kłamała). Materiały są WSPÓŁDZIELONE, więc przywrócenie
+  `side` po pomiarze jest obowiązkowe.
+  Zmierzone tą sondą (siatka 99×99, co ułamek blendu): `root.z` **−0.10 to
+  ostatni czysty krok**, −0.09 otwiera 321 próbek prześwitu na t 0,75, −0.07
+  daje 797 przy pełnym ADS. Notatka wyżej („przy −0.10 dziura wraca") była
+  o jeden krok zbyt ostrożna, ale wniosek zostaje ten sam: **dystansem
+  kadrowania kikuta na karabinie kupić się NIE DA** - w czystym oknie
+  pierścień dalej siedzi w kadrze (4/20, |ndc y| 0,94 przy progu 1,00).
+  Dlatego karabin dostał `CARRY_SHOULDER` - patrz niżej.
+  ⚠️ **`fore` i `upper` to dwa pola, których DEVRIG nie ocenia** - nie ruszają
+  dłoni ani o 0,1 mm (zmierzone na każdym przemieceniu), decydują o KSZTAŁCIE
+  kończyny w widoku gracza i o kadrowaniu kikuta, a kamera warsztatowa nie
+  pokazuje ani jednego, ani drugiego. Przy karabinie oba objawy brały się
+  z `fore` biegnącego pod azymutem 45°, czyli W POPRZEK broni: kikut siedział
+  w kadrze (10/20, |ndc y| 0,63), a łokieć uciekał **0,202 m W BOK** od
+  nadgarstka przy zaledwie 0,040 m w dół - na ekranie szeroka blada płyta
+  przedramienia w lewym dolnym rogu (zgłoszenie użytkownika: „łokieć jest
+  nienaturalnie wygięty, powinien iść bardziej w dół niż w bok"). Obrócenie
+  go wzdłuż broni i podniesienie (az 45 → 25, el 10 → 40) sadza łokieć POD
+  nadgarstkiem: 0,094 w bok przy 0,177 w dół (biodro) i 0,016 przy 0,174
+  (ADS).
+  ⚠️ **`upper` musi wtedy zejść W DÓŁ, i decyduje o tym ŁOKIEĆ**: poza
+  spoczynkowa ustala `shoulderHome`, więc kąt MIĘDZY tymi dwoma kierunkami
+  jest tym, co zostaje jako zgięcie łokcia, gdy IK zakotwiczy bark.
+  Podniesienie obu naraz PROSTUJE ramię - przy az 7 el 20 łokieć przy ADS
+  blokował się na 177°, czyli ta sama kończyna na sztywno, przed którą
+  powstało `SPRINT_SHOULDER_TWEAK`. Przy az −10 el −8 siedzi na 122° (biodro)
+  i 145° (ADS), kikut dalej poza kadrem (|ndc y| 1,34 / 1,56), a skręt
+  przedramienia jest NIŻSZY niż na wartościach z DEVRIG (159/154 zamiast
+  179/174). Ceną jest zgięcie nadgarstka: 11 → 39 przy biodrze, 24 → 53 przy
+  ADS - żółte pasmo edytora, daleko od czerwonego.
+  ⚠️ **Te wartości zastąpił dial użytkownika z DEVRIG** (2026-08-26): karabin
+  i snajperka dostały ten sam PŁYTKI układ przedramienia co strzelba
+  (`fore` [0.5279, 0.0872, -0.8448], czyli ~5° nad poziom, wzdłuż broni).
+  To jest ta sama poza, którą użytkownik zatwierdził do zdjęcia
+  referencyjnego, i ma tę samą cenę co tam: wypycha KIKUT w kadr (zmierzone:
+  karabin 8/20 pierścienia przy biodrze, snajperka 16/20). Nie prostuj tego
+  z powrotem do pionu - kikut kadruje się osobno, patrz niżej.
+  ⚠️ **To nie wystarczyło - RAMKĘ dłoni też trzeba było wymienić**
+  (2026-08-26, zgłoszenie użytkownika: ręka dalej źle wygięta przy
+  celowaniu). Kąty ramienia były już dobre, ale `channel` dostrojony
+  w DEVRIG biegł 30° W POPRZEK broni, więc palce przewieszały się przez
+  GÓRĘ łoża i przy ADS czytały się jako blady kłąb gołej skóry siedzący na
+  linii celowania (rękawice są BEZ PALCÓW - wszystko, co wychodzi poza
+  sylwetkę broni, świeci skórą). Naprawa: ramka dłoni wsparcia STRZELBY
+  (jedyny chwyt wsparcia zatwierdzony przez użytkownika do zdjęcia
+  referencyjnego) przeszczepiona w całości - kanał 15° od osi lufy, dłoń
+  pod łożem - z `pos` rozwiązanym wstecz na żywą pięść (0, 0.070, -0.14)
+  i mocniejszymi zwojami. Kciuk idzie PRZEZ GÓRĘ (tAdd +0.40, czubek na
+  x -0,036 y 0,118 - przytulony do górnej lewej krawędzi łoża, sylwetka na
+  tle broni); na dostrojonym -0.12 sterczał w bok na x -0,075 jako oderwany
+  skórowy klocek obok łoża w każdej klatce ADS. Pomiary po wymianie: skręt
+  159 → 144 (biodro) / 135 (ADS), zgięcie 38/54, łokieć 122/145, kikut
+  1,44/1,71 - wszystko mierzone, nie na oko. `fore`/`upper` zostały.
   ⚠️ **Dystans ADS to osobna decyzja od kotwicy** (SMG 2026-08-21, decyzja
   użytkownika „nie musimy widzieć tyle kolby"): SMG celuje z `adsPos.z`
   −0.50 zamiast wspólnego −0.54, czyli BLIŻEJ oka niż reszta rodziny. Przy
@@ -1020,7 +1117,8 @@ więc formy męskie w kwestiach DO gracza są OK.
     była w kadrze przy biodrze (0,79), a CAŁY przy ADS (0,70) - i kikut
     zostawał widoczny po dwóch „naprawach" (zgłoszenie użytkownika 2026-08-21,
     trzy razy z rzędu). Przy poprawnej sondzie pozostałe cztery bronie
-    przechodzą (pistolet 9,00, SMG 1,74, karabin 1,12, snajperka 4,14).
+    przechodzą (pistolet 9,00, SMG 1,74, karabin 1,12, snajperka 4,14;
+    karabin po przestrojeniu ramienia z 2026-08-25 ma 1,55 - patrz wyżej).
     Podpowiedź łokcia (pole) to `upper` z wpisu - dokładnie ten kierunek,
     na który dostrojona jest poza spoczynkowa, więc podanie wartości
     spoczynkowych odtwarza ją kość w kość.
@@ -1038,6 +1136,45 @@ więc formy męskie w kwestiach DO gracza są OK.
     kadr (NDC |y| 1,07-1,25 zamiast 0,74-0,83) przy pięści dalej na osi łoża
     i przy MNIEJSZYM zgięciu nadgarstka. Przesuwanie dłoni po łożu prawie nic
     tu nie daje - sprawdzone.
+    ⚠️ **Magazynek wkłada się DWOMA nogami, nie po prostej** (`magSeat`
+    w weapons.js, 2026-08-26, zgłoszenie użytkownika „przy wkładaniu
+    magazynka jest moment, że przebija przez teksturę broni"). Prosta
+    `low` → `mag` biegnie SKOŚNIE do osi magazynka: zmierzone na karabinie,
+    ta droga wznosi się ze składową z −0,39, a bryła magazynka jest pochylona
+    +0,13, więc górny przedni róg zamiata przez przednią ściankę gniazda.
+    Teraz jest punkt pośredni pod gniazdem (na osi, `mag + magDrop × 0.45`)
+    i ostatnie 38% okna to pchnięcie PROSTO PO OSI - żadnej nowej liczby per
+    broń, bo `magDrop` już tę oś mierzy. Broń bez `magDrop` jedzie po staremu.
+    ⚠️ **Wyciąganie ma tę samą wadę i wymaga lustrzanej poprawki** (`magPull`,
+    2026-08-26 - użytkownik zgłosił to osobno, najpierw dla SMG, potem
+    „to samo jest też w karabinie"). Magazynek najpierw idzie PROSTO W DÓŁ po
+    osi, aż wyjdzie z gniazda, i dopiero potem odchodzi w bok.
+    ⚠️ **Kryterium sprawdzania**: nie „czy tor jest równoległy do osi"
+    (na drugiej nodze z definicji nie jest), tylko **czy magazynek jest
+    jeszcze W GNIEŹDZIE, gdy zaczyna schodzić z osi**. Głębokość osadzenia
+    mierzy się z geometrii: najniższy punkt komory NAD obrysem magazynka
+    (SMG: mag do y +0,055 przy wylocie gniazda -0,005, czyli 0,060 m
+    zanurzenia; karabin 0,030 m), a zejście po osi daje 0,45 × 0,25 =
+    0,11 m - z zapasem. Po poprawce: cztery przypadki (dwie bronie × dwie
+    strony) bez ani jednej klatki skrętu w gnieździe.
+    ⚠️ **`CARRY_SHOULDER` - zejście barku w NOSZENIU, per broń** (weapons.js,
+    2026-08-26). Jedyne pchnięcie barku, które NIE jest wygaszane wagą pozy,
+    bo poza, którą naprawia, to stanie w miejscu. Powstało dla karabinu:
+    jego ramię wsparcia niesie płytki dial użytkownika, kikut wchodzi w kadr,
+    a zwykłe lekarstwo (przysunięcie broni do oka) jest dokładnie tym, co
+    przepycha jego kolbę przez near plane. Bark kosztuje za to zero
+    geometrycznie - IK trzyma pięść na chwycie (zmierzone: błąd 0,0000 m),
+    a różnicę biorą stawy, tak jak przy `SPRINT_SHOULDER_TWEAK`.
+    ⚠️ Bierz NAJPŁYTSZE zejście, które czyści pierścień, nie najgłębsze:
+    ramię płaci za głębokość PROSTOWANIEM i za swoim optimum blokuje się na
+    sztywno. Zmierzone na karabinie (łokieć przy ADS): −0.04 → 161°,
+    −0.06 → 166°, −0.07 → 170°, −0.10 → 178° (zablokowany). Bieżące **−0.06**
+    czyści pierścień z zapasem w obu pozach (|ndc y| 1,15 biodro / 1,29 ADS)
+    przy łokciu 150/166°.
+    ⚠️ Świadomie łamie to gwarancję „gra odtwarza pozę z DEVRIG kość
+    w kość" - dla TEJ broni: edytor nie pokazuje kikuta (patrz
+    `ARM_CARRY_REST`), więc dial, który w warsztacie wygląda dobrze, i tak
+    potrafi powiesić uciętą kończynę na środku ekranu gracza.
     ⚠️ Ten rig stoi w KAŻDYM dostrojonym chwycie na 99,5% wyprostu
     (zmierzone: `SW` 0,4877 przy zasięgu 0,4901), więc bark na sztywno nie
     dosięgnąłby nawet gniazda magazynka. Stąd dwa luzy w hands.js:
@@ -1309,13 +1446,81 @@ więc formy męskie w kwestiach DO gracza są OK.
     ⚠️ **Pozy przeładowania nie da się obejrzeć wymuszając ją z konsoli** -
     zrzut ekranu wyzwala klatkę, `tick` przelicza pozę z `reloadTimer`
     i wymuszenie znika. Trzeba PRZYPIĄĆ `reloadTimer` w pętli `rAF`.
+    ⚠️ **Każda faza MUSI ustawić wagę OBU dłoni - brak wpisu to teleport**
+    (snajperka 2026-08-26, zgłoszenie użytkownika „po zapakowaniu naboi ręka
+    teleportuje się z powrotem na chwyt i zamek"). Gałąź zamka w stylu
+    `shellBolt` w ogóle nie dotykała `lw`, więc lewa dłoń - którą ostatni
+    cykl ładowania zostawia NA PEŁNEJ wadze w dole (`low`) - wracała na łoże
+    w JEDNEJ klatce. Druga połowa tej samej usterki: `rw` jechało
+    `vmEase(t, 0.66, 0.76)`, czyli od ułamka SPRZED początku gałęzi (w1 =
+    0,70), więc prawa dłoń pojawiała się na zamku od razu z wagą 0,5.
+    **Wszystko, co keyframujesz w tej gałęzi, keyframuj względem `w1`.**
+    ⚠️ **Teleport wykrywa się PRĘDKOŚCIĄ, nie okiem**: przemieć przeładowanie
+    stałym krokiem i porównaj największy skok pięści na krok z medianą TEGO
+    SAMEGO przemiatania. Uwaga na aliasing - krok 0,03 na cyklu ładowania
+    (który sam trwa 0,19) daje fałszywe 0,365 m. Przy kroku 0,008 wyszło:
+    przejście 0,102 m/krok przy 0,102 wewnątrz zwykłego cyklu, czyli skok
+    nieodróżnialny od normalnego wahnięcia - i to jest kryterium.
     Broń bez `grips`
-    jedzie po staremu, samą pozycją - dotyczy to karabinu i snajperki,
-    które mają dostrojony chwyt BOJOWY, ale nie
-    przeładowania. Kotwice (`mag`/`low`/`bolt`) liczy się
+    jedzie po staremu, samą pozycją - dziś to tylko strzelba (decyzja
+    użytkownika 2026-08-25). Od 2026-08-26 karabin ma `grips.mag`/`bolt`
+    (magazynek w pięści + boczny chwyt rączki), a snajperka `grips.port`
+    (nabój od LEWEJ strony komory) i `grips.boltR` - PIERWSZY chwyt PRAWEJ
+    dłoni: gałąź shellBolt w `applyReloadPose` i cykl po strzale przekazują
+    go przez `rgA`/`_boltTarget`. Kotwice (`mag`/`low`/`bolt`) liczy się
     z geometrii (`tools/gen_models.py --probe`), a `low` NIE może być dalej
     niż sięga ramię - IK zatrzyma dłoń w powietrzu zamiast wyprowadzić ją
     poza kadr.
+    ⚠️ **Chwyt `port` snajperki jest OD LEWEJ, i to nie jest wybór stylu,
+    tylko wymuszenie geometrii** (2026-08-26). Przekrój przez komorę
+    (z 0,14-0,30) mówi: komora zajmuje y od -0,02 do +0,09 i x od -0,033 do
+    -0,001, a LUNETA zamyka górę od y +0,10 - zostaje 1 cm szpary, więc
+    ładowania górą po prostu nie da się pokazać, cokolwiek robi prawdziwy
+    zamek. Lewa flanka jest przy tym tą, którą widzi kamera (broń jest
+    noszona na prawo od oka). Nabój (`shellProp`) jedzie na `vmMatOrange` -
+    na `vmMatMid` 7-milimetrowy walec był niewidoczny na tle komory.
+    ⚠️ **Kotwice `port`/`low` trzeba PRZELICZYĆ po każdym przestrojeniu
+    chwytu `l`** - są w przestrzeni ZAMROŻONEJ kotwicy, a offset
+    zamrożona→żywa jest własnością chwytu. Po dialu użytkownika ładująca
+    pięść wylądowała NA WIERZCHU komory (0,001, 0,097, 0,224) z nadgarstkiem
+    zgiętym 129° i łokciem zablokowanym na 178° - stąd „ładuje ammo chuj wie
+    gdzie" i „ręka wygięta nienaturalnie". Po przeliczeniu: 13° nadgarstka,
+    44° skrętu, 76° łokcia.
+    ⚠️ **Rolka dłoni wokół osi chwytu to osobna decyzja od kierunku naboju**
+    (2026-08-26, „obróć jeszcze dłoń lewą w trakcie przeładowania"). Kanał
+    dalej celuje w komorę, więc nabój wskazuje tam, gdzie wskazywał - obraca
+    się sama dłoń. Przemiatając rolkę **przeliczaj kotwicę przy każdym
+    kroku** - offset zamrożona→żywa obraca się razem z chwytem, więc bez tego
+    porównuje się dwie różne POZYCJE, a nie dwa obroty.
+    ⚠️ **Dokręcona o kolejne 90° tego samego dnia: „kciuk na górze"**
+    (zgłoszenie użytkownika: dłoń przy wkładaniu naboi jest nienaturalnie
+    wykrzywiona). Dotychczasowe 270° kładło dłoń PŁASKO grzbietem do góry,
+    czyli z kciukiem POD nią - to była ta wykrzywiona rękawica.
+    ⚠️ **Którędy jest „w lewo", rozstrzyga POMIAR, nie znak kąta**: mierz
+    czubek kciuka względem nadgarstka w przestrzeni KAMERY i bierz tę rolkę,
+    która go podnosi. Zmierzone co 45° (y kamery): 270° -0,052 (kciuk pod
+    dłonią), 180° -0,093, 315° +0,035, **0° (= 270 + 90) +0,105** - jedyny
+    kandydat z kciukiem wyraźnie na wierzchu i dokładnie żądane 90°. Stawia
+    pięść na sztorc, z kciukiem nad nabojem.
+    ⚠️ **Rolkę płaci NADGARSTEK, a rachunek przenosi się na PODPOWIEDŹ
+    ŁOKCIA**: `upper` celuje przedramieniem, a zgięcie nadgarstka to dłoń
+    mierzona WZGLĘDEM przedramienia, więc jedno wymienia się na drugie. Na
+    starej podpowiedzi ta rolka kosztowała 79° (tuż pod czerwonym); po
+    przemieceniu azymutu i wzniosu dno wypada na 66-67° przy az 195-210 i
+    el -45. Bieżące: 67° nadgarstka, 62° skrętu, 99° łokcia, pierścień kikuta
+    czysty (0/20, |ndc y| 1,79).
+    ⚠️ **Cena jest w ZJEŹDZIE po nabój, nie przy oknie**: nadgarstek rośnie
+    monotonicznie z zejściem dłoni (zmierzone pasmami NDC: -0,4 → 67°,
+    -0,6 → 73°, -0,8 → 80°, -1,0 → 89°). Liczy się okno ładowania; zjazd
+    idzie za dolną krawędź. Skracaniem `low` się tego nie kupi - przysunięcie
+    go do kamery zbija szczyt raptem z 86° na 75°, za to wywala pięść na
+    NDC -2,2, czyli w błąd, który ten anchor już raz miał.
+    ⚠️ **Zjazd `low` też był poza zasięgiem ramienia**: pięść leciała na
+    NDC (1,34, -3,87), czyli przez PRAWY dolny róg dwa ekrany w dół,
+    z łokciem 178° - to jest IK dociskające dłoń do nieosiągalnej kotwicy,
+    a nie poza. Dziś (0,26, -1,27), tuż za krawędzią, przy 40° nadgarstka
+    i 80° łokcia. Przy okazji cały cykl ładowania zwolnił z 0,102 na
+    0,039 m/klatkę, bo droga jest krótsza.
     ⚠️ **Kotwice przeładowania są w przestrzeni ZAMROŻONEJ kotwicy
     (`gripAnchor`), nie żywej pięści** (2026-08-21): dziura w pięści, wokół
     której faktycznie zamykają się palce, ląduje po nałożeniu zwojów chwytu
@@ -1425,8 +1630,21 @@ więc formy męskie w kwestiach DO gracza są OK.
     pistolet NIE ma i mieć nie powinien, bo jego dłoń podpierająca pracuje
     blisko osi kadru.
     Pudełko w pięści (`magProp`/`magDim`) to zastępczy magazynek dla broni,
-    której model nie ma odłączalnego (dziś karabin) - broń z `magSwap`
-    (pistolet, SMG) nie ma go wcale, bo niesie swój własny.
+    której model nie ma odłączalnego - od 2026-08-26 ŻADNA broń go nie
+    używa: karabin dostał własny wycięty magazynek (`split` w wypieku)
+    i `magSwap: true` jak pistolet i SMG. Ścieżka pudełka zostaje w kodzie
+    jako fallback dla przyszłej broni bez odłączalnego magazynka.
+    ⚠️ **Przeciąganie zamka karabinu jest BOCZNE, nie znad broni**
+    (2026-08-26): chwyt znad komory (jak przy zamku Glocka) stawiał pięść na
+    NDC (0,32, 0,05) - środek ekranu - a całe przedramię kładło się w poprzek
+    kadru jako blada płyta. Kotwica `bolt` [-0.055, 0.10, 0.10] + ramka
+    boczna SMG (kanał wzdłuż lufy, grzbiet dłoni w lewo-górę) trzymają dłoń
+    OBOK komory. Karabin ma też własny `relGun` (studnia magazynka siedzi
+    niżej i dalej niż u pistoletu) - zjazd `low` mierzony: pięść NDC -1,36,
+    góra magazynka -1,06, czyli poza kadrem jak u SMG.
+    ⚠️ Kotwice `mag`/`low` karabinu są od razu ŻYWĄ pięścią (`byFist` przez
+    `magSwap`), więc czyta się je wprost z geometrii magazynka - bez
+    doliczania biasu, którym pistolet przeliczał stare liczby.
     ⚠️ **Kotwice przeładowania mierzą ŻYWĄ dziurę w pięści, nie zamrożoną**
     (`byFist` + `fistBias` w hands.js, 2026-08-21). Obie kotwice różnią się na
     tym rigu o 0,032 m i każda jest dobra do czego innego: `pos` dostrojonego
@@ -1509,6 +1727,31 @@ więc formy męskie w kwestiach DO gracza są OK.
     PER BROŃ, jak `SPRINT_TWEAK` i `RELOAD_SHOULDER`. Pistolet zostaje bez
     wpisu: obie dłonie ma na chwycie, ramię wsparcia nigdy nie sięga, a jego
     przedramię i tak jest poza kadrem (3 wierzchołki).
+    ⚠️ **Karabin dostał swój wpis 2026-08-26** (zgłoszenie użytkownika:
+    „podczas biegu z karabinem lewy kikut jest widoczny i brzydko schodzi,
+    powinien schodzić niżej") - dokładnie ta sama usterka co u strzelby
+    i to samo lekarstwo, odkąd jego ręka wsparcia niesie płytki dial.
+    Zmierzone przez wahnięcie biegu (zejście → zapas pierścienia / łokieć):
+    brak → 1,08 i zablokowane 178°, −0.08 → 1,37/178, −0.14 → 1,68/178,
+    −0.20 → 2,03/162, **−0.26 → 2,34/146**, −0.32 → 2,66/140. Łokieć
+    odblokowuje się dopiero od −0.20; −0.26 stawia go na 146°, czyli tam,
+    gdzie ta sama ręka siedzi przy biodrze (149°) - kończyna czyta się
+    w biegu tak samo jak na stojąco.
+    ⚠️ **Snajperka dostała swój wpis tego samego dnia** (zgłoszenie: „podczas
+    biegu ze snajperką widać kikut, niech ręka będzie niżej"). Uwaga na to,
+    co się tu NIE poprawia: jej dłoń wsparcia siedzi daleko na lufie, więc
+    ramię jest w biegu na pełnym wyproście niezależnie od barku - łokieć
+    mierzy zablokowane 178° przy KAŻDYM zejściu, a dłoń trzyma się chwytu
+    tylko dzięki `SHOULDER_LEAN_MAX`. Zejście kupuje wyłącznie kadrowanie
+    i kupuje go dużo: pierścień 1,07 (ledwo za krawędzią - dlatego dalej
+    czytał się jako widoczny) → 1,48 przy −0.10, 1,94 przy −0.18,
+    **2,45 przy −0.26**. Wyrównane do dwóch pozostałych długich broni.
+    ⚠️ **Ile broni widać w biegu, mierz LICZNIKIEM, nie zrzutem** - ciemna
+    broń na ciemnej arenie potrafi wyglądać na „zniknęła", gdy jest w kadrze.
+    Zmierzone po tej zmianie (wierzchołki bryły na ekranie / najwyższy punkt
+    NDC): pistolet 3650/-0,69, SMG 1901/-0,58, strzelba 3356/-0,67, karabin
+    1790/-0,82, snajperka 679/-0,85. Karabin jest w kadrze - pierwszy odczyt
+    „znikł" był błędem oka, nie pomiaru.
     ⚠️ **Kadrowanie kikuta mierz na PIERŚCIENIU, nie na liczniku wierzchołków
     ramienia.** Proxy „ile wierzchołków ramienia widać" pokazało kikut w kadrze
     dla trzech broni w biegu; prawdziwy pierścień otwartego brzegu (ten, który
@@ -1558,11 +1801,93 @@ więc formy męskie w kwestiach DO gracza są OK.
     (`dt * 20` vs `dt * 7`), więc poza biegu schodzi w ~80 ms zamiast
     kłócić się z animacją, która ją zastąpiła.
   - **Luneta z podniesieniem:** PPM na snajperce NIE włącza lunety od razu -
-    `zoomBlend` (~0.32 s) wiezie broń „do oka" (`ZOOM_RAISE`), overlay+FOV 24°
+    `zoomBlend` wiezie broń „do oka" (`ZOOM_RAISE`), overlay+FOV 24°
     +czułość 0.35 wchodzą dopiero na szczycie (`setScopeOverlay`); puszczenie
     PPM zdejmuje overlay natychmiast, broń opada. `spreadZoom` obowiązuje
     tylko pod pełną lunetą (`scoped`), w trakcie podnoszenia strzela się
     rozrzutem z biodra. Diagnostyka: `__test.scoped`.
+    Snajperka jest też **przysunięta do oka** (`root.z` −0.28 → −0.16,
+    decyzja użytkownika 2026-08-26: „case jak przy pozostałych broniach -
+    przybliż ją, aż nie będzie widać kikuta", potem „oddal ją trochę, ale
+    tak żeby kikuta nie było"). Płytki dial ramienia wsparcia wypychał tu
+    pierścień głęboko w kadr; dystans oddaje to bez żadnych kosztów: obraz
+    przyrządów nie istnieje (celuje się overlayem, a viewmodel pod lunetą
+    jest ukryty), a dziury nie ma czym otworzyć - to NAJDŁUŻSZA broń w grze,
+    jej tył siedzi przy biodrze już 0,05 m ZA okiem, więc przysunięcie spycha
+    go tylko głębiej. Ile trzeba, zależy od CHWYTU i po każdym jego
+    przestrojeniu trzeba przemierzyć od nowa: pierwszy dial wymagał −0.10
+    (pierścień 16/20 przy −0.28), drugi kadruje sam z siebie znacznie lepiej
+    (1,93 tam, gdzie poprzedni dawał 1,27) i czyści się aż do −0.18, więc
+    broń wróciła na −0.16 - jeden krok od krawędzi, ten sam zapas co przy
+    strzelbie. Prześwitów 0.
+    ⚠️ **`muzzleLocal` jedzie z rootem** (dziś −0.95 = połowa długości 0,79
+    plus root −0.16) - jest w przestrzeni GRUPY viewmodelu, więc bez
+    przeliczenia błysk zostaje kilkanaście centymetrów za wylotem.
+    Podniesienie trwa **0,50 s** (z 0,32; decyzja użytkownika 2026-08-26:
+    „ma trwać dłużej i otwierać scope'a bliżej oka"), `ZOOM_RAISE` zjechało
+    z (0.10, -0.16, -0.50) na **(0.05, -0.13, -0.44)** - bliżej środka
+    i oka - a FOV w trakcie podnoszenia schodzi o 14° zamiast 8.
+  - **Cykl zamka snajperki po KAŻDYM strzale** (2026-08-26, jak pompka
+    strzelby): stałe `BOLT_HOLD` 0,25 s (odrzut wybrzmiewa, nikt nie rusza
+    zamka) + `BOLT_STROKE` 0,60 s; licznik `boltT`/`boltFired` w weapons.js.
+    PRAWA dłoń schodzi z chwytu na wyciętą rączkę (`grips.boltR` + kotwica
+    `bolt` [0.048, 0.075, 0.289] - rączka jest ~0,1 m nad chwytem), ciągnie
+    ją (`boltPart.position.z`, piwot w originie jak przy wyspach ze `split`)
+    i wraca; jedzie przez `applyCarryArms(vm, w, pump, boltEnv, boltYank)`
+    rel-stylowym targetem `_boltTarget` (zmienia się CAŁY chwyt, nie sama
+    pozycja). Budżet czasu: 45 rpm = 1,33 s między strzałami; 0,85 s cyklu
+    + 0,50 s ponownego podniesienia domyka się tuż przed następnym strzałem.
+    ⚠️ **Pod lunetą strzał NAJPIERW zdejmuje overlay** (`tryFire`:
+    `setScopeOverlay(false, true)` - CICHO, huk kryje foley), `zoomTarget`
+    bramkuje się na `boltT`, więc luneta wraca normalnym podniesieniem
+    (z własnym dźwiękiem) dopiero po cyklu - dokładnie sekwencja „wyjdź
+    z lunety, pokaż przeładowanie, wróć" (decyzja użytkownika 2026-08-26).
+    ⚠️ **W cyklu broń tylko SIĘ PRZECHYLA - nie wolno jej przesuwać**
+    (`BOLT_CARRY`, przestrojone 2026-08-26 po zgłoszeniu „po strzale jak
+    postać ciągnie za zamek to lewa ręka schodzi bliżej broni"). Bark ręki
+    wsparcia jest zakotwiczony w ciele, a dłoń przyspawana do łoża, więc
+    KAŻDY milimetr ruchu broni składa łokieć dokładnie o tyle: przy px -0.09
+    / py +0.05 lewy łokieć szedł 172° → 129° przy nieruchomym barku.
+    Przemiecione (zmiana łokcia / najgorszy NDC x pracującej pięści):
+    (-0.09, +0.05, 0.10) 45°, (-0.07, +0.03, 0.30) 41°/0,70,
+    (-0.04, +0.02, 0.35) 34°/0,83, (0, 0, 0.16) 24°/0,99,
+    **(0, 0, 0.45) 17°/0,96**. Sam obrót jest nie tylko tańszy od
+    przesunięcia - powyżej pewnego kąta jest DARMOWY i jeszcze oddaje:
+    17° to MNIEJ niż 26°, które kosztuje samo szarpnięcie przy zerowych
+    offsetach, bo przechył podprowadza rączkę pod dłoń zamiast dłoni pod
+    rączkę. Rączka zamka jest w kadrze w komplecie (128/128 wierzchołków)
+    w każdym wierszu, więc przesuwaniem broni nie kupuje się nic.
+    ⚠️ **Bark ręki WSPARCIA za to musi w cyklu ustąpić** (`BOLT_SHOULDER`,
+    2026-08-26, zgłoszenie użytkownika „łokieć lewej dłoni powinien być
+    bardziej w dół niż w bok"). Patrzy się tu na PRZEDRAMIĘ, nie na kąt
+    stawu: zmierzone w przestrzeni kamery, łokieć siedzi na y -0,21, a
+    przyspawany do łoża nadgarstek na -0,225, czyli przedramię leży POZIOMO
+    i przecina kadr jako szeroka blada płyta z lewego dołu. Nie robi tego
+    cykl - to płytki dial noszenia z biodra, cykl tylko każe na to patrzeć.
+    ⚠️ **Podpowiedź łokcia tego NIE naprawi**: ramię mierzy przez cały skok
+    178°, czyli jest zaryglowane na prosto, a proste ramię nie ma już
+    swobody, którą pole vector mógłby sterować - łokieć leży na odcinku
+    bark-nadgarstek, więc opuścić go może tylko opuszczenie BARKU (dłoń
+    zostaje, bo `reachArm` dochyla staw z powrotem po tej samej linii -
+    `SHOULDER_LEAN_MAX` ma 0,22 m przy 0,057 m potrzeby).
+    ⚠️ Składowa DO PRZODU nie jest ozdobą - to ona ODRYGLOWUJE ramię.
+    Zjazd w samym pionie zostawia je równie proste (178° na każdej głębokości
+    od -0,10 do -0,34), pchnięcie ku broni skraca zasięg i staw znów się
+    zgina. Przemiecione (łokieć minus nadgarstek w y kamery / kąt łokcia):
+    y -0.14 z 0 → -0,059/178 zablokowane, y -0.20 z 0 → -0,093/178,
+    y -0.26 z 0 → -0,122/178, y -0.20 z -0.08 → -0,154/136,
+    **y -0.26 z -0.08 → -0,167/156**, y -0.26 z -0.12 → -0,199/133 i
+    nadgarstek zaczyna kosztować (31°). Bieżący wiersz to jedyny, w którym
+    łokieć wychodzi bardziej W DÓŁ niż W BOK (0,167 przy 0,145; przedtem
+    +0,015 czyli NAD nadgarstkiem), przy stawie 139-156° (tyle co przy
+    biodrze), nadgarstku 17-24°, pięści na łożu co do 0,0000 m i pierścieniu
+    kikuta daleko poza kadrem (|ndc y| 2,24). Dźwięk `AudioSys.boltPull('sniper')` (takty Mosina)
+    odpala się Z ANIMACJI na starcie szarpnięcia - nigdy planowany z góry
+    (ta sama lekcja co pompka). Ostatni nabój NIE cykluje - przejmuje go
+    przeładowanie (`startReload` zeruje `boltT`, `switchWeapon`/
+    `resetWeaponFx` też; `clearReloadVisuals` odstawia `boltPart`). Rack
+    kończący puste przeładowanie jedzie tym samym chwytem `boltR` i też
+    rusza prawdziwą rączką.
   - **Reset:** `resetWeaponFx()` (zeruje blendy, plan, propy, overlay,
     pozy dłoni) woła `resetLevelState`; zmiana broni czyści propy starego
     viewmodelu (`clearReloadVisuals`).

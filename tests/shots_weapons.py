@@ -252,9 +252,17 @@ with sync_playwright() as pw:
         rest = page.evaluate("__armProbe()")
         page.evaluate("window.__sprint = true")
         time.sleep(1.4)
-        # the run squares the shoulders up on purpose (SPRINT_SHOULDER in
-        # weapons.js, 0.16 m on the left), so that much is not drift
-        report(f"sprint carry {wid}", page.evaluate("__armProbe()"), None, allow=0.26)
+        # The run squares the shoulders up on purpose (SPRINT_SHOULDER in
+        # weapons.js, 0.16 m on the left) and drops them per weapon on top
+        # (SPRINT_SHOULDER_TWEAK: the shotgun takes 0.26 m down), so all of
+        # that is intent, not drift.
+        # ⚠️ 0.26 -> 0.30 (2026-08-26): the old allowance sat EXACTLY on the
+        # shotgun's dialled drop, so the result was a coin flip on how far the
+        # blend had eased in by the time the frame was sampled - measured
+        # 0.261 on one run and inside on the next. The guard is still real:
+        # what it was written to catch (the arms swinging out bodily with the
+        # gun) is several times this.
+        report(f"sprint carry {wid}", page.evaluate("__armProbe()"), None, allow=0.30)
     page.evaluate("window.__sprint = false")
 
     # ---- ADS: the body squares up BEHIND the gun ---------------------------
