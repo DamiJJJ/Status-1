@@ -2121,6 +2121,118 @@ więc formy męskie w kwestiach DO gracza są OK.
     seria trzyma broń w górze), a zanik jest ~3× szybszy niż narastanie
     (`dt * 20` vs `dt * 7`), więc poza biegu schodzi w ~80 ms zamiast
     kłócić się z animacją, która ją zastąpiła.
+  - **Opuszczanie broni przy ścianie** (`wallBlend`, 2026-08-27, zgłoszenie
+    użytkownika: „jak staniemy przodem do ściany, to ręce wraz z bronią wchodzą
+    w ścianę i znikają"): promień z kamery do przodu po `worldGroup.children`
+    (`wallProximity()`) daje 0..1 z dystansu (pełne opuszczenie ≤ `WALL_NEAR`
+    0,85 m, zero od `WALL_FAR` 1,65 m), a poza to POZA BIEGU - te same
+    `SPRINT_POS`/`SPRINT_ROT` + `SPRINT_TWEAK`. Blend jest jednak WŁASNY
+    i łączony dopiero w punkcie użycia (`carryBlend = max(sprintBlend,
+    wallBlend)`), bo `sprintBlend` karmi rozmycie promieniste w main.js
+    i skalowanie boba - opuszczenie przy ścianie nie ma nieść żadnego efektu
+    biegu. Przeładowanie wycisza sondę (jego offsety są bezwzględne, nie
+    deltami na tej pozie).
+    ⚠️ **Kierunek sondy jest SPŁASZCZONY** (`y × 0.35`) i pomijane są ścianki
+    prawie poziome (|normalna.y| > 0,7): bez jednego i drugiego patrzenie pod
+    nogi opuszczało broń, bo podłoga jest 1,7 m pod okiem.
+    ⚠️ **Opuszczenie jedzie CIAŁEM, nie stawami** (zgłoszenie użytkownika
+    2026-08-27: „zrób żeby ręce razem z bronią schodziły, a nie nadgarstki
+    wygina jak gówno"). Wszystko, co broń robi PONAD `_carryPos`/`_carryRot`,
+    jest odchyłką, którą mają pochłonąć ramiona - więc przechył nałożony na
+    samą broń skarmiał nadgarstkom i łokciom cały ruch (pistolet wychodził
+    z dłońmi złożonymi do tyłu). Nadwyżka wall carry idzie więc DO
+    ODNIESIENIA: `armBodyFix` ją znosi, bark jedzie z bronią, a ramiona
+    schodzą sztywno, w pozie, w której były dostrojone (zmierzone: nadgarstki
+    i łokcie co do stopnia takie same jak z biodra dla czterech broni,
+    karabin ma 29° zamiast 40° zgięcia lewego).
+    ⚠️ Do odniesienia idzie WYŁĄCZNIE nadwyżka nad biegiem (`wOnly =
+    carryBlend - sprintBlend`), nigdy udział samego biegu: bieg jest dostrojony
+    tak, żeby brały go stawy, i niesie własne pchnięcie barku
+    (`SPRINT_SHOULDER`), więc wpuszczenie go tutaj przesuwałoby bark dwa razy.
+    Bieg pod ścianę zostawia `wOnly` na zerze i nie zmienia w biegu niczego.
+    ⚠️ **Sama poza biegu NIE wystarcza i to jest zmierzone**: promień gracza
+    to 0,5 m, więc przy ścianie oko stoi pół metra od lica, a bronie sięgają
+    0,69-1,41 m do przodu z biodra i dalej 1,05-1,27 m w pozie biegu - bieg
+    OPUSZCZA broń, ale jej nie SKRACA. Przy 0,52 m karabin miał 1697
+    wierzchołków za płaszczyzną ściany, czyli cały viewmodel wyrenderowany
+    w ścianie. Dlatego dochodzą `WALL_DIP` (-0,60 rad; lufa nurkuje poza kadr
+    zamiast w mur) i `WALL_PULL` (+0,26 do kamery; to on realnie skraca
+    zasięg).
+    ⚠️ **Te dwie liczby dobiera się RAZEM, przeciwko trzem warunkom naraz**
+    i trzeci jest tu najtrudniejszy: zero w murze, zero pierścienia kikuta
+    w kadrze i każda broń dalej widoczna. Głęboki przechył na małym pociągu
+    (-0,80 / 0,10) czyści mur i pokazuje broń, ale obrót całego zestawu nosem
+    w dół PODNOSI jego TYŁ, czyli miejsce, w którym ramiona są ucięte: SMG
+    miało wtedy wszystkie 20 wierzchołków pierścienia na ekranie, snajperka
+    14, strzelba 8 na ramię. Wypłycenie przechyłu chowa kikuty razem z bronią.
+    Rozstrzyga POCIĄG: przenosi ucięte końce za near plane, a broń zostaje
+    w kadrze. Bieżące liczby to jedyny róg przemiecenia (0,55 m, pięć broni),
+    w którym trzymają się wszystkie trzy warunki.
+    ⚠️ **Kikutów NIE kupuj pchnięciem barku** (chwyt, którym jadą
+    `SPRINT_SHOULDER` i `BOLT_SHOULDER`). Sprawdzone i zmierzone: -0,20 m
+    zejścia barku przestawia nadgarstki pistoletu z 15/9° zgięcia na 53/49°
+    i składa oba łokcie ze 176° na ~80°, a i tak zostawia prawy pierścień
+    w kadrze przy trzech broniach - to jest dokładnie objaw „powyginanych
+    nadgarstków i przenoszonych rąk".
+    `WALL_TWEAK` to podniesienie per broń, jak `SPRINT_TWEAK`, i jest wąskim
+    marginesem między dwoma błędami. ⚠️ **Widoczny ma być tylko FRAGMENT
+    broni przy dolnej krawędzi** (decyzja użytkownika 2026-08-27: „daj je
+    w dół, tak żeby był widoczny tylko ich fragment" - najbardziej rzucały się
+    pistolet i SMG, niesione o wiele za wysoko). Dostrojone najwyższym
+    wierzchołkiem broni na ekranie przy 0,55 m: wszystkie pięć w paśmie
+    -0,71..-0,75, przy zerze w murze i pierścieniach kikuta poza kadrem.
+    Nie podnoś ich, żeby „pokazać więcej broni": przy zerowym podniesieniu
+    bronie wychodzą z kadru w ogóle (zmierzone -1,0 do -1,7), co czyta się
+    jak błąd, a każdy centymetr w górę podprowadza lufę z powrotem pod mur.
+    ⚠️ Pociąg do kamery jest normalnie zakazany (near plane 0,08) i jest tu
+    bezpieczny, bo ta poza nigdy nie gra z bronią przy oku, a przez płaszczyznę
+    przechodzi TYŁ zestawu - najbliższy widoczny wierzchołek samej broni ma
+    dalej ~0,2 m.
+    ⚠️ **Boty też są przeszkodą** (decyzja użytkownika 2026-08-27: „boty to
+    też obiekt, więc stojąc blisko lufę opuszczamy") - siedzą w `enemiesGroup`,
+    nie w `worldGroup`, więc mają własny przebieg sondy i musi być
+    REKURENCYJNY (bot to rig, nie płaski mesh jak blok muru). Filtr ścianek
+    prawie poziomych dotyczy WYŁĄCZNIE świata: powstał dla podłogi i wierzchów
+    skrzyń, a bot ma fasetki we wszystkie strony i odsiewanie ich gubiłoby
+    przeciwnika stojącego w lufie.
+    ⚠️ **Boty przefiltruj DYSTANSEM przed raycastem.** `Mesh.raycast`
+    w Three odrzuca po SFERZE otaczającej i ignoruje `raycaster.far`, więc bot
+    20 m na wprost celownika przepuszczałby pełny test trójkątów na
+    skinowanym rigu w KAŻDEJ klatce. Testowane są tylko te, które w ogóle
+    mogą zmieścić się w `WALL_FAR`.
+    ⚠️ **Zablokowana lufa = brak celowania i brak ognia** (`muzzleBlocked()`,
+    próg `WALL_BLOCK` 0,85 blendu, ta sama decyzja). Próg jest CELOWO blisko
+    szczytu rampy, nie w połowie: przy 0,85 broń jest praktycznie na dole,
+    a przeszkoda jakiś metr przed lufą, więc blokada gryzie dopiero wtedy, gdy
+    poza i tak mówi, że bronią nie da się w nic wycelować. Połowa rampy to
+    1,25 m, czyli odbieranie strzału z bronią jeszcze w górze.
+    `tryFire` wychodzi CICHO - suchy strzał znaczy „pusty magazynek" i to nie
+    jest to samo.
+    ⚠️ **Celowanie znika WCZEŚNIEJ niż ogień i znika PŁYNNIE** (`WALL_AIM`
+    0,45 + `adsRoom`, zgłoszenie użytkownika 2026-08-27: „celując i podchodząc
+    do ściany ręce przeskakują przez ułamek sekundy do pozycji trzymania broni
+    normalnie, a potem dopiero do tej trzymanej ku ziemi"). Przy jednym progu
+    dla obu ADS trzymało się na pełnej wartości przez CAŁY zjazd, a puszczało
+    jednym krokiem - broń przejeżdżała wtedy ADS → biodro (własne wygładzanie
+    0,2 s) na już gotowym opuszczeniu, czyli whipowała 0,21 m w bok z osi
+    celowania w linię biodra, mając lufę już w dole. Zmierzone przy marszu
+    5 m/s, największy skok broni na klatkę: pistolet 0,157 m, SMG 0,139,
+    strzelba 0,145, karabin 0,146. Teraz cel ADS jest wygaszany wzdłuż
+    pierwszej części rampy, a STAN celowania przełącza się dopiero na końcu
+    tego wygaszania, więc nie ma już czego przejechać: te same pomiary dają
+    0,051-0,067 m, czyli sam przejazd zjazdu. Snajperka jedzie lunetą, nie ADS
+    (0,066 przed i po), ale jej `zoomTarget` też jest bramkowany `adsRoom`.
+    ⚠️ `adsRoom` MUSI być zadeklarowane NAD bramką lunety: `zoomTarget`
+    skraca się na `w.zoom`, więc wpadka z TDZ wywalałaby wyłącznie snajperkę
+    i tylko ją (złapane w teście przez `wall_snap`, nie widać tego na
+    pozostałych czterech broniach). ADS jest odbierane i ODDAWANE co klatkę (`aimHeld` =
+    intencja PPM, `aimBlocked` = to opuszczenie ją zabrało), bo lufa wchodzi
+    i wychodzi z zasłony w trakcie ruchu: gracz trzymający PPM przy ścianie
+    dostaje celowanie z powrotem sam, gdy się cofnie, ale zmiana broni ani
+    reset nigdy nie podnoszą go z automatu. W praktyce boty tego nie wyzwalają
+    - PATROL trzyma `preferred` 12 m i zawraca poniżej 8 - to jest sytuacja
+    dla przeciwnika zapędzonego w róg i dla strzelnicy.
+    Diagnostyka: `__test.wallCarry`, `__test.wallBlock`.
   - **Luneta z podniesieniem:** PPM na snajperce NIE włącza lunety od razu -
     `zoomBlend` wiezie broń „do oka" (`ZOOM_RAISE`), overlay+FOV 24°
     +czułość 0.35 wchodzą dopiero na szczycie (`setScopeOverlay`); puszczenie

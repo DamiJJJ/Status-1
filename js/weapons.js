@@ -1401,6 +1401,147 @@ const _boltRp = [0, 0, 0];
 const _boltTarget = relScratch();
 let sprintBlend = 0;
 
+/* WALL CARRY (2026-08-27): standing nose-to-nose with a wall used to push the
+   gun AND both arms straight through it - the viewmodel is a child of the
+   camera, so nothing in the world can stop it. Facing something close now
+   lowers the gun instead, reusing the RUN pose (SPRINT_POS/ROT + the per-gun
+   SPRINT_TWEAK) so the two never fight each other and the lowered carry is
+   one that is already dialled per weapon.
+   ⚠️ Unlike the run, the drop rides the BODY, not the joints - see the
+   reference in updateViewmodel. The arms go down WITH the gun, in the pose
+   they were dialled in; nothing here bends a wrist.
+   ⚠️ It is only the POSE that is borrowed, none of the run's own effects:
+   `sprintBlend` is what main.js feeds the radial blur and what the bob scales
+   off, so it stays untouched - this is a separate blend combined at the point
+   of use (`carryBlend`).
+   ⚠️ The probe direction is FLATTENED (y x 0.35): looking down at the deck is
+   not a wall in front of you, and near-horizontal faces (floor, crate tops)
+   are skipped outright. Without both, staring at your feet lowered the gun. */
+const WALL_NEAR = 0.85;   // fully down at or below this distance
+const WALL_FAR = 1.65;    // untouched from here out
+/* ⚠️ The run pose ALONE does not clear the wall - measured, not guessed.
+   The player's radius is 0.5 m, so nose to a flat wall the eye sits half a
+   metre off it, while the guns reach 0.69-1.41 m forward at the hip and still
+   1.05-1.27 m in the run carry: the run DROPS the gun without SHORTENING it.
+   At 0.52 m the rifle put 1697 of its vertices past the wall plane, i.e. the
+   whole viewmodel rendered inside the wall - the reported bug exactly.
+   So the wall carry adds two things the run has not got: a dip, which swings
+   the barrel down out of the frustum instead of into the wall, and a pull
+   toward the camera, which is what actually shortens the reach.
+   ⚠️ The two are dialled TOGETHER against three things at once, and the
+   third one is what makes it hard: nothing through the wall, no arm cut ring
+   on screen, and every gun still visible. A deep dip on a small pull (-0.80 /
+   0.10) clears the wall and shows the gun, but swinging the whole assembly
+   nose-down lifts its REAR, which is where the arms are cut off - the SMG put
+   all 20 cap vertices on screen, the sniper 14, the shotgun 8 per arm. Taking
+   the dip out instead hides the caps and the gun with them. The pull is what
+   breaks the tie: it carries the cut ends back through the near plane while
+   the gun stays in frame. Swept at 0.55 m over all five guns, the shallower
+   dip with the bigger pull is the only corner where all three hold at once.
+   ⚠️ Pulling in is normally forbidden (near plane 0.08) and is safe here
+   because the pose never plays with the gun at the eye, and because it is the
+   REAR of the assembly that crosses the plane - the gun's own nearest
+   on-screen vertex still measures ~0.2 m.
+   ⚠️ Do NOT try to buy the cut ends with a shoulder shove (the trick
+   SPRINT_SHOULDER and BOLT_SHOULDER use). Tried and measured: -0.20 m of
+   shoulder drop moved the pistol's wrists from 15/9 deg of bend to 53/49 and
+   collapsed both elbows from ~176 to ~80 deg, and it still left the right cut
+   ring on screen for three of the guns. That is the "hands mangled, whole
+   arms displaced" failure - user report 2026-08-27. */
+const WALL_DIP = -0.60;    // extra pitch, radians (muzzle down)
+const WALL_PULL = 0.26;    // toward the camera - this is what shortens it
+/* Per-gun lift out of that pose, same idea as SPRINT_TWEAK and for the same
+   reason: how much gun is left on screen depends on how long it is.
+   ⚠️ Only a FRAGMENT is meant to show, along the bottom edge (user call
+   2026-08-27: "daj je w dół, tak żeby był widoczny tylko ich fragment" - the
+   pistol and the SMG were the worst offenders, carried far too high). Dialled
+   by the topmost on-screen vertex of the gun (NDC y) at 0.55 m, all five
+   landing in a band at -0.71..-0.75, with nothing through the wall and no arm
+   cut ring on screen. Do not raise these to "show more gun": at 0 lift the
+   guns leave the frame entirely (measured -1.0 to -1.7), which reads as a
+   bug, and every centimetre up walks the muzzle back toward the wall. */
+const WALL_TWEAK = {
+  pistol: { y: 0.14, dip: 0 },
+  smg: { y: 0.03, dip: 0 },
+  shotgun: { y: 0.02, dip: 0 },
+  rifle: { y: 0.15, dip: 0 },
+  sniper: { y: 0.09, dip: 0 },
+};
+const _wallRay = new THREE.Raycaster();
+const _wallDir = new THREE.Vector3();
+const _wallNrm = new THREE.Vector3();
+const _wallNear = [];   // bots close enough to be worth a raycast (reused)
+let wallBlend = 0;
+
+/* Past this much of the drop the muzzle is treated as BLOCKED: no aiming, no
+   shooting (user call 2026-08-27). Deliberately near the top of the ramp
+   rather than halfway - at 0.85 the gun is all but down and the obstacle is
+   about a metre off, so the block only ever bites when the pose already says
+   the weapon cannot be pointed at anything. Halfway would be 1.25 m, which
+   would take the shot away from the player while the gun is still up. */
+const WALL_BLOCK = 0.85;
+/* ⚠️ Aiming goes away EARLIER than firing, and it goes away CONTINUOUSLY.
+   With one threshold for both, ADS was still fully on while the gun dropped,
+   and then released in one step: the gun ran ADS -> hip (0.2 s of its own
+   easing) on top of an already finished drop, so the hands flicked back to
+   the normal carry for a fraction of a second before settling down (user
+   report 2026-08-27). Now the ADS target is faded out across the first part
+   of the ramp (`adsRoom` below) and the aim STATE flips at the end of that
+   fade, by which time there is nothing left to travel - one continuous
+   motion from the sights to the lowered carry. */
+const WALL_AIM = 0.45;
+
+/* 0..1: how much is in the gun's way straight ahead.
+   ⚠️ Bots count as obstacles too (user call 2026-08-27) - they live in
+   `enemiesGroup`, not in `worldGroup`, so they need their own pass, and it
+   has to be RECURSIVE: a bot is a rig, not a flat mesh like a wall block.
+   ⚠️ The near-horizontal face filter is for the WORLD only. It exists to
+   ignore the deck and crate tops; a bot has faces pointing every which way
+   and filtering them would just miss the bot standing in the muzzle. */
+function wallProximity() {
+  if (typeof worldGroup === 'undefined' || !worldGroup) return 0;
+  camera.getWorldDirection(_wallDir);
+  _wallDir.y *= 0.35;
+  if (_wallDir.lengthSq() < 1e-9) return 0;
+  _wallDir.normalize();
+  _wallRay.set(camera.position, _wallDir);
+  _wallRay.far = WALL_FAR;
+  let near = Infinity;
+  for (const h of _wallRay.intersectObjects(worldGroup.children, false)) {
+    if (h.face) {
+      _wallNrm.copy(h.face.normal).transformDirection(h.object.matrixWorld);
+      if (Math.abs(_wallNrm.y) > 0.7) continue;   // deck plate, crate top
+    }
+    near = h.distance;
+    break;
+  }
+  /* ⚠️ Pre-filter the bots by distance before raycasting them. Three's
+     Mesh.raycast rejects on the bounding SPHERE, which ignores raycaster.far,
+     so a bot 20 m down the crosshair would run a full triangle test on a
+     skinned rig every single frame. Only ones that could possibly be inside
+     WALL_FAR are worth testing. */
+  if (typeof enemiesGroup !== 'undefined' && enemiesGroup) {
+    const reach = WALL_FAR + 1.2;   // + room for the rig around its origin
+    _wallNear.length = 0;
+    for (const g of enemiesGroup.children) {
+      if (g.position.distanceToSquared(camera.position) < reach * reach) _wallNear.push(g);
+    }
+    if (_wallNear.length) {
+      const eh = _wallRay.intersectObjects(_wallNear, true);
+      if (eh.length && eh[0].distance < near) near = eh[0].distance;
+    }
+  }
+  if (near === Infinity) return 0;
+  const k = (near - WALL_NEAR) / (WALL_FAR - WALL_NEAR);
+  return 1 - Math.max(0, Math.min(1, k));
+}
+
+/* The muzzle has nowhere to point: the gun is down against a wall or a bot */
+function muzzleBlocked() { return wallBlend >= WALL_BLOCK; }
+
+/* No room to raise the sights - the drop has taken the gun off the eye line */
+function noAimRoom() { return wallBlend >= WALL_AIM; }
+
 /* The pump stroke after a shot (shotgun only). A pump gun that never cycles
    reads as broken now that the forend is its own part, and the shot interval
    (0.75 s at 80 rpm) leaves room for the whole thing.
@@ -2393,6 +2534,8 @@ function clearReloadVisuals(vm) {
 /* full visual reset (level restarts, weapon switches mid-reload) */
 function resetWeaponFx() {
   sprintBlend = 0;
+  wallBlend = 0;
+  aimHeld = false; aimBlocked = false;
   zoomBlend = 0;
   pumpT = 0; pumpFired = true;
   boltT = 0; boltFired = true;
@@ -2448,6 +2591,33 @@ function updateViewmodel(dt) {
   sprintBlend += (sprintTarget - sprintBlend)
     * Math.min(1, dt * (sprintTarget ? 7 : 20));
 
+  /* the wall carry rides its own blend, so the run's blur and bob are not
+     driven by it. The reload owns the whole pose while it runs (its offsets
+     are absolute, not deltas on this), so the probe is muted there. */
+  const wallTarget = (reloading || relCancel > 0) ? 0 : wallProximity();
+  wallBlend += (wallTarget - wallBlend) * Math.min(1, dt * 12);
+  // the muzzle goes in and out of cover while the player moves, so ADS is
+  // taken away and handed back here rather than only on the mouse event
+  if (noAimRoom()) {
+    if (aiming) { aimBlocked = true; setAiming(false); }
+  } else if (aimBlocked) {
+    aimBlocked = false;
+    if (aimHeld) setAiming(true);
+  }
+  // whichever wants the gun lower wins; they are the same pose, so no blend
+  // of two poses ever happens
+  const carryBlend = Math.max(sprintBlend, wallBlend);
+  /* How much room is left to bring the sights up. The wall carry bleeds the
+     ADS target out as the drop comes on (see WALL_AIM), so the two never play
+     one after the other. Declared here because the scope gate below reads it
+     as well - and it must stay ABOVE that gate: `zoomTarget` short-circuits
+     on `w.zoom`, so a temporal-dead-zone slip here would throw on the sniper
+     alone, and only the sniper. */
+  const adsRoom = 1 - Math.min(1, wallBlend / WALL_AIM);
+  const wt = WALL_TWEAK[w.id];
+  const wallY = wt ? wt.y : 0;
+  const wallDip = WALL_DIP + (wt ? wt.dip : 0);
+
   // the sniper's bolt cycle between shots - counted down BEFORE the scope
   // gate reads it, because the cycle is what keeps the scope down
   boltT = Math.max(0, boltT - dt / BOLT_DUR);
@@ -2458,7 +2628,7 @@ function updateViewmodel(dt) {
   // deliberate move to the eye, and the scope opens from closer in
   // (ZOOM_RAISE). The bolt cycle holds the scope down until the hand is back
   // on the grip, then the same raise brings it back.
-  const zoomTarget = (aiming && w.zoom && !reloading && boltT <= 0) ? 1 : 0;
+  const zoomTarget = (aiming && w.zoom && !reloading && boltT <= 0 && adsRoom > 0) ? 1 : 0;
   if (zoomTarget) zoomBlend = Math.min(1, zoomBlend + dt / 0.50); // raise ~0.5 s
   else zoomBlend = Math.max(0, zoomBlend - dt / 0.22);            // lower faster
   if (!scoped && zoomTarget === 1 && zoomBlend >= 1) setScopeOverlay(true);
@@ -2532,7 +2702,7 @@ function updateViewmodel(dt) {
   }
 
   // ADS: płynne przejście do pozycji celowania (muszka w osi kamery)
-  const adsTarget = (aiming && !w.zoom && !reloading) ? 1 : 0;
+  const adsTarget = (aiming && !w.zoom && !reloading) ? adsRoom : 0;
   adsBlend += (adsTarget - adsBlend) * Math.min(1, dt * 12);
   const ads = vm.userData.adsPos || VM_BASE;
   const zb = w.zoom ? zoomBlend : 0;
@@ -2548,32 +2718,57 @@ function updateViewmodel(dt) {
   // the raised carry (see the constant). Everything the gun does ON TOP of the
   // hip pose is still measured against VM_BASE, so ADS behaves as before.
   const R = ARM_CARRY_REST;
+  sprintCarry(w.id);
+  /* ⚠️ The wall drop rides the BODY, not the joints (user report 2026-08-27:
+     "zrób żeby ręce razem z bronią schodziły, a nie nadgarstki wygina").
+     Everything the gun does ON TOP of this reference is deviation the arms
+     have to absorb, so putting a 0.8 rad dive on the gun alone fed the whole
+     dive to the wrists and elbows - the pistol came out with the hands folded
+     back on themselves. The wall-only surplus therefore goes INTO the
+     reference: armBodyFix cancels it, the shoulder travels with the gun and
+     the arms ride down rigidly, in the pose they were dialled in.
+     ⚠️ Only the SURPLUS over the run (`wOnly`), never the run's own share:
+     the run drop is dialled to be absorbed by the joints and carries its own
+     shoulder shove (SPRINT_SHOULDER), so feeding it in here would move the
+     shoulder twice. Sprinting into a wall leaves wOnly at 0 and changes
+     nothing about how the run looks. */
+  const wOnly = carryBlend - sprintBlend;
   _carryPos.set(
     R.x + (ads.x - VM_BASE.x) * adsBlend * F.x
-      + (ZOOM_RAISE.x - VM_BASE.x) * zb * F.x + bobX * bobScale,
+      + (ZOOM_RAISE.x - VM_BASE.x) * zb * F.x + bobX * bobScale
+      + _spPos[0] * wOnly,
     R.y + (ads.y - VM_BASE.y) * adsBlend * F.y
-      + (ZOOM_RAISE.y - VM_BASE.y) * zb * F.y + bobY * bobScale,
+      + (ZOOM_RAISE.y - VM_BASE.y) * zb * F.y + bobY * bobScale
+      + _spPos[1] * wOnly + wallY * wallBlend,
     R.z + (ads.z - VM_BASE.z) * adsBlend * F.z
-      + (ZOOM_RAISE.z - VM_BASE.z) * zb * F.z + vmRecoil);
-  _carryRot.set(vmRecoil * 1.5 + 0.06 * zb * F.y, 0, bobX * 0.6 * bobScale);
-  sprintCarry(w.id);
+      + (ZOOM_RAISE.z - VM_BASE.z) * zb * F.z + vmRecoil
+      + _spPos[2] * wOnly + WALL_PULL * wallBlend);
+  _carryRot.set(
+    vmRecoil * 1.5 + 0.06 * zb * F.y + _spRot[0] * wOnly + wallDip * wallBlend,
+    _spRot[1] * wOnly,
+    bobX * 0.6 * bobScale + _spRot[2] * wOnly);
   vm.position.set(
-    bx + bobX * bobScale + _gp.px + _spPos[0] * sprintBlend,
-    by + bobY * bobScale + _gp.py + _spPos[1] * sprintBlend,
-    bz + vmRecoil + _gp.pz + _spPos[2] * sprintBlend // odsuń od kamery (nigdy nie zbliżaj do near plane)
+    bx + bobX * bobScale + _gp.px + _spPos[0] * carryBlend,
+    by + bobY * bobScale + _gp.py + _spPos[1] * carryBlend + wallY * wallBlend,
+    bz + vmRecoil + _gp.pz + _spPos[2] * carryBlend + WALL_PULL * wallBlend
   );
   vm.rotation.set(
-    vmRecoil * 1.5 + _gp.rx + _spRot[0] * sprintBlend + 0.06 * zb,
-    _gp.ry + _spRot[1] * sprintBlend,
-    bobX * 0.6 * bobScale + _gp.rz + _spRot[2] * sprintBlend
+    vmRecoil * 1.5 + _gp.rx + _spRot[0] * carryBlend + wallDip * wallBlend
+      + 0.06 * zb,
+    _gp.ry + _spRot[1] * carryBlend,
+    bobX * 0.6 * bobScale + _gp.rz + _spRot[2] * carryBlend
   );
   // hands last: the body anchor is read off the gun transform set just above
   if (reloadPose) applyReloadArms(vm);
   // solves even at sprintBlend 0; the bolt envelope animates the firing hand
+  // the RUN's weight, not carryBlend: the wall surplus is already in the
+  // reference above, so the solver must not be told to bend for it as well
   else applyCarryArms(vm, sprintBlend, pumpEnv, boltEnv, boltYank);
   // ukryj viewmodel dopiero pod pełną lunetą (po animacji podniesienia)
   vm.visible = !(w.zoom && scoped);
   __test.scoped = scoped;
+  __test.wallCarry = wallBlend;
+  __test.wallBlock = muzzleBlocked();
 }
 
 function switchWeapon(idx) {
@@ -2604,7 +2799,17 @@ function switchWeapon(idx) {
    other caller (weapon swap, shop, pause, level reset, DEVRIG) lowers the
    rifle as a side effect of something else, and those must not sound like the
    player lowering it. */
+/* The player's RMB intent, kept apart from `aiming` itself: the wall carry
+   takes ADS away while the muzzle is blocked and has to give it back when
+   they step off the wall, without the player having to re-press. `aimBlocked`
+   is what says the drop is the reason it went away - a weapon switch or a
+   reset must NOT come back up on its own. */
+let aimHeld = false, aimBlocked = false;
+
 function setAiming(on, byPlayer = false) {
+  if (byPlayer) aimHeld = on;
+  // no room to aim: the gun is already down (see muzzleBlocked)
+  if (on && noAimRoom()) { aimBlocked = true; on = false; }
   aiming = on;
   // sniper: the scope overlay waits for the raise animation (updateViewmodel);
   // releasing RMB (or pausing) drops it immediately
@@ -2714,6 +2919,10 @@ function showDryMsg(w) {
 
 function tryFire() {
   if (game.noCombat) return; // epilogue: no shooting at the parade
+  // muzzle in a wall (or in a bot): the gun is lowered, so there is nothing
+  // to pull the trigger on. Silent on purpose - the dry click means "empty",
+  // and this is not that
+  if (muzzleBlocked()) return;
   const w = WEAPONS[currentWeapon];
   if (fireCooldown > 0) return;
   // a shot interrupts the reload, provided there is something to shoot AND

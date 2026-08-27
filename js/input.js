@@ -94,7 +94,7 @@ document.addEventListener('keyup', e => { keys[e.code] = false; });
 document.addEventListener('mousedown', e => {
   if (game.state !== 'playing') return;
   if (e.button === 0) firing = true;
-  if (e.button === 2) setAiming(true);
+  if (e.button === 2) setAiming(true, true);   // the player raising the gun
 });
 document.addEventListener('mouseup', e => {
   if (e.button === 0) firing = false;
