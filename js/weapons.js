@@ -1334,7 +1334,107 @@ scene.add(camera); // kamera musi być w scenie, żeby dzieci (viewmodel) się r
 viewmodels[0].visible = true;
 
 let vmBobT = 0;
-let vmRecoil = 0;
+
+/* ==================== ODRZUT ====================
+   The kick used to be ONE scalar pushing the gun back and tipping the muzzle
+   up - and it was invisible in the hands, because that same scalar also went
+   into the shoulder reference (see armBodyFix). The body rode the kick WITH
+   the gun, so not a single joint moved and every gun fired dead straight
+   (user report 2026-08-27).
+
+   Two things changed. The body now follows only a SHARE of the kick
+   (ARM_RECOIL_FOLLOW) - the rest is joint travel, and joint travel is the
+   only thing that reads as recoil in the arms. And the kick is no longer
+   on-axis: every shot draws its own yaw and roll, so a burst walks instead of
+   stamping the same frame over and over.
+
+   ⚠️ Everything here MUST settle back to zero, and does: the rest pose is
+   what tests/shots_weapons.py measures (sight dot on the camera axis, arm cut
+   cap out of frame) and what DEVRIG previews. A kick that left a residue
+   would quietly move both. */
+let vmRecoil = 0;      // rearward push along +z (toward the eye), metres
+let vmRecoilV = 0;     // ... and its velocity: the kick is a spring, not a ramp
+let vmRecoilYaw = 0;   // this shot's off-axis throw, radians
+let vmRecoilRoll = 0;
+let vmRecoilSide = 1;  // alternating base sign - a pure coin toss clumps
+let vmRecoilAim = 1;   // how braced the gun WAS when it went off (see RECOIL_AIM)
+
+/* A spring, not a linear decay: the gun kicks, comes back PAST the rest pose
+   and settles. That overshoot is what makes a heavy gun read heavy - sliding
+   home in a straight line made the shotgun feel like the SMG. Stiffness and
+   damping are shared by the whole arsenal; a gun pays for its weight with the
+   impulse it puts in (vmKick) and with how much time its own fire rate leaves
+   the spring to swing. */
+const RECOIL_K = 190;      // stiffness -> ~13.8 rad/s, quarter period ~0.11 s
+const RECOIL_C = 15;       // damping, ratio 0.54: it overshoots on purpose
+const RECOIL_MAX = 0.30;   // hard stop - sustained fire must not stack forever
+const RECOIL_SNAP = 0.7;   // share of the kick that lands INSTANTLY...
+const RECOIL_PUSH = 11;    // ... the rest arrives as velocity, so it travels
+/* The spring's value is a KICK SIZE, not a distance - the gun's travel and
+   its muzzle climb are read off it separately, because they are not worth the
+   same. Rearward travel is cheap to overdo: at the old 1:1 the sniper drove
+   0.22 m into the shoulder and folded its elbow through 83 deg in one shot -
+   invisible while the arms rode the kick, grotesque the moment they stopped.
+   Weight reads in the CLIMB, so that one is scaled up instead. */
+const RECOIL_TRAVEL = 0.45;   // metres of rearward push per unit of kick
+const RECOIL_PITCH = 2.2;     // radians of muzzle climb per unit of kick
+const RECOIL_YAW = 0.9;    // off-axis throw per unit of vmKick, radians
+const RECOIL_ROLL = 1.4;   // roll reads strongest, and a bore sits off the shoulder axis
+const RECOIL_OFF_FADE = 7; // the throw just fades; only the push swings
+
+/* What is left of the kick at the sights (user call 2026-08-27: leave the hip
+   carry exactly as it is, but aiming has to cut the recoil animation AND the
+   dot's wiggle down to almost nothing). A gun pulled into the shoulder and
+   braced with the cheek behind it simply does not throw the way one held out
+   at the hip does, and at the sights every degree of throw is a degree the
+   player has to read the shot through. */
+const RECOIL_AIM = 0.20;
+/* ⚠️ Latched at the SHOT, not read live off the blend. The sniper drops out
+   of the scope on the trigger (tryFire), so zoomBlend collapses in the same
+   breath as the kick - read live, the one gun that is always fired braced got
+   its recoil scaled by the aim it no longer had, and came out at 0.145 of
+   screen against 0.175 at the hip, i.e. barely reduced at all. Latching is
+   also the right model for the other four: letting go of the mouse halfway
+   through a kick must not make that kick grow. */
+
+/* How much of the kick the BODY takes. At 1 the shoulder rides the whole
+   thing and nothing bends - that was the bug. At 0 the arms eat all of it,
+   which folds the wrists on the heavy guns. The share left over is what the
+   elbows and wrists absorb, and it is the only reason a shot is visible in
+   the arms at all. */
+const ARM_RECOIL_FOLLOW = 0.35;
+
+function updateRecoil(dt) {
+  // semi-implicit Euler: velocity first, then position - stable at the 0.05 s
+  // dt clamp, which a plain explicit step is not
+  vmRecoilV += (-RECOIL_K * vmRecoil - RECOIL_C * vmRecoilV) * dt;
+  vmRecoil += vmRecoilV * dt;
+  if (vmRecoil > RECOIL_MAX) { vmRecoil = RECOIL_MAX; vmRecoilV = 0; }
+  const k = Math.max(0, 1 - dt * RECOIL_OFF_FADE);
+  vmRecoilYaw *= k;
+  vmRecoilRoll *= k;
+}
+
+function kickRecoil(w) {
+  /* Part of the kick lands in the same frame as the muzzle flash and part
+     arrives as velocity: a pure velocity impulse leaves the gun standing
+     still on the frame the player actually sees the shot on. */
+  vmRecoil = Math.min(RECOIL_MAX, vmRecoil + w.vmKick * RECOIL_SNAP);
+  vmRecoilV += w.vmKick * RECOIL_PUSH;
+  const aim = Math.min(1, Math.max(adsBlend, w.zoom ? zoomBlend : 0));
+  vmRecoilAim = 1 - aim * (1 - RECOIL_AIM);
+  // sides alternate and the size is drawn, so neither a burst nor a slow
+  // pump gun ever throws the same shot twice
+  vmRecoilSide = -vmRecoilSide;
+  const r = 0.6 + Math.random() * 0.8;
+  vmRecoilYaw += vmRecoilSide * w.vmKick * RECOIL_YAW * r;
+  vmRecoilRoll -= vmRecoilSide * w.vmKick * RECOIL_ROLL * (0.6 + Math.random() * 0.8);
+}
+
+function clearRecoil() {
+  vmRecoil = 0; vmRecoilV = 0; vmRecoilYaw = 0; vmRecoilRoll = 0;
+  vmRecoilAim = 1;
+}
 
 /* ==================== POZY / ANIMACJE VIEWMODELU ==================== */
 
@@ -2533,6 +2633,7 @@ function clearReloadVisuals(vm) {
 
 /* full visual reset (level restarts, weapon switches mid-reload) */
 function resetWeaponFx() {
+  clearRecoil();
   sprintBlend = 0;
   wallBlend = 0;
   aimHeld = false; aimBlocked = false;
@@ -2577,7 +2678,7 @@ function updateViewmodel(dt) {
   const w = WEAPONS[currentWeapon];
   const speedFactor = player.moving && player.onGround ? 1 : 0;
   vmBobT += dt * (keys['ShiftLeft'] ? 11 : 8) * (speedFactor ? 1 : 0.3);
-  vmRecoil = Math.max(0, vmRecoil - dt * 6);
+  updateRecoil(dt);
   const sprintScale = player.sprinting ? 1.7 : 1;
   const bobX = Math.sin(vmBobT) * 0.012 * (speedFactor || 0.25) * sprintScale;
   const bobY = Math.abs(Math.cos(vmBobT)) * 0.014 * (speedFactor || 0.25) * sprintScale;
@@ -2714,6 +2815,19 @@ function updateViewmodel(dt) {
   // sprint offsets - the reference the shoulder anchor is taken against
   // (see armBodyFix)
   const F = ARM_ADS_FOLLOW;
+  /* the body's share of the kick: whatever is left over is deviation the
+     elbows and wrists have to absorb, which is the recoil the player sees in
+     the hands (see ARM_RECOIL_FOLLOW) */
+  const RF = ARM_RECOIL_FOLLOW;
+  /* ⚠️ Aiming shrinks the kick at the SOURCE, so the gun and the shoulder
+     reference shrink together. Scaling only the gun would hand the whole
+     difference to the joints, i.e. put back in the wrists exactly the recoil
+     the sights are supposed to take out. */
+  const rc = vmRecoilAim;
+  const rcZ = vmRecoil * RECOIL_TRAVEL * rc;   // push...
+  const rcX = vmRecoil * RECOIL_PITCH * rc;    // ...and climb, off the same spring
+  const rcY = vmRecoilYaw * rc;                // ...and this shot's throw
+  const rcR = vmRecoilRoll * rc;
   // The base is ARM_CARRY_REST, not VM_BASE: the body stands a little below
   // the raised carry (see the constant). Everything the gun does ON TOP of the
   // hip pose is still measured against VM_BASE, so ADS behaves as before.
@@ -2741,22 +2855,23 @@ function updateViewmodel(dt) {
       + (ZOOM_RAISE.y - VM_BASE.y) * zb * F.y + bobY * bobScale
       + _spPos[1] * wOnly + wallY * wallBlend,
     R.z + (ads.z - VM_BASE.z) * adsBlend * F.z
-      + (ZOOM_RAISE.z - VM_BASE.z) * zb * F.z + vmRecoil
+      + (ZOOM_RAISE.z - VM_BASE.z) * zb * F.z + rcZ * RF
       + _spPos[2] * wOnly + WALL_PULL * wallBlend);
   _carryRot.set(
-    vmRecoil * 1.5 + 0.06 * zb * F.y + _spRot[0] * wOnly + wallDip * wallBlend,
-    _spRot[1] * wOnly,
-    bobX * 0.6 * bobScale + _spRot[2] * wOnly);
+    rcX * RF + 0.06 * zb * F.y + _spRot[0] * wOnly
+      + wallDip * wallBlend,
+    rcY * RF + _spRot[1] * wOnly,
+    rcR * RF + bobX * 0.6 * bobScale + _spRot[2] * wOnly);
   vm.position.set(
     bx + bobX * bobScale + _gp.px + _spPos[0] * carryBlend,
     by + bobY * bobScale + _gp.py + _spPos[1] * carryBlend + wallY * wallBlend,
-    bz + vmRecoil + _gp.pz + _spPos[2] * carryBlend + WALL_PULL * wallBlend
+    bz + rcZ + _gp.pz + _spPos[2] * carryBlend + WALL_PULL * wallBlend
   );
   vm.rotation.set(
-    vmRecoil * 1.5 + _gp.rx + _spRot[0] * carryBlend + wallDip * wallBlend
+    rcX + _gp.rx + _spRot[0] * carryBlend + wallDip * wallBlend
       + 0.06 * zb,
-    _gp.ry + _spRot[1] * carryBlend,
-    bobX * 0.6 * bobScale + _gp.rz + _spRot[2] * carryBlend
+    rcY + _gp.ry + _spRot[1] * carryBlend,
+    rcR + bobX * 0.6 * bobScale + _gp.rz + _spRot[2] * carryBlend
   );
   // hands last: the body anchor is read off the gun transform set just above
   if (reloadPose) applyReloadArms(vm);
@@ -2781,6 +2896,7 @@ function switchWeapon(idx) {
   }
   pumpT = 0; pumpFired = true;
   boltT = 0; boltFired = true;
+  clearRecoil();  // the outgoing gun's kick does not ride onto the new one
   relTriggerHeld = false; dryFired = false; // a new gun gets a fresh answer
   clearReloadVisuals(viewmodels[currentWeapon]);
   viewmodels[currentWeapon].visible = false;
@@ -3018,7 +3134,7 @@ function tryFire() {
   missionShot(anyHit); // campaign accuracy counter (no-op outside)
 
   // recoil: viewmodel + camera kick
-  vmRecoil = Math.min(0.25, vmRecoil + w.vmKick);
+  kickRecoil(w);
   /* A pump gun cycles after every shot - but NOT after the last one: with the
      tube empty the reload takes the forend over (startReload zeroes pumpT
      below), so the stroke was never drawn and only its sound played. Anything

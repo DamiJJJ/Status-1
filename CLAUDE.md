@@ -942,6 +942,77 @@ więc formy męskie w kwestiach DO gracza są OK.
   Balans: `spread` w WEAPONS to rozrzut Z BIODRA (celowo duży); ADS mnoży przez
   `adsMul` (domyślnie 0.3). ADS blokuje sprint i spowalnia ruch ×0.55.
   FOV: luneta 24° / ADS 60° / sprint+bhop poszerzają.
+- **Odrzut** (`weapons.js`, przebudowany 2026-08-27, zgłoszenie użytkownika:
+  „nie czuć go na rękach; po strzale ze snajperki czy strzelby powinien być
+  dużo bardziej widoczny, a reszta broni nie powinna być idealnie prosto
+  w trakcie strzelania"). Wcześniej odrzut był JEDNĄ liczbą (`vmRecoil`)
+  dosuwaną do `vm.position.z` i `vm.rotation.x`.
+  ⚠️ **Nie było go widać, bo ta sama liczba szła TAKŻE do odniesienia barku**
+  (`_carryPos`/`_carryRot`, patrz `armBodyFix`): skoro odniesienie niosło
+  pełny odrzut, `armBodyFix` go ZNOSIŁ, bark jechał razem z bronią i ani jeden
+  staw się nie ruszał. Odrzut był więc sztywnym przesunięciem całego zestawu,
+  a nie czymś, co ręce absorbują.
+  Dziś ciało bierze tylko UDZIAŁ kicka (`ARM_RECOIL_FOLLOW` 0.35), a reszta
+  jest odchyłką, którą pochłaniają łokcie i nadgarstki - i to jedyna rzecz,
+  która czyta się jako odrzut w rękach. Zmierzone na strzelnicy, na szczycie
+  kicka (łokieć L/R, wszystkie z pięścią na chwycie co do 0,0000 m):
+  pistolet 175→154 / 178→158, SMG 171→148 / 163→153, strzelba 157→132 /
+  144→127, karabin 149→136 / 147→137, snajperka 172→119 / 132→111.
+  ⚠️ **PRZESUW i PODRZUT to dwie różne liczby** (`RECOIL_TRAVEL` 0.45 m/jedn.,
+  `RECOIL_PITCH` 2.2 rad/jedn.). Przy dawnym 1:1 snajperka wjeżdżała **0,22 m**
+  w bark i składała łokieć o **83°** w jednym strzale - niewidoczne, dopóki
+  ręce jechały z bronią, groteskowe w chwili, gdy przestały. Ciężar broni
+  niesie PODRZUT LUFY, nie wjazd w ramię, więc przesuw jest przycięty,
+  a podrzut podniesiony. Zmierzone podniesienie broni na ekranie (NDC y,
+  szczyt): pistolet 0,051 · SMG 0,056 · karabin 0,069 · strzelba 0,119 ·
+  snajperka 0,170.
+  ⚠️ **To SPRĘŻYNA, nie liniowy zanik** (`RECOIL_K`/`RECOIL_C`, tłumienie 0,54,
+  czyli celowo poniżej krytycznego): broń kopie, wraca PONIŻEJ pozy
+  spoczynkowej i dopiero siada. To przeregulowanie jest tym, co każe ciężkiej
+  broni czytać się ciężko - liniowy zjazd sprawiał, że strzelba czuła się jak
+  SMG. Zmierzone w ogniu ciągłym: strzelba i snajperka schodzą pod zero
+  (-0,004 / -0,009), bronie automatyczne nie zdążają wrócić i wiszą podniesione
+  przez całą serię. Kick wchodzi w DWÓCH kawałkach (`RECOIL_SNAP` 0.7 od razu,
+  `RECOIL_PUSH` 11 jako prędkość): czysty impuls prędkości zostawiałby broń
+  nieruchomą dokładnie na tej klatce, na której gracz widzi błysk.
+  ⚠️ **Kick nie jest osiowy** (`RECOIL_YAW` 0.9, `RECOIL_ROLL` 1.4): każdy
+  strzał losuje własny odchył i rolkę, ze znakiem NAPRZEMIENNYM
+  (`vmRecoilSide` - czysty rzut monetą się zbija w serie), więc seria wędruje
+  zamiast stemplować w kółko tę samą klatkę. Rolka i odchył idą tą samą drogą
+  co reszta: pełne na broni, `ARM_RECOIL_FOLLOW` na ciele.
+  ⚠️ **Wszystko MUSI wracać do zera i wraca** (zmierzone: 0,00000 po puszczeniu
+  spustu). Poza spoczynkowa to dokładnie to, co mierzy
+  `tests/shots_weapons.py` (kropka na osi kamery, pierścień kikuta poza
+  kadrem) i co pokazuje DEVRIG - kick zostawiający resztkę po cichu
+  przestawiłby jedno i drugie. `clearRecoil()` woła `resetWeaponFx`
+  i `switchWeapon` (kick starej broni nie jedzie na nową).
+  ⚠️ Kamera ma osobny, NIEZMIENIONY kick (`w.kick` w `WEAPONS`) - celowo, bo
+  pociski lecą promieniem kamery, więc ruszanie go dotyka celności i balansu.
+  Odrzut wizualny siedzi wyłącznie w viewmodelu i w rękach.
+  ⚠️ **CELOWANIE ŚCINA KICK DO 20%** (`RECOIL_AIM`, decyzja użytkownika
+  2026-08-27: „z biodra zostaw jak jest, ale celując zdecydowanie zmniejsz
+  odrzut na wszystkich broniach - samą animację i wiggle celownika; to powinno
+  być minimalne"). Broń wciągnięta w bark i podparta policzkiem po prostu nie
+  rzuca tak, jak trzymana na wyciągniętych rękach, a przy przyrządach każdy
+  stopień rzutu to stopień, przez który gracz musi odczytać strzał. Zmierzone
+  na ŻYWYCH strzałach (największy ruch punktu celowania na ekranie, biodro →
+  ADS): pistolet 0,022 → 0,008 · SMG 0,018 → 0,005 · karabin 0,034 → 0,009 ·
+  strzelba 0,128 → 0,030.
+  ⚠️ **Skala jest ZATRZAŚNIĘTA w momencie strzału** (`vmRecoilAim`), nie
+  czytana na bieżąco z blendu - i rozstrzyga o tym SNAJPERKA. `tryFire` zdejmuje
+  jej lunetę (patrz „Cykl zamka snajperki"), więc `zoomBlend` zapada się w tym
+  samym oddechu co kick: czytana na żywo, jedyna broń, którą ZAWSZE strzela się
+  podpartą, dostawała skalę od celowania, którego już nie miała, i wychodziła
+  na 0,145 ekranu wobec 0,175 z biodra, czyli praktycznie bez ulgi. Zatrzask
+  jest też właściwym modelem dla pozostałych czterech: puszczenie PPM w połowie
+  kicka nie ma prawa tego kicka POWIĘKSZYĆ.
+  ⚠️ Skala mnoży ŹRÓDŁO (przesuw, podrzut, odchył i rolkę naraz), więc broń
+  i odniesienie barku kurczą się RAZEM. Przeskalowanie samej broni oddałoby
+  całą różnicę stawom, czyli wsadziłoby w nadgarstki dokładnie ten odrzut,
+  który przyrządy mają wyjąć.
+  ⚠️ To, co po strzale ze snajperki widać przez lunetę, to w większości NIE
+  odrzut: przy `vmKick = 0` ta broń i tak przejeżdża 0,141 ekranu, bo zjeżdża
+  z lunety i cyklu je zamek. Nie próbuj tego „naprawiać" odrzutem.
 - **Ręce gracza (BRON-2, 2026-08-18)** - `js/hands.js` + konfiguracja `HANDS`
   w weapons.js; model `arms` („Rigged FPS Arms" - J-Toastie, CC-BY) wypiekany
   w `tools/gen_models.py`:
