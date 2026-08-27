@@ -906,6 +906,28 @@ body.menu-bg #vignette { display: none !important; } /* beats the id-level displ
   color: #aab2e8;
 }
 body.dev-mode #dev-hud { display: block; }
+
+/* Pause overlay, dev range only: out of the way instead of over the frame.
+   Losing the pointer lock pauses the game (Print Screen and alt-tab both do
+   it), and the normal overlay - opaque panel, dark wash, 5 px backdrop blur -
+   then covers the very thing being looked at, so a paused session could not
+   be screenshotted at all. Here the wash and the blur come off, the panel
+   goes hard LEFT and half-transparent, and the frozen frame stays readable:
+   the viewmodel sits bottom-RIGHT, so the two do not overlap. Gated on
+   body.dev-mode, which main.js also keeps on through `paused`, so the real
+   game's pause screen is untouched. */
+body.dev-mode #screen-pause {
+  background: transparent;
+  backdrop-filter: none;
+  justify-content: flex-start;
+}
+body.dev-mode #screen-pause .screen-box {
+  margin-left: 22px;
+  padding: 18px 26px;
+  background: rgba(12, 15, 28, 0.5);
+  box-shadow: none;
+}
+body.dev-mode #screen-pause .screen-mark { display: none; }
 #dev-hud .dev-title { color: #ff8906; letter-spacing: 0.08em; margin-bottom: 4px; }
 #dev-hud .dev-row b {
   display: inline-block;

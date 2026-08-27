@@ -620,8 +620,16 @@ function blendArm(hand, target, w) {
     // It is already in gun-model space, and weapons.js is what converts it,
     // because weapons.js is what knows the camera-to-gun transform.
     if (target.shoulderOff) _baS.add(target.shoulderOff);
+    /* ⚠️ `pinShoulder` switches the give OFF, and a reload asks for it: a
+       shoulder joint does not TRANSLATE, and the give makes it - it walks the
+       joint up to SHOULDER_GIVE_MAX after the hand, so the cut end of the arm
+       slides across the frame as the hand dives for the magazine and comes
+       back (user report 2026-08-27, in those words: leave the stump in one
+       place, a human's shoulder does not move). The lean inside reachArm is
+       untouched, so a hand that genuinely cannot be reached is still not
+       dropped - it just has to be out of reach before the body gives. */
     _baV.set(_baPos[0] - base.pos[0], _baPos[1] - base.pos[1], _baPos[2] - base.pos[2]);
-    const d = _baV.length();
+    const d = target.pinShoulder ? 0 : _baV.length();
     if (d > 1e-6) {
       _baS.addScaledVector(_baV.divideScalar(d),
                            Math.min(d * SHOULDER_GIVE, SHOULDER_GIVE_MAX));

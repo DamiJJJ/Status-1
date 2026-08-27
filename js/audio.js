@@ -451,7 +451,18 @@ const AudioSys = (() => {
         tone({ type: 'sawtooth', f0: 160, f1: 60, dur: 0.08, vol: 0.08 * vm, jitter: 0.06, pos });
       }
     },
-    empty() { tone({ type: 'square', f0: 1100, f1: 900, dur: 0.04, vol: 0.12 }); },
+    /* Dry fire: the trigger comes back on an empty chamber. This is what the
+       player hears instead of an auto-reload (user call 2026-08-27), so it has
+       to read as a MECHANISM, not as a UI beep - a striker falling on nothing
+       is a hard little clack with a body, and the old square blip had neither.
+       Layered: a filtered noise transient for the strike plus a short low
+       thunk for the weight behind it. Falls back from the recorded take the
+       same way every other voice does (see gen_sfx.py: 'dry_fire'). */
+    empty() {
+      if (sample('dry_fire', { vol: 0.5, jitter: 0.05, send: 0.12 })) return;
+      burst({ dur: 0.035, vol: 0.22, freq: 2600, q: 1.1, type: 'bandpass', jitter: 0.08 });
+      tone({ type: 'triangle', f0: 320, f1: 150, dur: 0.05, vol: 0.09, filter: 900 });
+    },
     /* The sniper's scope reaching the eye and leaving it. Handling foley, not
        an optic sound - see gen_sfx.py. Quiet on purpose: it sits under the
        held breath of a player lining up a shot, and anything louder turns

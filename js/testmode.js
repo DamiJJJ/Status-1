@@ -18,6 +18,12 @@ function testAutoAim() {
     if (d < bestD) { bestD = d; best = e; }
   }
   if (!best) { firing = false; return; }
+  /* The gun no longer reloads itself when the trigger falls on an empty
+     chamber (weapons.js, user call 2026-08-27), so the bot has to press R
+     like a player does - without this the run stalls on the first empty
+     magazine. */
+  const w = WEAPONS[currentWeapon];
+  if (!reloading && w.mag <= 0 && w.reserve > 0) startReload();
   _aimTarget.copy(best.group.position);
   // aim at the head (headshot verification); fliers hover at flyY
   _aimTarget.y = best.flyY ? best.flyY : 1.85 * best.type.scale * best.scaleMul;

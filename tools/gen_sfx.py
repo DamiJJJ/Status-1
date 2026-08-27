@@ -298,6 +298,21 @@ MANIFEST = {
          'at': 0.005, 'dur': 0.28, 'gain': 8, 'fade': 0.06},
     ],
 
+    # --- dry fire --------------------------------------------------------
+    # The trigger on an empty chamber, shared by the whole arsenal for the
+    # same reason `draw` is: a striker falling on nothing is the mechanism of
+    # the trigger group, not of the calibre, and the packs carry exactly one
+    # dry-fire take. It matters more since 2026-08-27, when firing an empty
+    # gun stopped starting a reload by itself (user call) - this click is now
+    # the whole answer the gun gives.
+    # Measured, not cut by ear: the transient is at 0.000 and the envelope is
+    # down to 6% of peak by 0.030 s, so 0.12 s takes the click and its ring
+    # with room for the fade.
+    'dry_fire': [
+        {'src': P2 + '/& More/Pistol/WAV/9mm Pistol Dry Fire.wav',
+         'at': 0.000, 'dur': 0.12, 'gain': 6, 'fade': 0.03},
+    ],
+
     # --- Rifle / 5.56 ----------------------------------------------------
     # At 640 rpm the shots are 0.094 s apart, so the clips overlap in flight -
     # that is correct for an automatic, the tails stack the way they do on a

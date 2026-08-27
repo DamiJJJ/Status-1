@@ -45,6 +45,10 @@ const vmMatOrange = new THREE.MeshStandardMaterial({ color: 0x33210a, emissive: 
 /* sniper scope lenses: a quiet amber sheen - at full emissive the eyepiece
    reads as a glowing disc at this scale */
 const vmMatLens = new THREE.MeshStandardMaterial({ color: 0x4a2d08, emissive: PALETTE.orange, emissiveIntensity: 0.35, roughness: 0.3 });
+/* Stands in for a material group that has to disappear: the renderer skips
+   any group whose material is not visible, which is the only way to hide part
+   of a baked mesh (see setMagLoaded - the Glock's rounds are groups, not
+   objects). */
 const vmMatHidden = new THREE.MeshBasicMaterial({ visible: false });
 /* the aim point: a tiny green emitter on the front sight (user call
    2026-08-18) - moulded sights are dark-on-dark and vanish at ADS range */
@@ -79,6 +83,65 @@ function vmCyl(parent, r, len, x, y, z, mat = vmMatDark, seg = 10) {
   return m;
 }
 
+/* A cartridge sitting in a magazine's feed lips: body plus ogive, pointing
+   muzzle-ward (local -Z), sized and placed in gun-model metres.
+
+   The Glock ships one in its own geometry (the 'Bullet' material, four groups
+   riding the Mag node), and the user reads that brass at the top of the
+   magazine as the thing that makes the swap legible. The Quaternius guns
+   carve their magazine out of a single mesh (tools/gen_models.py -> `split`),
+   so what comes out of the well is a bare box - hence this. It hangs off the
+   magazine PART, so it rides the hand through the whole swap, and it lives
+   deep inside the receiver whenever the magazine is seated. */
+function vmRound(parent, r, len, x, y, z) {
+  const g = new THREE.Group();
+  const body = len * 0.62, tip = len - body;
+  const bg = new THREE.CylinderGeometry(r, r, body, 10);
+  bg.rotateX(Math.PI / 2);                 // grows along Y -> lay it on Z
+  const bm = new THREE.Mesh(bg, vmMatOrange);
+  bm.position.z = -body / 2;               // base at z 0, running toward -Z
+  g.add(bm);
+  const tg = new THREE.ConeGeometry(r, tip, 10);
+  tg.rotateX(-Math.PI / 2);                // apex toward -Z
+  const tm = new THREE.Mesh(tg, vmMatOrange);
+  tm.position.z = -body - tip / 2;
+  g.add(tm);
+  g.position.set(x, y, z);
+  parent.add(g);
+  return g;
+}
+
+/* The material groups of a baked part that ARE cartridges, plus the materials
+   they normally wear. The Glock ships its top rounds inside its own geometry
+   ('Bullet*' groups riding the mag part), so there is no object to toggle -
+   the groups get swapped to vmMatHidden instead. */
+function bakedRounds(partGroup, model, partName) {
+  const def = MODEL_DATA[model].parts.find(p => p.name === partName);
+  const mesh = partGroup.children[0];
+  const idx = [];
+  def.groups.forEach((gr, i) => { if (gr.mat.startsWith('Bullet')) idx.push(i); });
+  return idx.length ? { mesh, idx, mats: idx.map(i => mesh.material[i]) } : null;
+}
+
+/* Whether the magazine that is on screen right now carries a round.
+
+   An EMPTY magazine has to come out EMPTY (user report 2026-08-27: brass on
+   the way out is fine while there is still ammo in it, but not when the thing
+   being stripped is a dead magazine). Both kinds of round go through here -
+   the modelled one the Quaternius guns wear (vmRound) and the Glock's baked
+   groups - so callers never have to know which gun they are holding. */
+function setMagLoaded(vm, on) {
+  const r = vm.userData.magRound;
+  if (r) r.visible = on;
+  const b = vm.userData.magRounds;
+  if (b) for (let i = 0; i < b.idx.length; i++) {
+    b.mesh.material[b.idx[i]] = on ? b.mats[i] : vmMatHidden;
+  }
+  // the follower rides up into the empty mouth as the last round leaves it
+  const f = vm.userData.magFollower;
+  if (f) f.visible = !on;
+}
+
 function buildViewmodel(id) {
   const g = new THREE.Group();
   switch (id) {
@@ -93,6 +156,19 @@ function buildViewmodel(id) {
       g.add(m.root);
       g.userData.slide = m.parts.slide;   // cycles on every shot
       g.userData.magPart = m.parts.mag;   // drops out on a reload
+      // ...carrying its baked top rounds, which are hidden when the magazine
+      // being pulled is a dead one (setMagLoaded)
+      g.userData.magRounds = bakedRounds(m.parts.mag, 'glock', 'mag');
+      /* ...and a FOLLOWER under them, which takes over the moment they go.
+         This magazine is modelled as an open tube: measured down the mouth,
+         the wall tops sit at y 0.0179 and there is nothing under them for
+         30 mm, so an empty one reads as a hollow, unfinished box (user report
+         2026-08-27). The rounds used to plug that; the follower plugs it when
+         they are gone, which is also where a real follower sits once the last
+         round is out. Sized to the mouth measured at plate height: inner
+         walls x +-0.0115, front and rear walls z 0.0545 and 0.0965. */
+      g.userData.magFollower =
+        vmBox(m.parts.mag, 0.022, 0.005, 0.037, 0, 0.0095, 0.0755, vmMatMid);
       /* Sights are the model's own: a front blade (top y 0.1001 in model space)
          and a rear tab (0.1043). They are 4.2 mm out of level over a 245 mm
          sight radius, so instead of gluing anything on, the whole pistol is
@@ -148,6 +224,13 @@ function buildViewmodel(id) {
          driving those as a bolt slid five panels out of the receiver at once
          (user report 2026-08-21: "something else slides out of the grip"). */
       g.userData.magPart = m.parts.mag;
+      /* the top round, so the magazine reads as loaded on the way out (user
+         report 2026-08-27: the Glock's shows one, this one did not). Measured
+         off the carved island's top face: y 0.0549, x +-0.0144, z -0.1657 to
+         -0.1062, i.e. 59 mm deep - so a 48 mm 9 mm round lies inside it with
+         a little of the ogive past the front lip, and the top of the case
+         stands ~2.5 mm proud of the lips. */
+      g.userData.magRound = vmRound(m.parts.mag, 0.0075, 0.048, 0, 0.0524, -0.112);
       g.userData.muzzleLocal = new THREE.Vector3(0, 0.0907, -0.4116);
       /* Closer to the eye than the shared long-gun ADS distance (user call
          2026-08-21: "nie musimy widzieć tyle kolby"). At -0.64 the stock sat
@@ -270,6 +353,12 @@ function buildViewmodel(id) {
          the island under the well (tools/gen_models.py -> `split`) and rides
          the hand through the swap. */
       g.userData.magPart = m.parts.mag;
+      /* the top round, same reason as the SMG's. This magazine is modelled
+         shallower than the SMG's - the column's top face measures y 0.0309,
+         x +-0.012, z -0.0058 to +0.009, i.e. 15 mm deep - so the round is
+         scaled to it rather than to a real 5.56: 24 mm long, its ogive
+         standing a little past the front lip the way a top round does. */
+      g.userData.magRound = vmRound(m.parts.mag, 0.006, 0.024, 0, 0.029, 0.010);
       g.userData.muzzleLocal = new THREE.Vector3(0, 0.087, -0.64);
       g.userData.adsPos = new THREE.Vector3(0, -0.1377, -0.52); // post dot on the camera axis
       break;
@@ -898,7 +987,22 @@ const HANDS = {
     /* the reload pose shared by the mag styles is dialled for the pistol;
        this well sits lower and further out, so the gun comes up more - same
        treatment as the SMG (deltas on VM_BASE) */
-    relGun: { pos: [-0.06, 0.03, 0.02], rot: [0.14, 0.10, -0.06] },
+    /* ⚠️ The yaw came back from 0.10 to -0.08 on 2026-08-27: the gun's own
+       STOCK was passing through the right FOREARM (user report, twice - and
+       the first measurement I ran said it was not happening, because it
+       counted arm vertices INSIDE the gun. A slab through a limb has none:
+       the stock crosses the forearm's shell without either mesh putting a
+       vertex inside the other. The honest test walks the arm's own EDGES and
+       asks whether a gun surface sits on one - 9 crossings on the R forearm
+       through the swap against 0 in plain carry, so it was the reload's own
+       turn of the gun that drove the stock in.)
+       Swept on that metric: yaw +0.10 -> 9 crossings, 0.00 -> 4, -0.08 -> 0,
+       and everything deeper stays at 0. Shallowest that clears, which is also
+       the cheapest for the LEFT arm (its wrist walks 68 -> 73 -> 80 deg as
+       the yaw deepens), and it barely moves the magwell on screen (NDC -0.06
+       -> -0.04), so the swap reads as before. The upper arm was never crossed
+       at any setting. */
+    relGun: { pos: [-0.06, 0.03, 0.02], rot: [0.14, -0.08, -0.06] },
     /* Reload grips, same contract as the SMG's: each entry overrides the
        fields it names and inherits the rest from `l`. Without them the hand
        carried its FIRING grip onto the magazine - knuckle line across the
@@ -911,8 +1015,18 @@ const HANDS = {
                      t: [0.18, 0.45, 0.22], tAdd: 0.34 } },
       // side grab on the charging handle: the knuckle line runs along the
       // barrel and the back of the hand faces out to the left (SMG's frame)
+      /* ⚠️ The elbow hint went from [0.24, -0.42, 0.87] to straight DOWN and
+         a little left on 2026-08-27, when the reload's shoulder was pinned
+         (see applyReloadArms). The pin is what made it necessary: the joint
+         no longer walks up after the hand, so the rack phase was reaching for
+         the charging handle out of a shoulder 0.06 m lower than before and
+         paying the difference at the wrist - measured 105.6 deg at t 0.74,
+         against 77 before the pin. Swept over azimuth and elevation, this row
+         bottoms it out at 33.6 with the elbow unlocked (70.8) - and it pulls
+         the elbow to camera x -0.18 as a bonus, which is the same direction
+         the user wanted the whole arm to go. */
       bolt: { channel: [0, 0, 1], palm: [-0.88, 0.47, 0],
-              upper: [0.24, -0.42, 0.87],
+              upper: [-0.25, -0.866, 0.433],
               curl: { f: [1.00, 1.05, 0.60], i: [0.96, 1.00, 0.56],
                       t: [0.40, 0.55, 0.30], tAdd: 0.55 } },
     },
@@ -964,7 +1078,9 @@ const HANDS = {
     l: { pos: [0.042, 0.004, -0.075],
          channel: [-0.6157, 0, -0.788],
          palm: [0, -1, 0],
-         fore: [0.4534, -0.0523, -0.8898],
+         /* levelled on 2026-08-27 (user's own DEVRIG dump) - it was 3 deg
+            below the horizontal */
+         fore: [0.454, 0, -0.891],
          upper: [0.342, 0, -0.9397],
          curl: { f: [1.63, 0.16, 0.98], i: [0.65, 0.84, 0.00],
                  t: [0.35, 0.79, 0.52], tAdd: -0.40 } },
@@ -994,52 +1110,117 @@ const HANDS = {
                is the IK clamping against an anchor further than the arm is
                long, not a pose. Swept: this one holds 40 deg of wrist and 80
                of elbow. */
-    port: [-0.06, 0.0711, 0.2411], low: [-0.0461, -0.1581, 0.3041],
+    /* ⚠️ `port` is BEHIND the action, and the round travels FORWARD into it
+       (2026-08-27, second pass). Moving the anchor alone was not enough: the
+       first pass that day parked the fist beside the bolt at (-0.050, 0.078,
+       0.300) but left the grip aiming the round +x, into the receiver's left
+       flank, and the feed stroke pushing it the same way - so what the player
+       still saw was a round going in SIDEWAYS at the back of the gun (user
+       report, in those words). The station is where the hand comes FROM; what
+       says "from the rear" is where the round POINTS and which way it moves.
+       So the live fist now starts at (-0.038, 0.100, 0.380) - a hand's width
+       behind the bolt knob (z 0.2825-0.2957) and level with the top of the
+       receiver - and `feed` is the whole vector from there to the mouth of
+       the action at (-0.017, 0.085, 0.265): 0.118 m of forward push, not the
+       35 mm token stroke it replaces. The channel below is that same vector
+       normalised (NEGATED since the hand was turned over on 2026-08-27 - the
+       line is the same, the sign is not, and the round is mirrored to match),
+       so the round lies along its own travel and is driven in nose
+       first. Measured through the cycle, the fist really does walk the
+       whole way: (-0.038, 0.100, 0.380) at the top of the swing to
+       (-0.017, 0.085, 0.265) at the seat.
+       ⚠️ The foreshortening the side feed was chosen to avoid is real and is
+       simply the price here: the round's screen span falls 0.128 -> 0.058 of
+       NDC as it goes in, against a flat 0.17 broadside. What buys it back is
+       that the case now clears the glove instead of hiding behind it - 5 to 6
+       of 9 samples visible through the push against 4 broadside - and that
+       the eye is following a MOVE of 0.118 m rather than a static bar. Do not
+       "fix" the span by turning the round across the gun again; that is the
+       side feed, and it was rejected by name.
+       ⚠️ Leading the round does NOT help, though it looks like it should:
+       hung tip-forward it is pushed further from the eye and further behind
+       the receiver. Swept, visible samples at the seat: hold -0.040 (the
+       current pinch, tip at the fist hole) 5/9, -0.020 3/9, centred 1/9,
+       +0.020 and beyond 0/9. The pinch in attachHandsAndProps stays. */
+    /* ⚠️ Both re-solved AGAIN on 2026-08-27 when the hand was turned over
+       (user call, see grips.port): the frozen-to-live offset is a property of
+       the grip, so the flip moved where the live fist lands. Solved back onto
+       the very same two points, to within 1e-5 m - the round's path into the
+       action is untouched by the turn. */
+    port: [-0.0359, 0.1311, 0.3765], low: [-0.0460, -0.1502, 0.2795],
+    feed: [0.021, -0.015, -0.115],
     /* The bolt handle is real geometry now (the carved `bolt` part): the knob
        sits at x +0.05, y[0.038 0.085], z[0.282 0.296], i.e. right above the
        firing grip - so the right hand only climbs ~0.1 m to work it. The
        anchor is in frozen-grip space like `pos` (this gun is not `byFist`). */
     bolt: [0.048, 0.075, 0.289], pull: 0.08,
-    shellDim: [0.007, 0.06],
+    /* 80 mm, up from 60 (2026-08-27). The fist is ~80 mm across the knuckle
+       line, so a 60 mm round threaded through it was swallowed whole -
+       measured, not one sample of it cleared the glove. */
+    shellDim: [0.007, 0.08],
     /* the shared shell pose is dialled for the shotgun's side gate; this one
        loads from the TOP of the receiver, so the gun pitches toward the eye
        and rolls a touch left to show the open action instead of yawing away */
     relGun: { pos: [-0.04, 0.02, -0.04], rot: [0.10, -0.06, 0.10] },
     grips: {
-      /* Rounds are fed from the LEFT of the receiver, hand tucked beside the
-         action rather than over it. Every over-the-top variant was tried and
-         covered the whole receiver with the glove (measured on screenshots
-         2026-08-26: the hand sat dead centre); from the left only the
-         fingertips clear the top and the arm stays below the gun. The shell
-         rides the knuckle line, so the channel aims right-down-forward, INTO
-         the action from the left. */
-      /* ⚠️ Rolled about the grip axis, and rolled again on 2026-08-26 - a
-         further 90 deg, the user calling for the THUMB ON TOP. The roll is
-         the grip frame's one free parameter that changes how the hand
-         PRESENTS without moving the round: the channel still points into the
-         action, so the shell still aims where it did, and only the hand turns
-         around it. Sweep the roll with the anchor RE-SOLVED at every step -
-         the frozen-to-live offset turns with the grip, so without that the
-         comparison is between two positions rather than two rotations.
-         ⚠️ Which way is "left" is not a matter of taste and not worth
-         arguing from the sign of the angle: measure the thumb tip against the
-         wrist in CAMERA space and take the roll that lifts it. Measured every
-         45 deg, thumb tip minus wrist, camera y: 270 (the previous dial)
-         -0.052, i.e. the thumb hanging BELOW a flat hand - which is the claw
-         the user was looking at - against 180 at -0.093, 315 at +0.035 and
-         0 (= 270 + 90) at +0.105, the clear pick and exactly the 90 asked
-         for. It stands the fist up on its side with the thumb over the
-         round.
-         ⚠️ The roll is paid for at the WRIST, and the bill goes to the ELBOW
-         HINT instead - `upper` aims the forearm, and the wrist angle is the
-         hand measured against the forearm, so the two trade directly. On the
-         old hint this roll cost 79 deg of wrist (all but red); swept over
-         azimuth and elevation it bottoms out at 66-67 around az 195-210 and
-         el -45. This one holds 67 of wrist, 62 of twist and 99 of elbow, with
-         the arm's cut ring clear (0/20 on screen, |ndc y| 1.79) both here and
-         at the bottom of the loading swing. */
-      port: { channel: [0.9962, 0, -0.0872], palm: [0.0872, 0, 0.9962],
-              upper: [-0.183, -0.7071, 0.683],
+      /* Rounds go in FROM THE REAR: the hand comes up behind the bolt knob
+         and pushes the round forward into the action, along the gun rather
+         than across it (user call 2026-08-27 - see `port`/`feed` above for
+         why moving the station alone did not read as one).
+         ⚠️ This reverses the note that stood here for a day. Aiming the
+         channel down the barrel WAS tried and rejected earlier the same day
+         on the grounds that a round pointing away from the camera projects to
+         a dot - which is true of the axis in isolation and beside the point in
+         motion. The version that reads is not "point it at the chamber" but
+         "start it a hand's width behind the action and shove it the whole way
+         in": the round holds 0.128 of NDC at the top of the stroke, and what
+         sells it is the 0.118 m of travel and the case clearing the glove
+         (5-6 of 9 samples against 4 broadside), not the static length.
+         ⚠️ The receiver's own geometry still rules out the honest top feed a
+         bolt gun would use: sliced z 0.14-0.30, the action spans y -0.02 to
+         +0.09 and the SCOPE closes the top from y +0.10, leaving a 1 cm gap.
+         Behind it there is room; above it there is not.
+         ⚠️ Roll the grip about the channel with the anchor RE-SOLVED at every
+         step - the frozen-to-live offset turns with the grip, so without that
+         the comparison is between two positions rather than two rotations. And
+         which roll is right is a measurement, not a sign convention: take the
+         thumb tip against the wrist in CAMERA space and keep the one that
+         lifts it. Swept every 45 deg at this station, thumb tip minus wrist,
+         camera y: 135 gives +0.099 with the fist stood on its side and the
+         thumb over the round; 0 and 45 hang it below the hand.
+         ⚠️ The roll is paid for at the WRIST and the bill goes to the ELBOW
+         HINT - `upper` aims the forearm and the wrist is the hand measured
+         against it, so the two trade directly. Swept over azimuth and
+         elevation, az -60 / el -30 bottoms the wrist out at 15.7 deg (from
+         50 on the old hint), holding 21-32 through the push. The forearm
+         twist rides high at 159-177, which is what a forward-pointing round
+         costs on this rig - the same band the support hand already carries in
+         this gun's plain carry (161-180), and it is spread down the 5-bone
+         twist chain. The cut ring stays clear throughout (0/20 on screen).
+         ⚠️ THE HAND IS TURNED OVER, and the axis it is turned about is the
+         whole point (user call 2026-08-27: turn the hand, not the arm). A
+         180 deg roll about the CHANNEL was tried first and is the wrong one:
+         the fist hole sits 0.115 m off the wrist, square to that axis, so the
+         flip swings one or the other by 0.23 m - hold the fist on the action
+         and the wrist climbs from NDC y -0.89 to +0.11, i.e. the forearm
+         comes over the top of the receiver and fills half the frame (wrist
+         joint 116 deg at the floor of a full az/el sweep, round down to 1 of
+         9 samples); hold the wrist instead and the fist leaves the action
+         altogether, 0.15 m left and 0.18 m below the mouth.
+         The axis that works is the hand's OWN finger direction (local +Y,
+         which is what DEVRIG calls "obrot dloni"): it turns the hand in
+         place, so the knuckle LINE is unmoved - only its sign flips - and
+         the arm is left alone. Measured against the old dial: wrist 24-40
+         deg (from 16-26), forearm twist 25-30 (from 163-173, i.e. the roll
+         this rig used to spend its whole twist chain on is simply gone),
+         elbow and cut ring unchanged (0/20, |ndc y| 1.74), thumb still above
+         the wrist (+0.059), and the round MORE visible, not less: 7-8 of 9
+         samples against 5-6. The round is mirrored end for end to follow the
+         sign flip - see attachHandsAndProps - so it lands on exactly the
+         same line in space, tip first. */
+      port: { channel: [-0.1782, 0.1273, 0.9757],
+              palm: [-0.6794, 0.7014, -0.2156],
+              upper: [-0.75, -0.5, 0.433],
               curl: { f: [1.10, 1.15, 0.65], i: [0.55, 0.75, 0.45],
                       t: [0.45, 0.60, 0.30], tAdd: 0.40 } },
       /* the RIGHT hand on the bolt knob, after every shot and on the rack
@@ -1073,6 +1254,54 @@ function attachHandsAndProps(g, id) {
     prop.visible = false;
     attachToFist(g.userData.arms.L, prop);
     g.userData.magProp = prop;
+  } else if (cfg.shellDim && id === 'sniper') {
+    /* The sniper's round is a real CARTRIDGE, ogive first (2026-08-27). The
+       prop rides the knuckle line - bone local +Z - and the port grip aims
+       that line into the action, so a pointed round reads as going somewhere;
+       a plain tube read as a stub in the glove. Centred on the fist hole, so
+       the tip leads by half its length.
+       A shotshell IS a plain tube, so the shotgun keeps the cylinder below. */
+    /* ⚠️ And it is PINCHED, not threaded: attachToFist parks a prop on the
+       hole through the closed fingers, and a round CENTRED on that hole is
+       swallowed by the glove - measured, nothing orange cleared it at any
+       length. So the round is hung with its TIP at the hole and its case
+       running back out of the fist, which is how a round about to be pushed
+       into an action is actually held. Measured along the channel from the
+       fist, that back half is the only part of the line the camera has: the
+       glove covers -0.025 to +0.075 and everything from -0.05 outward is
+       clear. The feed stroke then drives the whole thing FORWARD into the
+       receiver, and the visible case head follows it in.
+       ⚠️ The pinch survived the move to a rear feed (2026-08-27) on its own
+       measurement, not by inheritance: hung any further forward the round is
+       simply pushed deeper behind the receiver. Visible samples at the seat,
+       swept: this offset 5/9, half of it 3/9, centred on the hole 1/9,
+       tip-forward 0/9.
+       ⚠️ It hangs down the knuckle line's MINUS side, because turning the
+       hand over flipped that line's sign (see grips.port, 2026-08-27). The
+       round therefore sits in exactly the same place in space as before the
+       turn, tip at the fist hole and case running back out of the glove -
+       the numbers above still hold, and the pinch measured better after the
+       turn than before it (7-8 of 9 samples visible, from 5-6), because the
+       turned-over glove covers less of the case. Mirror BOTH ends together
+       if this is ever re-rolled: a cone left pointing the old way is a round
+       being pushed into the action base first. */
+    const [sr, slen] = cfg.shellDim;
+    const hold = slen / 2;
+    const prop = new THREE.Group();
+    const body = slen * 0.68, tip = slen - body;
+    const bg = new THREE.CylinderGeometry(sr, sr, body, 8);
+    bg.rotateX(Math.PI / 2);
+    const bm = new THREE.Mesh(bg, vmMatOrange);
+    bm.position.z = hold + slen / 2 - body / 2;
+    prop.add(bm);
+    const tg = new THREE.ConeGeometry(sr, tip, 8);
+    tg.rotateX(-Math.PI / 2);           // apex toward -Z, i.e. down the channel
+    const tm = new THREE.Mesh(tg, vmMatOrange);
+    tm.position.z = hold - slen / 2 + tip / 2;
+    prop.add(tm);
+    prop.visible = false;
+    attachToFist(g.userData.arms.L, prop);
+    g.userData.shellProp = prop;
   } else if (cfg.shellDim) {
     const geo = new THREE.CylinderGeometry(cfg.shellDim[0], cfg.shellDim[0], cfg.shellDim[1], 8);
     /* ⚠️ Same 90 deg as the magazine box above, and it was missing until
@@ -1413,6 +1642,61 @@ const BOLT_SHOULDER = {
    of elbow, and the fist holds its anchor to 0.0000 m throughout. */
 const CARRY_SHOULDER = {
   rifle: { L: new THREE.Vector3(0, -0.06, 0) },
+  /* And the sniper on 2026-08-27, for a different symptom with the same
+     cause. The user's call, twice narrowed: the HAND on this gun is right
+     and so is the straight arm, and the run and the reload are right too -
+     what is wrong is the standing hold and the raise out of it, where the
+     support elbow points out to the LEFT instead of DOWN. Measured in camera
+     space at the hip, the elbow sat 0.015 m ABOVE the wrist and 0.132 m out
+     to its left: the whole limb lying along the barrel, which is not how an
+     elbow hangs.
+     ⚠️ So this one takes NO forward component, unlike BOLT_SHOULDER's. The
+     forward push is what bends the joint, and the straight arm is the part
+     the user signed off - at z 0 the elbow measures 177.6 deg at every depth
+     and only ROTATES about the shoulder-to-wrist line, which is exactly the
+     wanted change. Swept, elbow-below-wrist against elbow-outboard:
+       -0.14   0.077 / 0.116   wrist 27.8
+       -0.22   0.117 / 0.109   wrist 32.9
+       -0.30   0.151 / 0.102   wrist 38.4
+       -0.38   0.178 / 0.095   wrist 43.5
+       -0.46   0.199 / 0.087   wrist 48.2
+       -0.54   0.216 / 0.080   wrist 52.2, and the fist starts to slip
+                               (0.005 m - the lean assist is spent)
+     ⚠️ And take the SHALLOWEST drop that turns the elbow over, not the one
+     with the best ratio. -0.38 was the first pick and it overshot (user
+     report 2026-08-27, the day after: the arm hangs too far down and does not
+     match the DEVRIG preview). That reading is exact, not an impression -
+     this is the one table that deliberately departs from the editor's rest
+     pose, and the departure IS the shoulder's displacement: measured in
+     camera space, -0.38 carries the joint 0.300 m off where the preview puts
+     it, so the whole limb arrives from far below the body the editor shows.
+     -0.22 is the crossover - the first row where the elbow sits further DOWN
+     than it is OUT (0.123 against 0.108, from 0.000/0.132 with no shove at
+     all) - and it costs 0.202 m of that displacement instead of 0.300. The
+     wrist stays green either way (34.0 deg here, 44.5 at -0.38) and the cut
+     ring never came into it: this gun clears the frame at EVERY depth, 0/20
+     with |ndc y| 1.33 at no shove and 2.46 here. Nor does ADS need any of it
+     - measured at full ADS with no shove the elbow already hangs 0.107 below
+     the wrist against 0.069 outboard, so the fault was only ever in the
+     standing hold.
+     ⚠️ AND IT IS GONE AGAIN (2026-08-27). The same entry was reported twice,
+     at -0.38 and then at -0.22, with the same complaint both times: the gun
+     does not look like the DEVRIG preview. That complaint is exact and it is
+     measurable - this table is the one place that knowingly departs from the
+     editor, and the wrist is where the departure shows. Measured on the hip
+     carry, left hand: the editor's pose (which is what depth 0 solves to,
+     the body fix being the identity there) reads 21.0 deg of wrist and 180
+     of forearm twist; at -0.22 the game read 34.0 and 168.4. Thirteen
+     degrees of wrist that the editor cannot show is exactly what "coś jest
+     poprzesuwane" means.
+     What it was buying is real but cheaper to buy elsewhere: at depth 0 the
+     elbow sits level with the wrist (0.000 down, 0.132 out) instead of 0.123
+     down. That is the elbow HINT's job - `upper` in the sniper's own `l`
+     entry, which DEVRIG does preview and the user can dial. The cut ring was
+     never in it (0/20 at every depth, |ndc y| 1.35 at zero).
+     The rifle's entry stays: at zero its cut ring comes back ON SCREEN
+     (8/20 at |ndc y| 0.84 against 0/20 at 1.15), which is the one thing the
+     editor genuinely cannot show, and it costs only 4 deg of wrist. */
 };
 const NO_SHOULDER = { L: new THREE.Vector3(), R: new THREE.Vector3() };
 const _shM = new THREE.Matrix4();
@@ -1429,13 +1713,21 @@ function shoulderShove(vm, side, w, table) {
 }
 
 /* The carry's total shove: the run's, faded by its own weight, plus this
-   weapon's standing offset at full weight. Its own scratch, because the sum
-   has to survive the second shoulderShove call. */
+   weapon's STANDING offset, faded by how much of the standing pose is left.
+   Its own scratch, because the sum has to survive the second shoulderShove
+   call.
+   ⚠️ `rest` is what keeps the tables independent. CARRY_SHOULDER fixes the
+   pose of a man standing still holding the gun, and every other table here
+   (the run's, the bolt cycle's, the reload's) was dialled against a carry
+   with NO standing shove in it. Applying it at full weight in those poses
+   would silently move all three, so it is faded out by whatever pose has
+   taken over - and at weight 0, which is where the reload starts and ends and
+   where the run eases in and out, it is still fully there. */
 const _shSum = { L: new THREE.Vector3(), R: new THREE.Vector3() };
-function carryShoulder(vm, side, w, sprintTable, id) {
+function carryShoulder(vm, side, w, sprintTable, id, rest = 1) {
   const out = _shSum[side].copy(shoulderShove(vm, side, w, sprintTable));
   const ct = CARRY_SHOULDER[id];
-  if (ct && ct[side]) out.add(shoulderShove(vm, side, 1, ct));
+  if (ct && ct[side]) out.add(shoulderShove(vm, side, rest, ct));
   return out;
 }
 
@@ -1552,8 +1844,11 @@ function applyCarryArms(vm, w, pump, bolt, boltYank) {
   _spTargetL.bodyFix = fix;
   const wid = WEAPONS[currentWeapon].id;
   const ss = sprintShoulder(wid);
-  _spTargetR.shoulderOff = carryShoulder(vm, 'R', w, ss, wid);
-  _spTargetL.shoulderOff = carryShoulder(vm, 'L', w, ss, wid);
+  // the standing shove gives way to the run and to the bolt cycle, each of
+  // which carries its own dialled shoulder (see `rest` in carryShoulder)
+  _spTargetR.shoulderOff = carryShoulder(vm, 'R', w, ss, wid, 1 - w);
+  _spTargetL.shoulderOff = carryShoulder(vm, 'L', w, ss, wid,
+                                         1 - Math.max(w, bolt || 0));
   /* the support shoulder gives way while the bolt cycles - see BOLT_SHOULDER.
      Added AFTER the carry sum, on the cycle's own weight, so the standing
      carry and the run are untouched when nothing is cycling. */
@@ -1625,6 +1920,29 @@ function setScopeOverlay(on, quiet = false) {
 let reloadFromEmpty = false;
 let relPlan = null;
 let relEvIdx = 0;
+/* A shot ABORTS the reload (user call 2026-08-27), and the pose it interrupts
+   needs a way out: clearing it in one frame throws the gun back through up to
+   0.42 rad and the loading fist through half a metre in a single step - the
+   very teleport every other handover here is written to avoid. So the plan is
+   kept for one short window, frozen at the fraction the shot fell on, and
+   everything it owns - gun offsets, hand weights, magazine, slide, forend -
+   is scaled home by `relCancel` (fadeReloadPose).
+   ⚠️ The window fits INSIDE the pump's and the bolt's dead beat (PUMP_HOLD /
+   BOLT_HOLD, both ~0.25 s), so the stroke that same shot books never has to
+   fight the pose that is still running out. */
+const REL_CANCEL_DUR = 0.12;
+let relCancel = 0;   // 1 -> 0 while the interrupted pose runs out
+let relCancelT = 0;  // the fraction of the reload the shot landed on
+/* R OUTRANKS A HELD TRIGGER, a fresh trigger pull outranks the reload (user
+   call 2026-08-27). Both rules live in this one latch: a reload that starts
+   while the trigger is already down marks it, and a marked trigger is ignored
+   until it is released - so holding LMB through a reload no longer cancels it
+   on the first frame, while clicking again still does. Cleared in
+   updateWeapons the moment `firing` goes false. */
+let relTriggerHeld = false;
+/* ...and the dry click is one per trigger pull, not one every 0.25 s: an
+   auto weapon held on an empty chamber would otherwise clack on a loop. */
+let dryFired = false;
 
 function vmEase(t, a, b) { // smoothstep of t over [a, b]
   const x = Math.min(1, Math.max(0, (t - a) / (b - a)));
@@ -1691,6 +2009,8 @@ function magPull(out, cfg, k) {
 const _gp = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0 };
 const _lp = [0, 0, 0];
 const _rp = [0, 0, 0];
+/* where the feeding fist ends its push - `port` plus the gun's `feed` */
+const _feedIn = [0, 0, 0];
 
 /* Where each hand is headed this frame. Filled by applyReloadPose and applied
    only once the gun's own transform is final (applyReloadArms), because the
@@ -1742,11 +2062,36 @@ function applyReloadArms(vm) {
   if (!rig) return;
   const fix = armBodyFix(vm);
   _relL.bodyFix = fix; _relR.bodyFix = fix;
-  // the swapping hand squares its shoulder up as it comes off the gun, on the
-  // hand's own weight so it eases in and out with the move
-  const rs = RELOAD_SHOULDER[WEAPONS[currentWeapon].id] || NO_SHOULDER;
-  _relL.shoulderOff = shoulderShove(vm, 'L', _relLw, rs);
-  _relR.shoulderOff = shoulderShove(vm, 'R', _relRw, rs);
+  /* the swapping hand squares its shoulder up as it comes off the gun, on the
+     hand's own weight so it eases in and out with the move - PLUS the
+     weapon's standing carry drop at full weight.
+     ⚠️ That second term used to be missing here, and a reload is exactly the
+     pose that needs it: the reload runs standing still, which is what
+     CARRY_SHOULDER is for, and dropping it for the duration put the rifle's
+     cut ring back on screen at both ends of the animation (6/20 vertices,
+     |ndc y| 0.86, user report 2026-08-27). carryShoulder sums the two the
+     same way the plain carry does. */
+  const wid = WEAPONS[currentWeapon].id;
+  const rs = RELOAD_SHOULDER[wid] || NO_SHOULDER;
+  /* ⚠️ `rest` is 1 FLAT through a reload, not 1 - the hand's weight. The
+     standing drop (CARRY_SHOULDER) fixes the pose of a man standing still,
+     and a reload is done standing from the first frame to the last - fading
+     it out under the swap made the joint BOB by exactly its own depth (the
+     rifle's 0.06 m, measured end to end), which is the joint translating,
+     which shoulders do not do. Holding it flat also takes the rifle's cut
+     ring off screen (8/20 visible at |ndc y| 0.82 -> 0/20 at 1.10) and the
+     sniper's wrist from 61 deg to 40.
+     ⚠️ It cannot disturb a gun whose swap was dialled against the fade,
+     because the two tables do not overlap: CARRY_SHOULDER has the rifle and
+     the sniper, RELOAD_SHOULDER has the SMG. Measured: the SMG, the pistol
+     and the shotgun come out identical to the digit. */
+  _relL.shoulderOff = carryShoulder(vm, 'L', _relLw, rs, wid, 1);
+  _relR.shoulderOff = carryShoulder(vm, 'R', _relRw, rs, wid, 1);
+  /* and the joints stay put while the hands travel - see pinShoulder in
+     hands.js. Without it the shoulder follows the hand by up to 0.10 m, so
+     the reload dragged the arm's cut end back and forth across the frame. */
+  _relL.pinShoulder = true;
+  _relR.pinShoulder = true;
   // both hands go through the solver, including one at weight 0: staying on
   // the gun is a pose too, and it is the one that needs the shoulder held
   blendArm(rig.L, _relL, _relLw);
@@ -1843,6 +2188,14 @@ function applyReloadPose(vm, t) {
         mp.visible = d < 0.97;
       }
     }
+    /* ...and whether that magazine still has brass on top. A reload from
+       empty strips a dead magazine, so the round goes away for the trip out
+       and is back for the trip in - the one being pushed home is a fresh one.
+       The switch happens at the bottom of the swing, where the fist is off
+       screen (cfg.low is dialled to be, see HANDS): that dwell is what sells
+       the swap in the first place, and it is the only moment where nothing
+       can be seen to change. A tactical reload keeps the round throughout. */
+    setMagLoaded(vm, !P.empty || t >= (T.out[1] + T.back[0]) / 2);
   } else {
     /* Shells one at a time; the shotgun rolls to show the port, the sniper
        pitches. `relGun` deviates from the shared amount PER WEAPON, exactly
@@ -1853,9 +2206,16 @@ function applyReloadPose(vm, t) {
        played half off screen (measured 2026-08-25, user report). */
     const rp = cfg.relGun ? cfg.relGun.pos : ZERO_TWEAK;
     const rr = cfg.relGun ? cfg.relGun.rot : ZERO_TWEAK;
+    /* ⚠️ The loading tilt LETS GO once the last shell is in (user report
+       2026-08-27: on the rack that ends the reload the shotgun should be held
+       normally, not still turned on its side). The roll and the yaw exist to
+       show the loading gate to the camera; nobody works a pump with the gun
+       still rolled over, and the hand goes back to the forend over the same
+       window (see the travel below), so the two move together. */
+    const senv = P.empty ? env * (1 - vmEase(t, P.win[1], P.win[1] + 0.12)) : env;
     if (P.style === 'shell') {
-      _gp.rx = (-0.18 + rr[0]) * env; _gp.ry = rr[1] * env; _gp.rz = (-0.35 + rr[2]) * env;
-      _gp.px = (-0.03 + rp[0]) * env; _gp.py = (0.02 + rp[1]) * env; _gp.pz = rp[2] * env;
+      _gp.rx = (-0.18 + rr[0]) * senv; _gp.ry = rr[1] * senv; _gp.rz = (-0.35 + rr[2]) * senv;
+      _gp.px = (-0.03 + rp[0]) * senv; _gp.py = (0.02 + rp[1]) * senv; _gp.pz = rp[2] * senv;
     } else {
       _gp.rx = (-0.16 + rr[0]) * env; _gp.ry = (0.18 + rr[1]) * env; _gp.rz = rr[2] * env;
       _gp.px = (-0.04 + rp[0]) * env; _gp.py = (0.02 + rp[1]) * env; _gp.pz = rp[2] * env;
@@ -1866,7 +2226,22 @@ function applyReloadPose(vm, t) {
       const cw = (w1 - w0) / P.cycles;
       const ct = ((t - w0) % cw) / cw; // 0..1 inside this cycle
       lw = 1;
-      if (ct < 0.45) lerp3(_lp, cfg.low, cfg.port, vmEase(ct, 0.05, 0.45));
+      if (cfg.feed) {
+        /* A gun with a real feed stroke (the sniper): reach up to the mouth
+           of the action, PUSH the round home along the grip's own channel,
+           then drop away for the next one. Without the push the round simply
+           blinked out of existence at the mouth - the player never saw one go
+           in (user report 2026-08-27). The prop is switched off at the END of
+           the push, by which time it is buried in the receiver, so what the
+           eye follows is a round going into the action rather than a round
+           disappearing beside it. */
+        _feedIn[0] = cfg.port[0] + cfg.feed[0];
+        _feedIn[1] = cfg.port[1] + cfg.feed[1];
+        _feedIn[2] = cfg.port[2] + cfg.feed[2];
+        if (ct < 0.42) lerp3(_lp, cfg.low, cfg.port, vmEase(ct, 0.05, 0.42));
+        else if (ct < 0.66) lerp3(_lp, cfg.port, _feedIn, vmEase(ct, 0.44, 0.62));
+        else lerp3(_lp, _feedIn, cfg.low, vmEase(ct, 0.68, 1.0));
+      } else if (ct < 0.45) lerp3(_lp, cfg.low, cfg.port, vmEase(ct, 0.05, 0.45));
       else lerp3(_lp, cfg.port, cfg.low, vmEase(ct, 0.6, 1.0));
     } else if (t >= w1 && P.empty) {
       if (P.style === 'shell') {
@@ -1981,8 +2356,15 @@ function buildReloadEvents(w, vm) {
     const cw = (P.win[1] - P.win[0]) / P.cycles;
     for (let i = 0; i < P.cycles; i++) {
       const c0 = P.win[0] + i * cw;
+      /* The round is switched on down at the bottom of the swing, off screen,
+         and off again once it is home. On a gun with a feed stroke that is
+         the END of the push (ct 0.62), not the moment the hand arrives -
+         see the branch in applyReloadPose. */
+      const seat = cfg.feed ? 0.62 : 0.5;
       ev.push({ t: c0 + 0.02 * cw, fn: () => { if (shell) shell.visible = true; } });
-      ev.push({ t: c0 + 0.5 * cw, fn: () => { AudioSys.shellIn(w.id); if (shell) shell.visible = false; } });
+      // ...and THIS is where the round is credited on an interrupted reload:
+      // a shell already in the tube stays in the tube (see cancelReload)
+      ev.push({ t: c0 + seat * cw, fn: () => { P.loaded++; AudioSys.shellIn(w.id); if (shell) shell.visible = false; } });
     }
     if (reloadFromEmpty) {
       // on the stroke, not on a pasted fraction: the shell rack sits at
@@ -2005,6 +2387,7 @@ function clearReloadVisuals(vm) {
     vm.userData.magPart.position.set(0, 0, 0);
     vm.userData.magPart.visible = true;
   }
+  setMagLoaded(vm, true);
 }
 
 /* full visual reset (level restarts, weapon switches mid-reload) */
@@ -2014,6 +2397,8 @@ function resetWeaponFx() {
   pumpT = 0; pumpFired = true;
   boltT = 0; boltFired = true;
   relPlan = null;
+  relCancel = 0;
+  relTriggerHeld = false; dryFired = false;
   setScopeOverlay(false, true);
   _relLw = 0; _relRw = 0;
   for (const vm of viewmodels) {
@@ -2021,6 +2406,27 @@ function resetWeaponFx() {
     const rig = vm.userData.arms;
     if (rig) { blendArm(rig.L, null, 0); blendArm(rig.R, null, 0); }
   }
+}
+
+/* Scale everything the reload pose owns back toward its home by `k`, so an
+   interrupted reload runs out instead of snapping (see relCancel). The hand
+   weights go through it too: blendArm reads them as "how far from the carry
+   pose", so fading them IS the travel back onto the gun. */
+function fadeReloadPose(vm, k) {
+  _gp.px *= k; _gp.py *= k; _gp.pz *= k;
+  _gp.rx *= k; _gp.ry *= k; _gp.rz *= k;
+  _relLw *= k; _relRw *= k;
+  const ud = vm.userData;
+  if (ud.magPart) {
+    // rides home with the pose, and visible the whole way - the Glock's drop
+    // hides it near the bottom of its travel, and a magazine that blinks out
+    // as the gun comes up reads as a lost magazine
+    ud.magPart.position.multiplyScalar(k);
+    ud.magPart.visible = true;
+  }
+  if (ud.slide) ud.slide.position.z *= k;
+  if (ud.boltPart) ud.boltPart.position.z *= k;
+  if (ud.pumpPart) setPump(vm, (ud.pumpPart.position.z - ud.pumpHome) * k);
 }
 
 function updateViewmodel(dt) {
@@ -2063,7 +2469,7 @@ function updateViewmodel(dt) {
   // once vm's transform for this frame is final, because their shoulder
   // anchor is read back THROUGH that transform.
   _gp.px = 0; _gp.py = 0; _gp.pz = 0; _gp.rx = 0; _gp.ry = 0; _gp.rz = 0;
-  const reloadPose = reloading && !!relPlan;
+  const reloadPose = (reloading || relCancel > 0) && !!relPlan;
   /* the pump stroke between shots; the reload owns the forend while it runs,
      so the two never drive the same part in one frame */
   pumpT = Math.max(0, pumpT - dt / PUMP_DUR);
@@ -2109,11 +2515,20 @@ function updateViewmodel(dt) {
   _gp.pz += 0.02 * boltYank;
   _gp.rx -= 0.05 * boltYank;
   if (reloadPose) {
-    const t = 1 - reloadTimer / reloadDuration; // 0 -> 1
-    while (relEvIdx < relPlan.events.length && t >= relPlan.events[relEvIdx].t) {
-      relPlan.events[relEvIdx++].fn();
+    if (reloading) {
+      const t = 1 - reloadTimer / reloadDuration; // 0 -> 1
+      while (relEvIdx < relPlan.events.length && t >= relPlan.events[relEvIdx].t) {
+        relPlan.events[relEvIdx++].fn();
+      }
+      applyReloadPose(vm, t);
+    } else {
+      // aborted by a shot: the frozen pose runs out, and no further events
+      // fire - the sounds and props of a reload that is no longer happening
+      applyReloadPose(vm, relCancelT);
+      relCancel = Math.max(0, relCancel - dt / REL_CANCEL_DUR);
+      fadeReloadPose(vm, relCancel);
+      if (relCancel === 0) { relPlan = null; clearReloadVisuals(vm); }
     }
-    applyReloadPose(vm, t);
   }
 
   // ADS: płynne przejście do pozycji celowania (muszka w osi kamery)
@@ -2171,12 +2586,14 @@ function switchWeapon(idx) {
   }
   pumpT = 0; pumpFired = true;
   boltT = 0; boltFired = true;
+  relTriggerHeld = false; dryFired = false; // a new gun gets a fresh answer
   clearReloadVisuals(viewmodels[currentWeapon]);
   viewmodels[currentWeapon].visible = false;
   currentWeapon = idx;
   viewmodels[currentWeapon].visible = true;
   reloading = false;
   relPlan = null;
+  relCancel = 0;
   hideReloadHud();
   setAiming(false);
   AudioSys.switch_(WEAPONS[currentWeapon].id);
@@ -2201,6 +2618,10 @@ function startReload() {
   const w = WEAPONS[currentWeapon];
   if (reloading || w.mag >= w.magSize || w.reserve <= 0) return;
   reloading = true;
+  relCancel = 0; // a fresh reload takes over from any run-out still playing
+  // R wins over a trigger that is already held: that hold cannot cancel this
+  // reload, only a new pull can (see relTriggerHeld)
+  relTriggerHeld = firing;
   reloadFromEmpty = w.mag <= 0;
   if (scoped) setScopeOverlay(false, true); // the scope drops for the reload
   // from empty the sequence is longer: the charge move (bolt/slide/pump) is
@@ -2211,7 +2632,8 @@ function startReload() {
                  * (reloadFromEmpty ? (cfg.emptyMul || 1.3) : 1);
   reloadTimer = reloadDuration;
   // animation plan: style + shell-cycle window + one-shot events (sounds, prop)
-  relPlan = { style: cfg.style, empty: reloadFromEmpty, cycles: 0, win: [0, 1], events: [] };
+  relPlan = { style: cfg.style, empty: reloadFromEmpty, cycles: 0, win: [0, 1],
+              loaded: 0, events: [] };
   if (cfg.style !== 'mag') {
     relPlan.cycles = Math.max(1, Math.min(cfg.style === 'shell' ? 4 : 3,
       Math.min(w.magSize - w.mag, w.reserve)));
@@ -2240,6 +2662,36 @@ function finishReload() {
   updateWeaponHud();
 }
 
+/* The trigger outranks the reload (user call 2026-08-27). Called from tryFire
+   only with a round already chambered - on an empty gun there is nothing to
+   shoot with, so the sequence runs on rather than being cancelled into a
+   click.
+   ⚠️ Shell styles keep what has actually been thumbed in (`relPlan.loaded`),
+   because there the rounds go in one at a time and the tube does not give
+   them back. A magazine that never seated gives nothing: the mag styles
+   credit their ammo in finishReload and that is the only place they can. */
+function cancelReload() {
+  if (!reloading) return;
+  const w = WEAPONS[currentWeapon];
+  const vm = viewmodels[currentWeapon];
+  if (relPlan && relPlan.style !== 'mag' && relPlan.loaded > 0) {
+    const take = Math.min(relPlan.loaded, w.magSize - w.mag, w.reserve);
+    w.mag += take;
+    w.reserve -= take;
+  }
+  reloading = false;
+  // the pose runs out over REL_CANCEL_DUR (see relCancel); what the fist is
+  // CARRYING goes at once - a spare magazine or a loose round has no business
+  // being in shot while the gun is being fired, and the muzzle flash covers it
+  relCancelT = Math.min(1, Math.max(0, 1 - reloadTimer / reloadDuration));
+  relCancel = relPlan ? 1 : 0;
+  if (vm.userData.magProp) vm.userData.magProp.visible = false;
+  if (vm.userData.shellProp) vm.userData.shellProp.visible = false;
+  if (!relPlan) clearReloadVisuals(vm);
+  hideReloadHud();
+  updateWeaponHud();
+}
+
 function hideReloadHud() {
   document.getElementById('reload-msg').style.display = 'none';
 }
@@ -2250,15 +2702,38 @@ const _shootDir = new THREE.Vector3();
 const _muzzleWorld = new THREE.Vector3();
 const _hitNormal = new THREE.Vector3();
 
+/* "you are dry" - shown the moment the magazine runs out, which is the shot
+   that empties it, NOT the trigger pull after it (user call 2026-08-27).
+   Nothing reloads by itself any more, so this line is how the player learns
+   the gun is done, and by the time the striker clicks on nothing it is old
+   news. */
+function showDryMsg(w) {
+  showCenterMsg(w.reserve > 0 ? 'Brak amunicji — wciśnij R'
+                              : 'Brak amunicji — zmień broń!', 1.1, true);
+}
+
 function tryFire() {
   if (game.noCombat) return; // epilogue: no shooting at the parade
   const w = WEAPONS[currentWeapon];
-  if (fireCooldown > 0 || reloading) return;
+  if (fireCooldown > 0) return;
+  // a shot interrupts the reload, provided there is something to shoot AND
+  // the trigger is a fresh pull rather than one held from before the reload
+  if (reloading) {
+    if (w.mag <= 0 || relTriggerHeld) return;
+    cancelReload();
+  }
   if (w.mag <= 0) {
+    /* An empty gun does NOT reload itself (user call 2026-08-27). It used to,
+       and with the trigger held that turned into a reload-shot loop the
+       player could not get out of: the reload finished, the held trigger
+       emptied the gun again, and it started over. Now the gun just says it
+       is empty and waits for R. */
     fireCooldown = 0.25;
-    AudioSys.empty();
-    if (w.reserve > 0) { showCenterMsg('Brak amunicji — wciśnij R', 1.1, true); startReload(); }
-    else showCenterMsg('Brak amunicji — zmień broń!', 1.1, true);
+    if (!dryFired) {
+      dryFired = true;
+      AudioSys.empty();
+      showDryMsg(w);
+    }
     return;
   }
   fireCooldown = w.fireInterval;
@@ -2356,7 +2831,20 @@ function tryFire() {
   camera.rotation.x += w.kick;
 
   updateWeaponHud();
-  if (w.mag === 0 && w.reserve > 0) startReload();
+  if (w.mag === 0) {
+    /* The trigger pull that fired the last round has had its answer - that
+       round - so the striker does not also click on this one; the click
+       belongs to the NEXT pull. dryFired carries that, and updateWeapons
+       clears it when the trigger comes up. */
+    dryFired = true;
+    showDryMsg(w);
+  }
+  /* ⚠️ The shot that empties the magazine does NOT start a reload either
+     (user call 2026-08-27) - this is where the reload-shot loop was born.
+     With the trigger held, the gun reloaded itself the instant it ran dry,
+     came back up, emptied itself again and started over, and the player never
+     got a say. Reloading is R now, full stop; the empty gun answers with a
+     dry click (see the w.mag <= 0 branch above). */
 }
 
 function updateWeapons(dt) {
@@ -2368,6 +2856,9 @@ function updateWeapons(dt) {
     if (reloadTimer <= 0) finishReload();
   }
   const w = WEAPONS[currentWeapon];
+  // letting go of the trigger re-arms both: the next pull may cancel a reload
+  // and may click on an empty chamber again
+  if (!firing) { relTriggerHeld = false; dryFired = false; }
   if (firing && (w.auto || fireCooldown === 0)) {
     if (w.auto) tryFire();
     else { tryFire(); firing = false; } // broń półautomatyczna: jeden strzał na klik

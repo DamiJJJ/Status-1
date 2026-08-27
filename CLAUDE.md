@@ -546,6 +546,19 @@ więc formy męskie w kwestiach DO gracza są OK.
     broni do ręki; ciężar broni niesie i tak jej własny huk. Nie ma też
     żadnego przestrajania `rate` per broń - o to chodzi, żeby zmiana brzmiała
     tak samo, cokolwiek wchodzi do ręki.
+    **Suchy strzał** (`AudioSys.empty()`) jest od 2026-08-27 JEDYNĄ odpowiedzią
+    pustej broni (patrz Konwencje → „PUSTA BROŃ NIE PRZEŁADOWUJE SIĘ SAMA"),
+    więc musi czytać się jak MECHANIZM, nie jak pisk UI: synteza to teraz
+    transjent szumu (uderzenie iglicy) plus krótki niski stuk, a nie kwadratowy
+    blip. Klucz `dry_fire` jest wpisany w `MANIFEST` (9mm Pistol Dry Fire,
+    cięcie z pomiaru obwiedni: transjent na 0,000, 6% szczytu na 0,030) i jest
+    WSPÓLNY dla całego arsenału z tego samego powodu co `draw` - iglica
+    spadająca na pustą komorę to mechanizm spustu, nie kaliber, a w paczkach
+    jest dokładnie jedno takie nagranie.
+    ⚠️ **Ten klucz czeka na przegenerowanie `js/sfx.js`** - `tools/gen_sfx.py`
+    wymaga `ffmpeg`, którego na tej maszynie nie ma. Do tego czasu `sample()`
+    zwraca `false` i gra jedzie na syntezie, dokładnie tak, jak przewiduje
+    zasada „każde wywołanie musi mieć fallback".
     ⚠️ **Snajperka jedzie na Mosinie** (7.62x54R + `Mosin Bolt Cycle` +
     `Mosin Top Load`), bo to jedyna broń źródłowa z ZAMKIEM - a gra
     przeładowuje ją stylem `shellBolt`, czyli pojedynczymi nabojami i zamkiem
@@ -1175,6 +1188,72 @@ więc formy męskie w kwestiach DO gracza są OK.
     w kość" - dla TEJ broni: edytor nie pokazuje kikuta (patrz
     `ARM_CARRY_REST`), więc dial, który w warsztacie wygląda dobrze, i tak
     potrafi powiesić uciętą kończynę na środku ekranu gracza.
+    ⚠️ **To zejście obowiązuje TAKŻE w przeładowaniu** (2026-08-27):
+    `applyReloadArms` liczy bark przez `carryShoulder`, nie przez samo
+    `RELOAD_SHOULDER`. Przeładowanie robi się STOJĄC, czyli w pozie, dla
+    której to zejście powstało, a jego brak wracał karabinowi pierścień
+    kikuta na ekran na obu końcach animacji (6/20 wierzchołków, |ndc y| 0,86;
+    zgłoszenie użytkownika: „w trakcie przeładowania karabinu widać kikut
+    lewej ręki"). Po poprawce 0/20 i |ndc y| ≥ 1,15 przez całą animację.
+    ⚠️ **Za to USTĘPUJE pozie, która przejmuje noszenie** (parametr `rest`
+    w `carryShoulder`): bieg, cykl zamka i sama wymiana magazynka mają
+    WŁASNE, dostrojone barki (`SPRINT_SHOULDER_TWEAK`, `BOLT_SHOULDER`,
+    `RELOAD_SHOULDER`) i wszystkie były dobierane przy zerowym zejściu
+    postojowym. Bez wygaszenia dołożenie zejścia po cichu przestawiłoby całą
+    trójkę. Waga to `1 - max(bieg, cykl)` i `1 - waga danej dłoni`
+    w przeładowaniu, więc na obu końcach przeładowania (dłoń jeszcze/znowu na
+    broni) zejście jest pełne, a w środku go nie ma.
+    ⚠️ **Snajperka dostała swój wpis 2026-08-27** i to jest wpis o ŁOKCIU,
+    nie o kadrowaniu (zgłoszenie użytkownika, dwa razy zawężane: chwyt i to,
+    że ręka jest wyprostowana, są OK; bieg i przeładowanie też są OK - źle
+    wygląda POSTÓJ i podniesienie z niego, bo łokieć jest wygięty W LEWO
+    zamiast w dół). Zmierzone w przestrzeni kamery na biodrze: łokieć siedział
+    0,015 m NAD nadgarstkiem i 0,132 m w lewo od niego, czyli kończyna leżała
+    wzdłuż lufy.
+    ⚠️ Dlatego ten wpis NIE MA składowej do przodu, w przeciwieństwie do
+    `BOLT_SHOULDER`: to pchnięcie do przodu zgina łokieć, a wyprostowane ramię
+    jest tym, co użytkownik zatwierdził. Przy z = 0 staw mierzy 177,6° na
+    każdej głębokości i sam OBRACA się wokół osi bark-nadgarstek, czyli robi
+    dokładnie to, o co chodzi. Zmierzone (łokieć pod nadgarstkiem / w bok):
+    −0.14 → 0,077/0,116 (nadgarstek 27,8), −0.22 → 0,117/0,109 (32,9),
+    −0.30 → 0,151/0,102 (38,4), −0.38 → 0,178/0,095 (43,5),
+    −0.46 → 0,199/0,087 (48,2), −0.54 → 0,216/0,080 (52,2) i pięść zaczyna
+    schodzić z chwytu (0,005 m - luz `SHOULDER_LEAN_MAX` się kończy).
+    ⚠️ **WPIS SNAJPERKI ZOSTAŁ USUNIĘTY 2026-08-27** - zgłoszony dwa razy
+    z rzędu (przy -0,38 i przy -0,22) z tym samym zarzutem: gra nie wygląda
+    jak podgląd DEVRIG. To jest zarzut ŚCISŁY i mierzalny, bo `CARRY_SHOULDER`
+    jest jedyną tabelą, która świadomie odchodzi od edytora, a odchyłkę widać
+    na NADGARSTKU. Zmierzone na biodrze, lewa dłoń: poza edytora (czyli to, do
+    czego rozwiązuje się ramię przy zejściu 0 - macierz ciała jest tam
+    jednostkowa) to **21,0° zgięcia i 180° skrętu**, a gra przy -0,22
+    pokazywała **34,0° i 168,4°**. Trzynaście stopni, których edytor nie
+    pokazuje, to dokładnie znaczenie zdania „coś jest poprzesuwane".
+    To, co ten wpis kupował, jest prawdziwe, ale taniej kupuje się to gdzie
+    indziej: przy zejściu 0 łokieć siedzi równo z nadgarstkiem (0,000 w dół
+    przy 0,132 w bok) zamiast 0,123 w dół - a od tego jest PODPOWIEDŹ ŁOKCIA
+    (`upper` we wpisie `l`), którą DEVRIG pokazuje i którą można dostroić
+    suwakiem. Pierścienia kikuta nigdy to nie dotyczyło (0/20 na każdej
+    głębokości, |ndc y| 1,34 przy zerze).
+    ⚠️ **Wpis KARABINU zostaje** i to jest ta jedna rzecz, której edytor
+    naprawdę nie umie pokazać: przy zerze pierścień kikuta wraca NA EKRAN
+    (8/20 przy |ndc y| 0,83 wobec 0/20 przy 1,14), a kosztuje to 6° różnicy
+    wobec podglądu. Wszystkie pozostałe cztery bronie zgadzają się z DEVRIG
+    co do 0,0°.
+    ⚠️ **Bierz NAJPŁYTSZE zejście, które przewraca łokieć, nie to o najlepszym
+    stosunku.** Pierwszy wybór (−0.38) przestrzelił - użytkownik zgłosił
+    nazajutrz, że ręka jest opuszczona za bardzo w dół i nie zgadza się
+    z podglądem DEVRIG. To odczytanie jest ŚCISŁE, nie wrażeniowe: `CARRY_SHOULDER`
+    to jedyna tabela, która świadomie odchodzi od pozy z edytora, a tym
+    odejściem JEST przesunięcie barku - zmierzone w przestrzeni kamery,
+    −0.38 wynosi staw 0,300 m od miejsca, które pokazuje podgląd. Bieżące
+    **−0.22** to pierwszy wiersz, w którym łokieć siedzi bardziej W DÓŁ niż
+    W BOK (0,123 przy 0,108, wobec 0,000/0,132 bez zejścia), i kosztuje
+    0,202 m zamiast 0,300. Nadgarstek zostaje zielony w obie strony (34,0°
+    tutaj, 44,5 przy −0.38), a pierścień kikuta nie ma tu nic do rzeczy: ta
+    broń kadruje się na KAŻDEJ głębokości (0/20, |ndc y| 1,33 bez zejścia,
+    2,46 tutaj). ADS też nie potrzebuje ani grama - bez zejścia łokieć wisi
+    tam 0,107 pod nadgarstkiem przy 0,069 w bok, więc wada zawsze była
+    wyłącznie w postoju.
     ⚠️ Ten rig stoi w KAŻDYM dostrojonym chwycie na 99,5% wyprostu
     (zmierzone: `SW` 0,4877 przy zasięgu 0,4901), więc bark na sztywno nie
     dosięgnąłby nawet gniazda magazynka. Stąd dwa luzy w hands.js:
@@ -1333,6 +1412,57 @@ więc formy męskie w kwestiach DO gracza są OK.
     (smoothstep `vmEase`/`vmPulse`), dłonie przestawia `blendArm` (pozycja
     i palce lerpem, ramka chwytu SLERPEM - interpolacja samych wektorów
     `channel`/`palm` zwija bazę w połowie kąta prostego).
+    ⚠️ **STRZAŁ PRZERYWA PRZEŁADOWANIE** (`cancelReload`, decyzja użytkownika
+    2026-08-27): spust ma pierwszeństwo przed przeładowaniem. Bramka jest
+    w `tryFire` i ma DWA warunki: **musi być nabój w komorze** (`w.mag > 0`) -
+    na pustej broni nie ma czym strzelać, więc sekwencja jedzie dalej zamiast
+    zamienić się w kliknięcie - **i spust musi być ŚWIEŻO wciśnięty**
+    (`relTriggerHeld`).
+    ⚠️ **Ten drugi warunek to „R bije trzymany LPM"** (doprecyzowanie tego
+    samego dnia). Bez niego broń automatyczna z wciśniętym spustem kasowała
+    przeładowanie w PIERWSZEJ klatce po `R`, więc zaczęcia przeładowania
+    w ogóle nie dało się zobaczyć. `startReload` zapamiętuje więc, czy spust
+    już jest wciśnięty; taki spust jest ignorowany do puszczenia
+    (`updateWeapons` zeruje latch, gdy `firing` schodzi), a ponowne
+    kliknięcie dalej przerywa - i o to chodzi w „LPM bije sam PROCES
+    przeładowania".
+    ⚠️ **PUSTA BROŃ NIE PRZEŁADOWUJE SIĘ SAMA** (ta sama decyzja): oba
+    automatyczne wywołania `startReload` z `tryFire` zostały USUNIĘTE - to
+    z gałęzi pustego magazynka ORAZ to po strzale, który magazynek opróżnił.
+    Drugie było źródłem pętli przeładowanie-strzał, którą zgłosił użytkownik:
+    przy trzymanym LPM broń przeładowywała się sama w tej samej klatce, w
+    której wyszła jej amunicja, wracała do góry, znowu się opróżniała i tak
+    w kółko, a gracz nie miał nic do powiedzenia. Zostaje `AudioSys.empty()`
+    (suchy strzał) plus komunikat „wciśnij R" (`showDryMsg`).
+    ⚠️ **Komunikat leci na STRZALE, który opróżnił magazynek**, nie na
+    kliknięciu spustu w pustkę (doprecyzowanie użytkownika 2026-08-27): skoro
+    nic nie przeładowuje się samo, to ta linia jest jedynym miejscem, z którego
+    gracz się dowiaduje, że broń skończyła - zanim iglica kliknie na pustej
+    komorze, to już stara wiadomość.
+    ⚠️ Suchy strzał idzie **raz na pociągnięcie spustu** (`dryFired`, zerowany
+    razem z latchem spustu w `updateWeapons`), a strzał opróżniający magazynek
+    od razu ten latch ZAPALA: to pociągnięcie dostało już swoją odpowiedź -
+    ostatni nabój - więc klik należy do NASTĘPNEGO. Broń automatyczna
+    z trzymanym spustem klika więc raz, nie w pętli.
+    ⚠️ Bot testowy (`testAutoAim` w testmode.js) musiał wobec tego dostać
+    własne `startReload` - bez niego przebieg `?test=win` stawał na pierwszym
+    pustym magazynku.
+    ⚠️ **Style nabojowe ODDAJĄ to, co już weszło do rurki** (`relPlan.loaded`,
+    liczone w zdarzeniu osadzenia naboju): tam ładuje się po jednym i tuba
+    naboi nie zwraca. Style magazynkowe nie oddają nic - magazynek, który nie
+    zasiadł, nie dał amunicji, a księguje ją wyłącznie `finishReload`.
+    ⚠️ **Poza MUSI mieć drogę wyjścia - skasowanie jej w jednej klatce to
+    teleport** (`relCancel`/`fadeReloadPose`): przerwana animacja rzuca bronią
+    przez 0,42 rad, a ładującą pięścią przez pół metra w JEDNYM kroku. Dlatego
+    plan zostaje jeszcze `REL_CANCEL_DUR` (0,12 s), zamrożony na ułamku, na
+    którym padł strzał, a wszystko, co ta poza posiada - offsety broni, wagi
+    dłoni, magazynek, zamek, łoże - jest skalowane do domu przez `relCancel`.
+    Rekwizyty z pięści (zapasowy magazynek, nabój) gasną NATYCHMIAST - błysk
+    wystrzału je kryje, a wynoszenie ich przez kadr w trakcie strzelania
+    czytałoby się jak druga broń w ręce.
+    ⚠️ Okno mieści się CELOWO wewnątrz martwej przerwy pompki i zamka
+    (`PUMP_HOLD`/`BOLT_HOLD`, oba ~0,25 s), więc suw, który ten sam strzał
+    właśnie zarezerwował, nigdy nie walczy z dogasającą pozą.
     ⚠️ **Poza broni przy przeładowaniu jest PER BROŃ** (`relGun` w `HANDS`,
     2026-08-21): wspólne „w górę i do środka" jest dostrojone pod pistolet,
     któremu gniazdo magazynka siedzi tuż pod linią celowania. Gniazdo SMG
@@ -1392,6 +1522,17 @@ więc formy męskie w kwestiach DO gracza są OK.
     bo skraca przedramię perspektywą w wąską kolumnę; samo `x` tylko przesuwa
     płytę. Strzelba: `[0.18, 0, -0.10]`, łokieć schodzi pod dolną krawędź,
     pięść zostaje na oknie co do centymetra.
+    ⚠️ **Na racku kończącym przeładowanie broń wraca do NORMALNEGO
+    noszenia** (2026-08-27, zgłoszenie użytkownika: „po przeładowaniu jak
+    ciągnie za pompkę, to powinien już ciągnąć trzymając strzelbę normalnie,
+    a nie bokiem"). Przechył i odchylenie z `relGun` istnieją po to, żeby
+    pokazać kamerze okno ładowania - nikt nie przeciąga pompki z bronią
+    obróconą na bok. Styl `shell` mnoży więc swoje offsety przez dodatkowy
+    czynnik gasnący od `win[1]` przez 0,12 animacji (`senv`
+    w `applyReloadPose`), czyli tym samym oknem, którym dłoń wraca na łoże.
+    Zmierzone: na t 0,72 broń ma jeszcze yaw 0,417 i roll −0,369, na 0,82
+    (rack startuje na 0,81) jest już na zerze. Styl `shellBolt` jedzie po
+    staremu - cykl zamka snajperki dzieje się z tyłu i przechył mu pomaga.
     ⚠️ **Strzelba NIE MA już ramek przeładowania** (decyzja użytkownika
     2026-08-25: „czemu w ogóle ją obracasz, zostaw tak jak trzyma się pompki,
     potem będziemy dostosowywać"). Blok `grips` zniknął, więc dłoń niesie
@@ -1471,6 +1612,59 @@ więc formy męskie w kwestiach DO gracza są OK.
     z geometrii (`tools/gen_models.py --probe`), a `low` NIE może być dalej
     niż sięga ramię - IK zatrzyma dłoń w powietrzu zamiast wyprowadzić ją
     poza kadr.
+    ⚠️ **Naboje wchodzą OD TYŁU** (2026-08-27, decyzja użytkownika:
+    „naboje powinny być pakowane od tyłu, tam gdzie postać potem ciągnie za
+    zamek"). ⚠️ **Samo przesunięcie kotwicy tego NIE załatwia** - pierwsze
+    podejście tego dnia postawiło pięść przy rączce zamka (z 0,241 → 0,293),
+    ale zostawiło chwyt celujący nabojem w +x, czyli w lewą flankę komory,
+    i `feed` pchający go tą samą drogą. Gracz dalej widział nabój wchodzący
+    BOKIEM, tyle że z tyłu broni (zgłoszenie użytkownika, tymi słowami).
+    Stacja mówi, SKĄD przychodzi ręka; „od tyłu" mówi, DOKĄD celuje nabój
+    i w którą stronę jedzie. Dziś żywa pięść startuje na (-0,038, 0,100,
+    0,380) - szerokość dłoni za rączką zamka i na wysokości górnego lica
+    komory - a `feed` to CAŁY wektor stamtąd do wlotu komory
+    (-0,017, 0,085, 0,265): 0,118 m pchnięcia do przodu zamiast 35 mm.
+    Kanał to ten sam wektor znormalizowany, więc nabój leży wzdłuż własnej
+    drogi i wchodzi czubkiem naprzód.
+    ⚠️ **To ODWRACA notatkę „NIE celuj kanałem w komorę"**, która stała tu
+    jeden dzień. Skrót perspektywiczny jest prawdziwy i jest tu po prostu
+    ceną: rozpiętość ekranowa naboju spada 0,128 → 0,058 NDC w trakcie
+    wkładania, wobec płaskich 0,17 bokiem. Odkupuje to ruch i widoczność -
+    łuska wychodzi teraz spod rękawicy (5-6 z 9 próbek w trakcie pchnięcia
+    wobec 4 bokiem), a oko śledzi PRZEJAZD 0,118 m, nie statyczny pasek.
+    Nie „naprawiaj" rozpiętości obracając nabój z powrotem w poprzek broni -
+    to jest właśnie wkładanie bokiem, odrzucone z nazwy.
+    ⚠️ Uczciwego ładowania GÓRĄ dalej nie da się pokazać: w przekroju
+    z 0,14-0,30 komora zajmuje y od -0,02 do +0,09, a luneta zamyka górę od
+    y +0,10. Z tyłu miejsce jest, nad komorą go nie ma.
+    ⚠️ **`feed` (2026-08-27) to dosunięcie naboju**: pięść po dojściu do
+    `port` przepycha go wzdłuż kanału i dopiero na KOŃCU tego ruchu rekwizyt
+    gaśnie (zdarzenie na ct 0,62 zamiast 0,5). Wcześniej nabój znikał
+    w momencie, w którym dłoń dochodziła do komory, więc gracz nigdy nie
+    widział, żeby jakiś do niej wszedł (zgłoszenie użytkownika: „dodaj nabój
+    wkładany przez postać"). Gałąź jest opt-in po polu `feed`, więc strzelba
+    jedzie po staremu.
+    ⚠️ **Rolkę chwytu i podpowiedź łokcia trzeba przemieść od nowa po każdej
+    takiej zmianie.** Przy tej stacji rolka 135° daje kciuk na wierzchu
+    (czubek 0,099 nad nadgarstkiem w przestrzeni kamery; 0° i 45° wieszają go
+    pod dłonią), a `upper` az −60 / el −30 zbija nadgarstek z 50° na 15,7°
+    i trzyma 21-32° przez całe pchnięcie. Skręt przedramienia idzie za to
+    159-177°, i to jest cena naboju celującego do przodu na tym rigu - to samo
+    pasmo, w którym ta ręka siedzi w zwykłym noszeniu tej broni (161-180),
+    rozłożone na 5-ogniwowy łańcuch skrętu.
+    ⚠️ **Nabój wisi CZUBKIEM w dziurze pięści, a łuska wystaje z niej do
+    tyłu** (`hold = -slen / 2` w `attachHandsAndProps`), i to nie jest
+    stylizacja: pięść ma wzdłuż linii kostek ~80 mm, więc nabój WYŚRODKOWANY
+    na dziurze jest przez nią połknięty w całości (zmierzone: ani jedna
+    próbka nie wychodziła spod rękawicy przy żadnej długości). Zmierzone
+    wzdłuż kanału od pięści: rękawica zakrywa −0,025 do +0,075, a wszystko od
+    −0,05 w tył jest czyste. Przy okazji tak właśnie trzyma się nabój, który
+    za chwilę wpycha się do komory. Dlatego też `shellDim` urosło z 60 na
+    80 mm.
+    ⚠️ **Widoczność rekwizytu mierz RAYCASTEM, nie okiem** - i odfiltruj
+    trafienia w sam rekwizyt (promień do jego OSI trafia najpierw w jego
+    własną ściankę i sonda melduje „zasłonięty" zawsze). Bieżące: 3-4 z 9
+    próbek widoczne od ct 0,25 do 0,58 każdego cyklu.
     ⚠️ **Chwyt `port` snajperki jest OD LEWEJ, i to nie jest wybór stylu,
     tylko wymuszenie geometrii** (2026-08-26). Przekrój przez komorę
     (z 0,14-0,30) mówi: komora zajmuje y od -0,02 do +0,09 i x od -0,033 do
@@ -1502,13 +1696,40 @@ więc formy męskie w kwestiach DO gracza są OK.
     dłonią), 180° -0,093, 315° +0,035, **0° (= 270 + 90) +0,105** - jedyny
     kandydat z kciukiem wyraźnie na wierzchu i dokładnie żądane 90°. Stawia
     pięść na sztorc, z kciukiem nad nabojem.
+    ⚠️ **„Obróć dłoń" i „obróć rękę" to DWIE RÓŻNE OSIE i tylko jedna z nich
+    jest do zapłacenia** (2026-08-27, zgłoszenie użytkownika: „obróciłeś rękę,
+    a chodziło mi o dłoń"). Rolka wokół KANAŁU (linii kostek) obraca dłoń
+    wokół osi, która leży 0,115 m OBOK nadgarstka, więc jest to obrót bryły
+    sztywnej wokół osi zewnętrznej: albo pięść zostaje na komorze i wtedy sam
+    NADGARSTEK jedzie 0,23 m (z NDC y -0,89 na +0,11, czyli przedramię
+    wchodzi nad komorę i zalewa pół kadru; nadgarstek 116° na dnie pełnego
+    przemiecenia az/el, nabój 1/9), albo nadgarstek zostaje i wtedy pięść
+    schodzi z komory (0,15 m w lewo, 0,18 m w dół). Trzeciej możliwości nie
+    ma - to geometria, nie dial.
+    Osią, która obraca SAMĄ DŁOŃ, jest **kierunek palców** (lokalne +Y kości
+    dłoni - dokładnie to, co DEVRIG nazywa „obrotem dłoni"): przechodzi przez
+    nadgarstek, więc ramię zostaje na miejscu, a LINIA kanału się nie rusza -
+    zmienia się tylko jej ZNAK. Zmierzone wobec poprzedniego diala:
+    nadgarstek 24-40° (było 16-26), skręt przedramienia 25-30° (było 159-177,
+    czyli cały łańcuch skrętu przestał być potrzebny), łokieć i pierścień
+    kikuta bez zmian (0/20, |ndc y| 1,71-1,82), kciuk dalej nad nadgarstkiem
+    (+0,059), a nabój WIDOCZNIEJSZY: 7-9/9 próbek zamiast 5-6/9, bo
+    odwrócona rękawica zakrywa mniej łuski.
+    ⚠️ Po takim obrocie **odbij nabój końcami** (`hold`, stożek i korpus
+    naraz - `attachHandsAndProps`): kanał zmienił znak, więc bez tego nabój
+    wchodzi do komory DNEM naprzód. Odbity ląduje w tym samym miejscu
+    w przestrzeni co przed obrotem, czubkiem w dziurze pięści.
+    ⚠️ Kotwice `port`/`low` przeliczaj jak przy każdej zmianie chwytu - tu
+    rozwiązane wstecz na te same dwa punkty żywej pięści co przedtem (błąd
+    1e-5 m), więc droga naboju do komory jest obrotem NIETKNIĘTA.
     ⚠️ **Rolkę płaci NADGARSTEK, a rachunek przenosi się na PODPOWIEDŹ
     ŁOKCIA**: `upper` celuje przedramieniem, a zgięcie nadgarstka to dłoń
     mierzona WZGLĘDEM przedramienia, więc jedno wymienia się na drugie. Na
     starej podpowiedzi ta rolka kosztowała 79° (tuż pod czerwonym); po
     przemieceniu azymutu i wzniosu dno wypada na 66-67° przy az 195-210 i
-    el -45. Bieżące: 67° nadgarstka, 62° skrętu, 99° łokcia, pierścień kikuta
-    czysty (0/20, |ndc y| 1,79).
+    el -45. Wtedy wychodziło 67° nadgarstka, 62° skrętu, 99° łokcia
+    (bieżące, po obrocie dłoni: 24-40° / 25-30° / 52-84°); pierścień kikuta
+    czysty w obu wersjach (0/20).
     ⚠️ **Cena jest w ZJEŹDZIE po nabój, nie przy oknie**: nadgarstek rośnie
     monotonicznie z zejściem dłoni (zmierzone pasmami NDC: -0,4 → 67°,
     -0,6 → 73°, -0,8 → 80°, -1,0 → 89°). Liczy się okno ładowania; zjazd
@@ -1580,6 +1801,53 @@ więc formy męskie w kwestiach DO gracza są OK.
     `blendArm` i tak przemnoży (cele noszenia nie niosą własnej pozy, więc
     bieg i rack się nie skalują wzajemnie). Bark zostaje na wadze BIEGU -
     przeciąganie pompki to praca stawów, nie barku.
+    ⚠️ **Wyjęty magazynek ma na wierzchu NABÓJ** (2026-08-27, zgłoszenie
+    użytkownika: „w wyjmowanym magazynku glocka widać nabój elegancko u góry,
+    ale w SMG i karabinie już nie"). Glock wozi swoje naboje we własnej
+    geometrii (materiał `Bullet`, cztery grupy w węźle magazynka), a bronie
+    Quaterniusa mają magazynek WYCIĘTY ze wspólnej siatki (`split`), więc
+    z gniazda wyjeżdżał goły klocek. `vmRound(parent, r, len, x, y, z)`
+    w weapons.js dokłada im nabój (walec + ogiwa, `vmMatOrange`, czubkiem
+    w −Z) doczepiony do CZĘŚCI magazynka, więc jedzie z nią przez całą
+    wymianę, a w gnieździe siedzi głęboko w komorze i go nie widać. Rozmiary
+    z górnego lica wyspy: SMG y 0,0549 x ±0,0144 z[-0,1657 -0,1062] (nabój
+    48 mm), karabin ma magazynek modelowany PŁYCEJ - kolumna kończy się na
+    y 0,0309 przy z[-0,0058 +0,009], czyli 15 mm głębokości - więc jego nabój
+    ma 24 mm i jest dobrany do modelu, a nie do prawdziwego 5.56.
+    ⚠️ **PUSTY magazynek wyjeżdża BEZ naboju** (`setMagLoaded` w weapons.js,
+    2026-08-27, zgłoszenie użytkownika: nabój na wierzchu jest w porządku,
+    dopóki w magazynku coś jest, ale nie na wyciąganym pustym). Steruje tym
+    `applyReloadPose` jako CZYSTA FUNKCJA ułamka `t` (żadnego zdarzenia -
+    przerwane przeładowanie i tak by je zgubiło): przeładowanie taktyczne
+    (`w.mag > 0`) trzyma nabój przez całą animację, a puste chowa go na drogę
+    W DÓŁ i przywraca na drogę W GÓRĘ, bo wracający magazynek jest z definicji
+    świeży. ⚠️ **Przełączenie musi wypaść na DNIE wahnięcia** (środek martwej
+    przerwy `T.out[1]`..`T.back[0]`) - to jedyny moment, w którym pięść jest
+    poza kadrem (po to `low` w ogóle zjeżdża z ekranu), więc podmiany nie da
+    się zobaczyć. Zmierzone na najwyższym wierzchołku naboju w klatce
+    przełączenia: pistolet |ndc y| 1,49, SMG 1,72, karabin 1,03 - karabin ma
+    najcieńszy zapas, bo to jego magazynek jest najpłycej pod krawędzią.
+    ⚠️ Nabój Glocka to **GRUPY MATERIAŁOWE, nie obiekt** (`Bullet*` w części
+    `mag`), więc nie ma czego chować - `bakedRounds()` zapamiętuje indeksy
+    grup, a `setMagLoaded` podmienia im materiał na `vmMatHidden`
+    (`visible: false`): renderer pomija grupę, której materiał jest
+    niewidoczny. Tablica materiałów jest per instancja (`mats.map` w
+    modelkit.js), więc podmiana nie dotyka innych broni. `clearReloadVisuals`
+    przywraca nabój, czyli zmiana broni i każdy reset wracają do pełnego
+    magazynka. Dwie pozostałe grupy `Bullet` siedzą w części `body` (nabój w komorze)
+    i celowo NIE są ruszane.
+    ⚠️ **Sam schowany nabój ODSŁANIA DZIURĘ w magazynku Glocka** (zgłoszenie
+    użytkownika 2026-08-27: „pusty magazynek wygląda na niedorobiony/
+    przezroczysty w jednym miejscu"). Ten magazynek jest wymodelowany jako
+    OTWARTA RURA - zmierzone sondą w dół wlotu: szczyty ścianek na y 0,0179,
+    a pod nimi 30 mm pustki - i to naboje ją zatykały. Dlatego wpis dostał
+    **PODAJNIK** (`magFollower`, zwykły `vmBox` na `vmMatMid`), który
+    pokazuje się dokładnie wtedy, gdy naboje gasną - czyli tam, gdzie
+    prawdziwy podajnik staje po ostatnim naboju. Rozmiar z wnętrza wlotu na
+    wysokości płytki: ścianki boczne x ±0,0115, przednia i tylna z 0,0545
+    i 0,0965 → płytka 0,022 × 0,005 × 0,037 na (0, 0,0095, 0,0755), czyli
+    6 mm pod krawędzią wlotu. Magazynki SMG i karabinu to LITE bryły (wyspy
+    ze `split`) - sprawdzone, nie mają czego zatykać.
     ⚠️ **Magazynek OPUSZCZA gniazdo** (Glock 2026-08-19, SMG 2026-08-21):
     jedzie jako WŁASNA część modelu, więc runtime dostaje
     `vm.userData.magPart` i rusza nim sam - gniazdo stoi puste, dopóki nie
@@ -1629,6 +1897,59 @@ więc formy męskie w kwestiach DO gracza są OK.
     Osobno per broń jest `RELOAD_SHOULDER` (jak `SPRINT_TWEAK`) - tego
     pistolet NIE ma i mieć nie powinien, bo jego dłoń podpierająca pracuje
     blisko osi kadru.
+    ⚠️ **Karabin dostał taki wpis 2026-08-27 i został cofnięty tego samego
+    dnia** (zgłoszenie: lewa ręka przy przeładowaniu ma być bardziej po lewej;
+    zaraz po nim: „koniec barku zostaw w jednym miejscu, u człowieka bark się
+    nie przemieszcza"). I to jest lekcja: **`RELOAD_SHOULDER` PRZESUWA STAW**,
+    a nie tylko obraca kończynę, więc wygaszany wagą dłoni jeździ nim przez
+    całą animację. Zmierzone na karabinie: bark przechodził 0,199 m przez
+    przeładowanie zamiast 0,099 bez wpisu. Jeśli chodzi o to, żeby ramię
+    wyglądało bardziej z lewej, dźwignią jest podpowiedź łokcia (obrót
+    w stawie), nie tabela barku.
+    ⚠️ **PRZENIKANIE mierz PRZECIĘCIEM KRAWĘDZI, nie wierzchołkami w środku**
+    (2026-08-27, zgłoszenie: kolba karabinu przenika przez ramię
+    i przedramię). Sonda licząca wierzchołki RAMIENIA wewnątrz bryły broni
+    zameldowała „przedramię 0, ramię 0" i **skłamała**: płyta przechodząca
+    przez kończynę nie ma tam ani jednego wierzchołka - kolba tnie skorupę
+    przedramienia, a żadna z siatek nie wkłada wierzchołka do drugiej.
+    Uczciwy test przechodzi KRAWĘDZIE siatki ramienia i pyta, czy leży na nich
+    powierzchnia broni: wyszło 9 przecięć na prawym przedramieniu przez całą
+    wymianę magazynka wobec 0 w zwykłym noszeniu - czyli wpychał ją tam OBRÓT
+    broni z `relGun`. Licz tylko przecięcia, których punkt jest W KADRZE
+    (`cam.z < -0.08` i |ndc| < 1); reszta jest za krawędzią i nikogo nie boli.
+    Lekarstwem był odkręcony yaw karabinu (`relGun.rot[1]` 0.10 → -0.08):
+    przemiecione, +0.10 → 9 przecięć, 0.00 → 4, **-0.08 → 0** i głębiej też 0.
+    Najpłytsze, które czyści, jest tu zarazem najtańsze dla LEWEJ ręki
+    (nadgarstek 68 → 73 → 80° w miarę pogłębiania) i prawie nie rusza gniazda
+    magazynka na ekranie (NDC -0,06 → -0,04). Ramienia (upper) nie przecinało
+    nic przy żadnym ustawieniu; zostają przecięcia PALCÓW z rękojeścią, które
+    są tak samo w zwykłym noszeniu (16) i są zwykłą zaciśniętą pięścią.
+    ⚠️ **Bark w przeładowaniu ma stać** (2026-08-27): `applyReloadArms`
+    ustawia `pinShoulder` na obu dłoniach, co wyłącza `SHOULDER_GIVE`
+    (jechał stawem do 0,10 m za dłonią), a `rest` w `carryShoulder` jest
+    teraz **1 na płasko**, nie `1 - waga dłoni` - zejście postojowe
+    (`CARRY_SHOULDER`) opisuje pozę człowieka STOJĄCEGO, a przeładowanie robi
+    się stojąc od pierwszej do ostatniej klatki; wygaszanie go pod wymianą
+    bujało stawem dokładnie o jego własną głębokość (karabin 0,06 m).
+    Zmierzone po obu poprawkach: przejazd barku karabinu **0,0000 m**,
+    a pierścień kikuta schodzi z ekranu (8/20 przy |ndc y| 0,82 → 0/20 przy
+    1,11); snajperka 0,203 → 0,049 m i nadgarstek 61° → 40°. Pistolet, SMG
+    i strzelba wychodzą co do cyfry tak samo - tabele się nie pokrywają
+    (`CARRY_SHOULDER`: karabin i snajperka, `RELOAD_SHOULDER`: SMG).
+    ⚠️ **Przypięcie barku UNIEWAŻNIA chwyty dostrojone przy give** - tak samo
+    jak przestrojenie chwytu bojowego unieważnia chwyty przeładowania. Faza
+    rączki zamka karabinu sięgała po nią z barku o 0,06 m niżej i płaciła
+    nadgarstkiem: 77° → 105,6° na t 0,74. Przemiecenie podpowiedzi łokcia
+    `grips.bolt` (na pion, lekko w lewo: `[-0.25, -0.866, 0.433]`) zbija to
+    do 33,6° przy odblokowanym stawie - i przy okazji ciągnie łokieć na
+    x kamery -0,18, czyli w tę samą stronę, o którą chodziło w zgłoszeniu
+    „ręka bardziej po lewej". Po całości najgorszy łokieć karabinu to -0,032
+    (czyli już nie przechodzi na prawo od osi), a nadgarstek na klatkach
+    z dłonią W KADRZE nie przekracza 45°.
+    ⚠️ Zostaje `SHOULDER_LEAN_MAX` - dochylenie, gdy kotwica jest DALEJ, niż
+    sięga ramię (pistolet 0,099 m, SMG 0,157). To nie jest to samo co give:
+    tam staw jechał zawsze, tu tylko wtedy, gdy inaczej dłoń oderwałaby się
+    od celu.
     Pudełko w pięści (`magProp`/`magDim`) to zastępczy magazynek dla broni,
     której model nie ma odłączalnego - od 2026-08-26 ŻADNA broń go nie
     używa: karabin dostał własny wycięty magazynek (`split` w wypieku)
